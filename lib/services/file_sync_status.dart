@@ -1,0 +1,19 @@
+import 'dart:io';
+import 'models/remote_file.dart';
+import 'hash_util.dart';
+
+enum FileSyncStatus { uploaded, modified, newFile, remoteOnly }
+
+class FileSyncComparator {
+  static Future<FileSyncStatus> compare({
+    required File localFile,
+    required RemoteFile? remote,
+  }) async {
+    if (!await localFile.exists()) return FileSyncStatus.remoteOnly;
+    if (remote == null) return FileSyncStatus.newFile;
+    final localHash = await HashUtil.md5Hash(localFile);
+    return localHash == remote.etag
+        ? FileSyncStatus.uploaded
+        : FileSyncStatus.modified;
+  }
+}
