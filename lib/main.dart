@@ -1,10 +1,14 @@
 import 'dart:io';
+import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:s3_drive/services/models/remote_file.dart';
 import 'services/s3_file_manager.dart';
 import 'directory_options.dart';
-import 'sync_dir.dart';
+import 'services/job.dart';
 import 'services/models/backup_mode.dart';
+import 'active_jobs.dart';
+import 'completed_jobs.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,51 +29,113 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
+  late S3FileManager _s3Manager;
   late List<String> _dirs = <String>[];
-  late Future<S3FileManager> _s3ManagerFuture;
+  final List<String> _localDirs = <String>[];
+  final List<BackupMode> _backupModes = <BackupMode>[];
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
-  late List<UploadJob> _jobs = <UploadJob>[];
-  late Processor? _processor = null;
+  final List<Job> _jobs = <Job>[];
+  final List<Job> _completedJobs = <Job>[];
+  final List<Watcher> _watchers = <Watcher>[];
+  final Map<String, List<RemoteFile>> _remoteFilesMap =
+      <String, List<RemoteFile>>{};
+  bool _showActiveJobs = false;
+  bool _showCompletedJobs = false;
+  Processor? _processor;
   bool _loading = true;
+
+  void onJobStatus(Job job) {
+    setState(() {});
+  }
+
+  void onJobComplete(Job job, dynamic result) {
+    if (result.runtimeType == PutObjectOutput) {
+      _remoteFilesMap['${job.remoteKey.split('/')[0]}/']!.add(
+        RemoteFile(
+          key: job.remoteKey,
+          size: job.bytes,
+          etag: (result as PutObjectOutput).eTag!.substring(
+            1,
+            result.eTag!.length - 1,
+          ),
+          lastModified: job.localFile.lastModifiedSync(),
+        ),
+      );
+    }
+    _completedJobs.add(job);
+    _jobs.remove(job);
+    startProcessor();
+    setState(() {});
+  }
+
+  void startProcessor() async {
+    _processor ??= Processor(
+      s3Manager: await S3FileManager.create(context),
+      jobs: _jobs,
+      onJobComplete: onJobComplete,
+    );
+    _processor!.start();
+  }
+
+  Future<void> refreshRemote(String dir) async {
+    final remoteFiles = await _s3Manager.listObjects(dir: dir);
+    _remoteFilesMap[dir] = remoteFiles;
+  }
 
   Future<void> _listDirectories() async {
     setState(() {
       _loading = true;
     });
-    final s3Manager = await _s3ManagerFuture;
-    _dirs = await s3Manager.listDirectories();
+    _dirs = await _s3Manager.listDirectories();
 
-    final List<String> localDirs = <String>[];
-    final List<String> remoteDirs = <String>[];
-    final List<BackupMode> modes = <BackupMode>[];
+    _localDirs.clear();
+    _backupModes.clear();
+    for (final dir in _dirs) {
+      final localDir = await _storage.read(key: dir);
+      final modeValue = int.parse(await _storage.read(key: 'mode_$dir') ?? '1');
+      _backupModes.add(BackupMode.fromValue(modeValue));
+      if (localDir != null && localDir.isNotEmpty) {
+        _localDirs.add(localDir);
+      } else {
+        _localDirs.add('');
+      }
+    }
+
+    for (final watcher in _watchers) {
+      watcher.stop();
+    }
 
     for (final dir in _dirs) {
       final localDir = await _storage.read(key: dir);
       final modeValue = int.parse(await _storage.read(key: 'mode_$dir') ?? '1');
+
+      await refreshRemote(dir);
+
       if (localDir != null && localDir.isNotEmpty) {
-        localDirs.add(localDir);
-        remoteDirs.add(dir);
-        modes.add(BackupMode.fromValue(modeValue));
+        _watchers.add(
+          Watcher(
+            localDir: Directory(localDir),
+            remoteDir: dir,
+            mode: BackupMode.fromValue(modeValue),
+            s3Manager: _s3Manager,
+            jobs: _jobs,
+            remoteFiles: _remoteFilesMap[dir] ?? [],
+            remoteRefresh: () => refreshRemote(dir),
+            onNewJobs: () {
+              setState(() {});
+              startProcessor();
+            },
+            onJobStatus: onJobStatus,
+          ),
+        );
       }
     }
 
-    if (_processor != null) {
-      _processor!.stop();
+    for (final watcher in _watchers) {
+      watcher.start();
     }
 
-    _processor = Processor(
-      localDirs: localDirs.map((d) => Directory(d)).toList(),
-      remoteDirs: remoteDirs,
-      modes: modes,
-      onStatus: (jobs) {
-        setState(() {
-          _jobs = jobs;
-        });
-      },
-      s3Manager: s3Manager,
-    );
-
-    _processor!.start();
+    startProcessor();
 
     setState(() {
       _loading = false;
@@ -80,8 +146,7 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading = true;
     });
-    final s3Manager = await _s3ManagerFuture;
-    await s3Manager.createDirectory(dir);
+    await _s3Manager.createDirectory(dir);
     _listDirectories();
   }
 
@@ -89,8 +154,7 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading = true;
     });
-    final s3Manager = await _s3ManagerFuture;
-    await s3Manager.deleteFile(dir);
+    await _s3Manager.deleteFile(dir);
     _listDirectories();
   }
 
@@ -100,8 +164,10 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading = true;
     });
-    _s3ManagerFuture = S3FileManager.create(context);
-    _listDirectories();
+    S3FileManager.create(context).then((manager) {
+      _s3Manager = manager;
+      _listDirectories();
+    });
   }
 
   @override
@@ -151,67 +217,97 @@ class _HomeState extends State<Home> {
           ),
         ],
       ),
-      body: ListView(
-        children: _dirs
-            .map(
-              (dir) => ListTile(
-                leading: Icon(Icons.folder),
-                title: Text(dir.substring(0, dir.length - 1)),
-                trailing: IconButton(
-                  onPressed: () => {
-                    showModalBottomSheet(
-                      context: context,
-                      enableDrag: true,
-                      showDragHandle: true,
-                      constraints: const BoxConstraints(
-                        maxHeight: 600,
-                        maxWidth: 800,
-                      ),
-                      builder: (context) => DirectoryOptions(
-                        directory: dir,
-                        onDelete: _deleteDirectory,
-                      ),
+      body: Stack(
+        alignment: Alignment.center,
+        children: [
+          ListView(
+            children: _dirs
+                .map(
+                  (dir) => ListTile(
+                    leading: Icon(Icons.folder),
+                    title: Text(dir.substring(0, dir.length - 1)),
+                    subtitle: Text(
+                      '${_backupModes[_dirs.indexOf(dir)].name}: ${_localDirs[_dirs.indexOf(dir)]}',
                     ),
-                  },
-                  icon: const Icon(Icons.menu),
-                ),
-              ),
-            )
-            .toList(),
+                    trailing: IconButton(
+                      onPressed: _loading
+                          ? null
+                          : () {
+                              showModalBottomSheet(
+                                context: context,
+                                enableDrag: true,
+                                showDragHandle: true,
+                                constraints: const BoxConstraints(
+                                  maxHeight: 600,
+                                  maxWidth: 800,
+                                ),
+                                builder: (context) => DirectoryOptions(
+                                  directory: dir,
+                                  onDelete: _deleteDirectory,
+                                ),
+                              ).then((value) => _listDirectories());
+                            },
+                      icon: const Icon(Icons.menu),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+          if (_showCompletedJobs)
+            CompletedJobs(
+              completedJobs: _completedJobs,
+              processor: _processor!,
+              onClose: () {
+                _showCompletedJobs = false;
+                setState(() {});
+              },
+              onUpdate: () {
+                setState(() {});
+              },
+            ),
+          if (_showActiveJobs)
+            ActiveJobs(
+              jobs: _jobs,
+              processor: _processor!,
+              onClose: () {
+                _showActiveJobs = false;
+                setState(() {});
+              },
+              onUpdate: () {
+                setState(() {});
+              },
+              onJobComplete: onJobComplete,
+            ),
+        ],
       ),
       bottomNavigationBar: BottomAppBar(
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('Total Directories: ${_dirs.length}'),
-            TextButton(
-              child: Text('Jobs: ${_jobs.length}'),
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) {
-                    return AlertDialog(
-                      title: Text('Upload Jobs'),
-                      content: SingleChildScrollView(
-                        child: ListBody(
-                          children: _jobs.map((job) {
-                            return ListTile(
-                              title: Text(job.remoteKey),
-                              subtitle: Text(job.localFile.path),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text('Close'),
-                        ),
-                      ],
-                    );
+            Row(
+              children: [
+                IconButton(
+                  icon: Badge.count(
+                    count: _completedJobs.length,
+                    child: Icon(Icons.done_all),
+                  ),
+                  onPressed: () {
+                    _showCompletedJobs = !_showCompletedJobs;
+                    setState(() {});
                   },
-                );
-              },
+                ),
+                IconButton(
+                  icon: Badge.count(
+                    count: _jobs.length,
+                    child: Icon(Icons.swap_vert),
+                  ),
+                  onPressed: () {
+                    _showActiveJobs = !_showActiveJobs;
+                    setState(() {});
+                  },
+                ),
+              ],
             ),
           ],
         ),

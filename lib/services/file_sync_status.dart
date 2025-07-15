@@ -2,7 +2,13 @@ import 'dart:io';
 import 'models/remote_file.dart';
 import 'hash_util.dart';
 
-enum FileSyncStatus { uploaded, modified, newFile, remoteOnly }
+enum FileSyncStatus {
+  uploaded,
+  modifiedLocally,
+  modifiedRemotely,
+  newFile,
+  remoteOnly,
+}
 
 class FileSyncComparator {
   static Future<FileSyncStatus> compare({
@@ -14,6 +20,8 @@ class FileSyncComparator {
     final localHash = await HashUtil.md5Hash(localFile);
     return localHash == remote.etag
         ? FileSyncStatus.uploaded
-        : FileSyncStatus.modified;
+        : remote.lastModified.isAfter(localFile.lastModifiedSync())
+        ? FileSyncStatus.modifiedRemotely
+        : FileSyncStatus.modifiedLocally;
   }
 }

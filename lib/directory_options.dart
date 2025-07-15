@@ -19,7 +19,7 @@ class DirectoryOptions extends StatefulWidget {
 
 class DirectoryOptionsState extends State<DirectoryOptions> {
   static const storage = FlutterSecureStorage();
-  late String? local = null;
+  String? local = null;
   late int? mode = 1;
 
   void getLocal() async {

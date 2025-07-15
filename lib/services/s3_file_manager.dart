@@ -72,9 +72,13 @@ class S3FileManager {
         .toList();
   }
 
-  Future<void> uploadFile({required File file, required String key}) async {
+  Future<PutObjectOutput> uploadFile({
+    required File file,
+    required String key,
+    String? contentMD5,
+  }) async {
     final bytes = await file.readAsBytes();
-    await _s3.putObject(
+    return await _s3.putObject(
       bucket: _bucket,
       key: '$_prefix$key',
       body: bytes,
@@ -85,8 +89,15 @@ class S3FileManager {
   Future<void> downloadFile({
     required String key,
     required File destination,
+    DateTime? ifModifiedSince,
+    DateTime? ifUnModifiedSince,
   }) async {
-    final bytes = await _s3.getObject(bucket: _bucket, key: '$_prefix$key');
+    final bytes = await _s3.getObject(
+      bucket: _bucket,
+      key: '$_prefix$key',
+      ifModifiedSince: ifModifiedSince,
+      ifUnmodifiedSince: ifUnModifiedSince,
+    );
     if (bytes.body == null || bytes.body!.isEmpty) {
       return; // return silently if no content
     }

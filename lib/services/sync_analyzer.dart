@@ -4,14 +4,16 @@ import 'models/remote_file.dart';
 import 'file_sync_status.dart';
 
 class SyncAnalysisResult {
-  final List<File> toUpload;
+  final List<File> newFile;
   final List<File> modifiedLocally;
-  final List<File> alreadyUploaded;
+  final List<File> modifiedRemotely;
+  final List<File> uploaded;
   final List<RemoteFile> remoteOnly;
   SyncAnalysisResult({
-    required this.toUpload,
+    required this.newFile,
     required this.modifiedLocally,
-    required this.alreadyUploaded,
+    required this.modifiedRemotely,
+    required this.uploaded,
     required this.remoteOnly,
   });
 }
@@ -21,8 +23,9 @@ class SyncAnalyzer {
   final List<RemoteFile> remoteFiles;
   SyncAnalyzer({required this.localRoot, required this.remoteFiles});
   Future<SyncAnalysisResult> analyze() async {
-    final toUpload = <File>[];
-    final modified = <File>[];
+    final newFile = <File>[];
+    final modifiedLocally = <File>[];
+    final modifiedRemotely = <File>[];
     final already = <File>[];
     final localMap = <String, File>{};
     await for (var ent in localRoot.list(recursive: true)) {
@@ -46,10 +49,13 @@ class SyncAnalyzer {
       );
       switch (status) {
         case FileSyncStatus.newFile:
-          toUpload.add(file);
+          newFile.add(file);
           break;
-        case FileSyncStatus.modified:
-          modified.add(file);
+        case FileSyncStatus.modifiedLocally:
+          modifiedLocally.add(file);
+          break;
+        case FileSyncStatus.modifiedRemotely:
+          modifiedRemotely.add(file);
           break;
         case FileSyncStatus.uploaded:
           already.add(file);
@@ -62,10 +68,12 @@ class SyncAnalyzer {
         .getRange(1, remoteFiles.length)
         .where((r) => !localMap.containsKey(r.key))
         .toList();
+
     return SyncAnalysisResult(
-      toUpload: toUpload,
-      modifiedLocally: modified,
-      alreadyUploaded: already,
+      newFile: newFile,
+      modifiedLocally: modifiedLocally,
+      modifiedRemotely: modifiedRemotely,
+      uploaded: already,
       remoteOnly: remoteOnly,
     );
   }
