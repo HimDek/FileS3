@@ -51,7 +51,9 @@ class _HomeState extends State<Home> {
   }
 
   void onJobComplete(Job job, dynamic result) {
-    if (job.runtimeType == UploadJob && result['eTag'] != null) {
+    if (job.runtimeType == UploadJob &&
+        result != null &&
+        result['eTag'] != null) {
       _remoteFilesMap['${job.remoteKey.split('/')[0]}/']!.add(
         RemoteFile(
           key: job.remoteKey,

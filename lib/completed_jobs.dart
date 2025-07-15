@@ -33,6 +33,7 @@ class CompletedJobsState extends State<CompletedJobs> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text('Completed Jobs'),
+          SizedBox(width: 200),
           if (widget.completedJobs.isNotEmpty)
             IconButton(
               onPressed: () {
@@ -50,8 +51,11 @@ class CompletedJobsState extends State<CompletedJobs> {
               leading: Icon(Icons.done),
               title: Text(job.remoteKey),
               subtitle: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [Text(job.localFile.path), Text(job.statusMsg)],
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(job.localFile.path, maxLines: 1),
+                  Text(job.statusMsg, maxLines: 1),
+                ],
               ),
               trailing: IconButton(
                 onPressed: () {

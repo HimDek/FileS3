@@ -39,8 +39,11 @@ class S3TransferTask {
     this.onStatus,
   }) {
     _client = http.Client();
-    final host = '$bucket.s3.$region.amazonaws.com';
-    _uri = Uri.https(host, key);
+    _uri = Uri(
+      scheme: 'https',
+      host: '$bucket.s3.$region.amazonaws.com',
+      path: key,
+    );
   }
 
   /// Starts the upload or download operation.
@@ -92,7 +95,10 @@ class S3TransferTask {
       amzDate: amzDate,
       shortDate: shortDate,
       contentHash: contentHash,
-      contentMD5: base64.encode(md5.codeUnits),
+      contentMD5: base64.encode([
+        for (var i = 0; i < md5.length; i += 2)
+          int.parse(md5.substring(i, i + 2), radix: 16),
+      ]),
       contentType: _guessMime(localFile),
     );
 
@@ -217,7 +223,7 @@ class S3TransferTask {
       if (contentMD5 != null) 'Content-MD5': contentMD5,
       if (contentType != null) 'Content-Type': contentType,
     };
-    if (method == 'PUT') {
+    if (method == 'PUT' && contentType == null) {
       headers['Content-Type'] = 'application/octet-stream';
     }
 
@@ -236,7 +242,7 @@ class S3TransferTask {
         .join(';');
 
     // 5. Canonical URI (already encoded)
-    final encodedPath = '/${key.split('/').map(Uri.encodeComponent).join('/')}';
+    final encodedPath = '/${key.split('/').map(awsEncode).join('/')}';
 
     // 6. Assemble canonical request
     final canonicalRequest = [
@@ -246,8 +252,6 @@ class S3TransferTask {
       canonicalHeaders,
       signedHeadersString,
       contentHash,
-      if (contentMD5 != null) contentMD5,
-      if (contentType != null) contentType,
     ].join('\n');
 
     // 7. Hash the canonical request
@@ -319,5 +323,15 @@ class S3TransferTask {
       default:
         return 'application/octet-stream';
     }
+  }
+
+  String awsEncode(String input) {
+    return input.codeUnits.map((unit) {
+      final c = String.fromCharCode(unit);
+      if (RegExp(r'^[A-Za-z0-9\-_.~]$').hasMatch(c)) {
+        return c;
+      }
+      return '%${unit.toRadixString(16).toUpperCase().padLeft(2, '0')}';
+    }).join();
   }
 }

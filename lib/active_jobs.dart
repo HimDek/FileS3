@@ -35,6 +35,7 @@ class ActiveJobsState extends State<ActiveJobs> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text('Active Jobs'),
+          SizedBox(width: 200),
           if (widget.jobs.isNotEmpty)
             widget.jobs.any((job) => job.running)
                 ? IconButton(
@@ -82,8 +83,11 @@ class ActiveJobsState extends State<ActiveJobs> {
                     ),
               title: Text(job.remoteKey),
               subtitle: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [Text(job.localFile.path), Text(job.statusMsg)],
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(job.localFile.path, maxLines: 1),
+                  Text(job.statusMsg, maxLines: 1),
+                ],
               ),
             );
           }).toList(),
