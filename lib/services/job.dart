@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'package:s3_drive/services/hash_util.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 's3_file_manager.dart';
 import 'models/backup_mode.dart';
@@ -12,6 +13,7 @@ import 'config_manager.dart';
 class Job {
   final File localFile;
   final String remoteKey;
+  final String md5;
   final int bytes;
   int bytesCompleted = 0;
   bool completed = false;
@@ -24,6 +26,7 @@ class Job {
     required this.remoteKey,
     required this.bytes,
     required this.onStatus,
+    required this.md5,
   });
 }
 
@@ -33,6 +36,7 @@ class UploadJob extends Job {
     required super.remoteKey,
     required super.bytes,
     required super.onStatus,
+    required super.md5,
   });
 }
 
@@ -42,6 +46,7 @@ class DownloadJob extends Job {
     required super.remoteKey,
     required super.bytes,
     required super.onStatus,
+    required super.md5,
   });
 }
 
@@ -126,6 +131,7 @@ class Watcher {
                 '$remoteDir${p.relative(file.path, from: localDir.path)}',
             bytes: file.lengthSync(),
             onStatus: onJobStatus,
+            md5: await HashUtil.md5Hash(file),
           ),
         );
         onNewJobs();
@@ -134,19 +140,20 @@ class Watcher {
 
     for (final file in result.modifiedRemotely) {
       if (jobs.any((job) {
-        return job.remoteKey ==
-            '$remoteDir${p.relative(file.path, from: localDir.path)}';
+        return job.remoteKey == file.key;
       })) {
         return;
       }
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
         jobs.add(
           DownloadJob(
-            localFile: file,
-            remoteKey:
-                '$remoteDir${p.relative(file.path, from: localDir.path)}',
-            bytes: file.lengthSync(),
+            localFile: File(
+              p.join(localDir.path, file.key.split('/').sublist(1).join('/')),
+            ),
+            remoteKey: file.key,
+            bytes: file.size,
             onStatus: onJobStatus,
+            md5: file.etag,
           ),
         );
         onNewJobs();
@@ -168,6 +175,7 @@ class Watcher {
             remoteKey: file.key,
             bytes: file.size,
             onStatus: onJobStatus,
+            md5: file.etag,
           ),
         );
         onNewJobs();
@@ -252,10 +260,18 @@ class Processor {
           secretKey: cfg.secretKey,
           region: cfg.region,
           bucket: cfg.bucket,
-          key: job.remoteKey,
+          key:
+              (cfg.prefix[cfg.prefix.length - 1] != '/'
+                  ? '${cfg.prefix}/'
+                  : cfg.prefix) +
+              job.remoteKey,
           localFile: job.localFile,
           task: TransferTask.upload,
-          onProgress: (sent, total) {},
+          md5: job.md5,
+          onProgress: (sent, total) {
+            job.bytesCompleted = sent;
+            job.onStatus?.call(job);
+          },
           onStatus: (status) {
             job.statusMsg = status;
             job.onStatus?.call(job);
@@ -281,10 +297,18 @@ class Processor {
           secretKey: cfg.secretKey,
           region: cfg.region,
           bucket: cfg.bucket,
-          key: job.remoteKey,
+          key:
+              (cfg.prefix[cfg.prefix.length - 1] != '/'
+                  ? '${cfg.prefix}/'
+                  : cfg.prefix) +
+              job.remoteKey,
           localFile: job.localFile,
           task: TransferTask.download,
-          onProgress: (received, total) {},
+          md5: job.md5,
+          onProgress: (received, total) {
+            job.bytesCompleted = received;
+            job.onStatus?.call(job);
+          },
           onStatus: (status) {
             job.statusMsg = status;
             job.onStatus?.call(job);
@@ -298,6 +322,8 @@ class Processor {
       }
     } catch (e) {
       job.running = false;
+      job.bytesCompleted = 0;
+      job.completed = false;
       job.statusMsg = "Error: ${e.toString()}";
       job.onStatus?.call(job);
     }

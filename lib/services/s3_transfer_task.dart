@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+import 'hash_util.dart';
 
 typedef ProgressCallback = void Function(int bytesTransferred, int totalBytes);
 typedef StatusCallback = void Function(String status);
@@ -17,6 +18,7 @@ class S3TransferTask {
   final String key;
   final File localFile;
   final TransferTask task;
+  final String md5;
   final ProgressCallback? onProgress;
   final StatusCallback? onStatus;
 
@@ -32,6 +34,7 @@ class S3TransferTask {
     required this.key,
     required this.localFile,
     required this.task,
+    required this.md5,
     this.onProgress,
     this.onStatus,
   }) {
@@ -42,7 +45,7 @@ class S3TransferTask {
 
   /// Starts the upload or download operation.
   Future<dynamic> start() async {
-    var response;
+    dynamic response;
     try {
       onStatus?.call(
         task == TransferTask.upload
@@ -75,10 +78,10 @@ class S3TransferTask {
 
   Future<dynamic> _upload() async {
     final totalBytes = await localFile.length();
+    final bytes = await localFile.readAsBytes();
     int uploaded = 0;
 
-    // Use UNSIGNED-PAYLOAD
-    final contentHash = 'UNSIGNED-PAYLOAD';
+    final contentHash = sha256.convert(bytes).toString();
     final now = DateTime.now().toUtc();
     final amzDate = _formatAmzDate(now);
     final shortDate = _formatDate(now);
@@ -89,6 +92,8 @@ class S3TransferTask {
       amzDate: amzDate,
       shortDate: shortDate,
       contentHash: contentHash,
+      contentMD5: base64.encode(md5.codeUnits),
+      contentType: _guessMime(localFile),
     );
 
     // Streamed request
@@ -105,6 +110,7 @@ class S3TransferTask {
         request.sink.add(chunk);
         uploaded += chunk.length;
         onProgress?.call(uploaded, totalBytes);
+        onStatus?.call('Uploading... ${uploaded}B / ${totalBytes}B');
       },
       onDone: () async {
         await request.sink.close();
@@ -125,18 +131,17 @@ class S3TransferTask {
       onStatus?.call('Upload complete');
     } else {
       final body = await response.stream.bytesToString();
-      print(body);
       throw Exception('Upload failed: ${response.statusCode} - $body');
     }
 
-    return response;
+    return response.headers;
   }
 
   Future<dynamic> _download() async {
     final now = DateTime.now().toUtc();
     final amzDate = _formatAmzDate(now);
     final shortDate = _formatDate(now);
-    final contentHash = 'UNSIGNED-PAYLOAD';
+    final contentHash = sha256.convert(utf8.encode("")).toString();
 
     final headers = _buildSignedHeaders(
       method: 'GET',
@@ -162,10 +167,10 @@ class S3TransferTask {
               fileSink.add(chunk);
               received += chunk.length;
               onProgress?.call(received, total);
+              onStatus?.call('Downloading... ${received}B / ${total}B');
             },
             onDone: () async {
               await fileSink.close();
-              onStatus?.call('Download complete');
             },
             onError: (e) async {
               await fileSink.close();
@@ -179,6 +184,16 @@ class S3TransferTask {
       throw Exception('Download failed: ${response.statusCode} - $body');
     }
 
+    final filemd5 = await HashUtil.md5Hash(localFile);
+    if (filemd5 == md5) {
+      onStatus?.call('Download complete');
+    } else {
+      await localFile.delete();
+      throw Exception(
+        'Download failed: MD5 mismatch! expected $md5, got $filemd5',
+      );
+    }
+
     return null;
   }
 
@@ -187,6 +202,8 @@ class S3TransferTask {
     required String amzDate,
     required String shortDate,
     required String contentHash,
+    String? contentMD5,
+    String? contentType,
   }) {
     final service = 's3';
     final host = '$bucket.s3.$region.amazonaws.com';
@@ -197,6 +214,8 @@ class S3TransferTask {
       'Host': host,
       'x-amz-content-sha256': contentHash,
       'x-amz-date': amzDate,
+      if (contentMD5 != null) 'Content-MD5': contentMD5,
+      if (contentType != null) 'Content-Type': contentType,
     };
     if (method == 'PUT') {
       headers['Content-Type'] = 'application/octet-stream';
@@ -227,6 +246,8 @@ class S3TransferTask {
       canonicalHeaders,
       signedHeadersString,
       contentHash,
+      if (contentMD5 != null) contentMD5,
+      if (contentType != null) contentType,
     ].join('\n');
 
     // 7. Hash the canonical request
@@ -282,4 +303,21 @@ class S3TransferTask {
 
   String _formatDate(DateTime time) =>
       time.toIso8601String().split('T').first.replaceAll('-', '');
+
+  String _guessMime(File f) {
+    final ext = f.path.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'pdf':
+        return 'application/pdf';
+      case 'txt':
+        return 'text/plain';
+      default:
+        return 'application/octet-stream';
+    }
+  }
 }

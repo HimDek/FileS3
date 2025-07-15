@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
@@ -52,15 +51,12 @@ class _HomeState extends State<Home> {
   }
 
   void onJobComplete(Job job, dynamic result) {
-    if (result.runtimeType == PutObjectOutput) {
+    if (job.runtimeType == UploadJob && result['eTag'] != null) {
       _remoteFilesMap['${job.remoteKey.split('/')[0]}/']!.add(
         RemoteFile(
           key: job.remoteKey,
           size: job.bytes,
-          etag: (result as PutObjectOutput).eTag!.substring(
-            1,
-            result.eTag!.length - 1,
-          ),
+          etag: result['eTag']!.substring(1, result['eTag']!.length - 1),
           lastModified: job.localFile.lastModifiedSync(),
         ),
       );

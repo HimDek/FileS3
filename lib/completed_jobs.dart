@@ -50,6 +50,7 @@ class CompletedJobsState extends State<CompletedJobs> {
               leading: Icon(Icons.done),
               title: Text(job.remoteKey),
               subtitle: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [Text(job.localFile.path), Text(job.statusMsg)],
               ),
               trailing: IconButton(

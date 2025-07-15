@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'package:http/http.dart' as http;
@@ -76,38 +75,6 @@ class S3FileManager {
         .toList();
   }
 
-  Future<PutObjectOutput> uploadFile({
-    required File file,
-    required String key,
-    String? contentMD5,
-  }) async {
-    final bytes = await file.readAsBytes();
-    return await _s3.putObject(
-      bucket: _bucket,
-      key: '$_prefix$key',
-      body: bytes,
-      contentType: _guessMime(file),
-    );
-  }
-
-  Future<void> downloadFile({
-    required String key,
-    required File destination,
-    DateTime? ifModifiedSince,
-    DateTime? ifUnModifiedSince,
-  }) async {
-    final bytes = await _s3.getObject(
-      bucket: _bucket,
-      key: '$_prefix$key',
-      ifModifiedSince: ifModifiedSince,
-      ifUnmodifiedSince: ifUnModifiedSince,
-    );
-    if (bytes.body == null || bytes.body!.isEmpty) {
-      return; // return silently if no content
-    }
-    await destination.writeAsBytes(bytes.body!.toList());
-  }
-
   Future<void> renameFile(String oldKey, String newKey) async {
     await _s3.copyObject(
       bucket: _bucket,
@@ -119,22 +86,5 @@ class S3FileManager {
 
   Future<void> deleteFile(String key) async {
     await _s3.deleteObject(bucket: _bucket, key: '$_prefix$key');
-  }
-
-  String _guessMime(File f) {
-    final ext = f.path.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'png':
-        return 'image/png';
-      case 'pdf':
-        return 'application/pdf';
-      case 'txt':
-        return 'text/plain';
-      default:
-        return 'application/octet-stream';
-    }
   }
 }

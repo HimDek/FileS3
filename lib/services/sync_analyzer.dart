@@ -6,7 +6,7 @@ import 'file_sync_status.dart';
 class SyncAnalysisResult {
   final List<File> newFile;
   final List<File> modifiedLocally;
-  final List<File> modifiedRemotely;
+  final List<RemoteFile> modifiedRemotely;
   final List<File> uploaded;
   final List<RemoteFile> remoteOnly;
   SyncAnalysisResult({
@@ -25,7 +25,7 @@ class SyncAnalyzer {
   Future<SyncAnalysisResult> analyze() async {
     final newFile = <File>[];
     final modifiedLocally = <File>[];
-    final modifiedRemotely = <File>[];
+    final modifiedRemotely = <RemoteFile>[];
     final already = <File>[];
     final localMap = <String, File>{};
     await for (var ent in localRoot.list(recursive: true)) {
@@ -55,7 +55,7 @@ class SyncAnalyzer {
           modifiedLocally.add(file);
           break;
         case FileSyncStatus.modifiedRemotely:
-          modifiedRemotely.add(file);
+          modifiedRemotely.add(remoteMap[e.key]!);
           break;
         case FileSyncStatus.uploaded:
           already.add(file);

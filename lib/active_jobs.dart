@@ -58,7 +58,20 @@ class ActiveJobsState extends State<ActiveJobs> {
           children: widget.jobs.map((job) {
             return ListTile(
               leading: job.running
-                  ? CircularProgressIndicator()
+                  ? Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          value: job.bytesCompleted / job.bytes,
+                        ),
+                        Center(
+                          child: Text(
+                            '${((job.bytesCompleted / job.bytes) * 100).toStringAsFixed(2)}%',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    )
                   : job.completed
                   ? Icon(Icons.done)
                   : IconButton(
@@ -69,6 +82,7 @@ class ActiveJobsState extends State<ActiveJobs> {
                     ),
               title: Text(job.remoteKey),
               subtitle: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [Text(job.localFile.path), Text(job.statusMsg)],
               ),
             );
