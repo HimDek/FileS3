@@ -56,6 +56,7 @@ class Watcher {
   final void Function() onNewJobs;
   final void Function(Job job) onJobStatus;
   bool _watching = false;
+  bool _scanning = false;
 
   Watcher({
     required this.localDir,
@@ -70,6 +71,22 @@ class Watcher {
   });
 
   Future<void> _scan() async {
+    if (_scanning) {
+      if (kDebugMode) {
+        debugPrint(
+          "Scan is already in progress for ${localDir.path}. Waiting...",
+        );
+      }
+      while (_scanning) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      if (kDebugMode) {
+        debugPrint("Scan completed for ${localDir.path}. Resuming...");
+      }
+    }
+
+    _scanning = true;
+
     if (!await localDir.exists()) {
       if (kDebugMode) {
         debugPrint("Local directory does not exist: ${localDir.path}");
@@ -89,6 +106,10 @@ class Watcher {
       remoteFiles: remoteFiles,
     );
     final result = await analyzer.analyze();
+
+    for (final job in jobs.where((job) => !job.completed && !job.running)) {
+      jobs.remove(job);
+    }
 
     for (final file in [...result.newFile, ...result.modifiedLocally]) {
       if (jobs.any((job) {
@@ -151,6 +172,8 @@ class Watcher {
         onNewJobs();
       }
     }
+
+    _scanning = false;
   }
 
   Future<void> start() async {
