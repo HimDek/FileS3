@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:aws_s3_api/s3-2006-03-01.dart';
+import 'package:http/http.dart' as http;
 import 'models/remote_file.dart';
 import 'config_manager.dart';
 
@@ -8,14 +9,17 @@ class S3FileManager {
   late final S3 _s3;
   late final String _bucket;
   late final String _prefix;
+  late http.Client _client;
 
-  S3FileManager._(S3Config cfg) {
+  S3FileManager._(S3Config cfg, http.Client client) {
+    _client = client;
     _s3 = S3(
       region: cfg.region,
       credentials: AwsClientCredentials(
         accessKey: cfg.accessKey,
         secretKey: cfg.secretKey,
       ),
+      client: _client,
       endpointUrl: cfg.host ?? 'https://s3.${cfg.region}.amazonaws.com',
     );
     _bucket = cfg.bucket;
@@ -24,9 +28,9 @@ class S3FileManager {
         : cfg.prefix;
   }
 
-  static Future<S3FileManager> create(context) async {
+  static Future<S3FileManager> create(context, http.Client client) async {
     final cfg = await ConfigManager.loadS3Config(context);
-    return S3FileManager._(cfg);
+    return S3FileManager._(cfg, client);
   }
 
   Future<List<String>> listDirectories({String dir = ''}) async {

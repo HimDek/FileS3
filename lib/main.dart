@@ -7,6 +7,7 @@ import 'services/s3_file_manager.dart';
 import 'directory_options.dart';
 import 'services/job.dart';
 import 'services/models/backup_mode.dart';
+import 'package:http/http.dart' as http;
 import 'active_jobs.dart';
 import 'completed_jobs.dart';
 
@@ -43,6 +44,7 @@ class _HomeState extends State<Home> {
   bool _showCompletedJobs = false;
   Processor? _processor;
   bool _loading = true;
+  http.Client httpClient = http.Client();
 
   void onJobStatus(Job job) {
     setState(() {});
@@ -70,7 +72,7 @@ class _HomeState extends State<Home> {
 
   void startProcessor() async {
     _processor ??= Processor(
-      s3Manager: await S3FileManager.create(context),
+      s3Manager: _s3Manager,
       jobs: _jobs,
       onJobComplete: onJobComplete,
     );
@@ -164,7 +166,7 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading = true;
     });
-    S3FileManager.create(context).then((manager) {
+    S3FileManager.create(context, httpClient).then((manager) {
       _s3Manager = manager;
       _listDirectories();
     });
