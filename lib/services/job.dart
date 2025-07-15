@@ -6,7 +6,8 @@ import 'package:s3_drive/services/models/remote_file.dart';
 import 's3_file_manager.dart';
 import 'models/backup_mode.dart';
 import 'sync_analyzer.dart';
-import 'hash_util.dart';
+import 's3_transfer_task.dart';
+import 'config_manager.dart';
 
 class Job {
   final File localFile;
@@ -206,12 +207,12 @@ class Watcher {
 }
 
 class Processor {
-  final S3FileManager s3Manager;
+  final S3Config cfg;
   final List<Job> jobs;
   final Function(Job, dynamic) onJobComplete;
 
   Processor({
-    required this.s3Manager,
+    required this.cfg,
     required this.jobs,
     required this.onJobComplete,
   });
@@ -246,50 +247,59 @@ class Processor {
     try {
       if (job.runtimeType == UploadJob) {
         job.running = true;
-        final md5 = await HashUtil.md5Hash(job.localFile);
-        final result = await s3Manager.uploadFile(
-          file: job.localFile,
+        final result = await S3TransferTask(
+          accessKey: cfg.accessKey,
+          secretKey: cfg.secretKey,
+          region: cfg.region,
+          bucket: cfg.bucket,
           key: job.remoteKey,
-          contentMD5: md5,
-        );
+          localFile: job.localFile,
+          task: TransferTask.upload,
+          onProgress: (sent, total) {},
+          onStatus: (status) {
+            job.statusMsg = status;
+            job.onStatus?.call(job);
+          },
+        ).start();
         job.bytesCompleted = job.bytes;
         job.running = false;
         job.completed = true;
-        job.statusMsg = "Uploaded";
-        if (job.onStatus != null) {
-          job.onStatus!(job);
-        }
+        job.onStatus?.call(job);
         onCompleted(job, result);
       }
       if (job.runtimeType == DownloadJob) {
         job.running = true;
-        final ifModifiedSince = await job.localFile.exists()
-            ? job.localFile.lastModifiedSync()
-            : null;
+        // final ifModifiedSince = await job.localFile.exists()
+        //     ? job.localFile.lastModifiedSync()
+        //     : null;
         final dir = Directory(p.dirname(job.localFile.path));
         if (!await dir.exists()) {
           await dir.create(recursive: true);
         }
-        await s3Manager.downloadFile(
+        await S3TransferTask(
+          accessKey: cfg.accessKey,
+          secretKey: cfg.secretKey,
+          region: cfg.region,
+          bucket: cfg.bucket,
           key: job.remoteKey,
-          destination: job.localFile.absolute,
-          ifModifiedSince: ifModifiedSince,
-        );
+          localFile: job.localFile,
+          task: TransferTask.download,
+          onProgress: (received, total) {},
+          onStatus: (status) {
+            job.statusMsg = status;
+            job.onStatus?.call(job);
+          },
+        ).start();
         job.bytesCompleted = job.bytes;
         job.running = false;
         job.completed = true;
-        job.statusMsg = "Downloaded";
-        if (job.onStatus != null) {
-          job.onStatus!(job);
-        }
+        job.onStatus?.call(job);
         onCompleted(job, null);
       }
     } catch (e) {
       job.running = false;
       job.statusMsg = "Error: ${e.toString()}";
-      if (job.onStatus != null) {
-        job.onStatus!(job);
-      }
+      job.onStatus?.call(job);
     }
   }
 }

@@ -10,6 +10,7 @@ import 'services/models/backup_mode.dart';
 import 'package:http/http.dart' as http;
 import 'active_jobs.dart';
 import 'completed_jobs.dart';
+import 'services/config_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,7 +73,7 @@ class _HomeState extends State<Home> {
 
   void startProcessor() async {
     _processor ??= Processor(
-      s3Manager: _s3Manager,
+      cfg: await ConfigManager.loadS3Config(context),
       jobs: _jobs,
       onJobComplete: onJobComplete,
     );
