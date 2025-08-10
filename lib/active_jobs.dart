@@ -1,3 +1,4 @@
+import 'package:percent_indicator/percent_indicator.dart';
 import 'package:flutter/material.dart';
 import 'services/job.dart';
 
@@ -59,19 +60,15 @@ class ActiveJobsState extends State<ActiveJobs> {
           children: widget.jobs.map((job) {
             return ListTile(
               leading: job.running
-                  ? Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          value: job.bytesCompleted / job.bytes,
-                        ),
-                        Center(
-                          child: Text(
-                            '${((job.bytesCompleted / job.bytes) * 100).toStringAsFixed(2)}%',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ],
+                  ? CircularPercentIndicator(
+                      radius: 28.0,
+                      lineWidth: 4.0,
+                      percent: job.bytesCompleted / job.bytes,
+                      center: Text(
+                        '${((job.bytesCompleted / job.bytes) * 100).toStringAsFixed(0)}%',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      progressColor: Theme.of(context).primaryColor,
                     )
                   : job.completed
                   ? Icon(Icons.done)

@@ -84,7 +84,7 @@ class Watcher {
         );
       }
       while (_scanning) {
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 1000));
       }
       if (kDebugMode) {
         debugPrint("Scan completed for ${localDir.path}. Resuming...");
@@ -113,7 +113,9 @@ class Watcher {
     );
     final result = await analyzer.analyze();
 
-    for (final job in jobs.where((job) => !job.completed && !job.running)) {
+    for (final job in List.from(
+      jobs.where((job) => !job.completed && !job.running),
+    )) {
       jobs.remove(job);
     }
 

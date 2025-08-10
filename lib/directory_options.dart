@@ -1,15 +1,20 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:s3_drive/services/ini_manager.dart';
+import 'package:s3_drive/services/models/remote_file.dart';
 import 'services/models/backup_mode.dart';
+import 'package:path/path.dart' as p;
 
 class DirectoryOptions extends StatefulWidget {
   final String directory;
+  final List<RemoteFile> remoteFiles;
   final Function(String) onDelete;
 
   const DirectoryOptions({
     super.key,
     required this.directory,
+    required this.remoteFiles,
     required this.onDelete,
   });
 
@@ -18,29 +23,42 @@ class DirectoryOptions extends StatefulWidget {
 }
 
 class DirectoryOptionsState extends State<DirectoryOptions> {
-  static const storage = FlutterSecureStorage();
-  String? local = null;
-  late int? mode = 1;
+  late String local;
+  BackupMode mode = BackupMode.upload;
 
-  void getLocal() async {
-    local = await storage.read(key: widget.directory);
-    mode = int.tryParse(
-      await storage.read(key: 'mode_${widget.directory}') ?? '1',
+  void getLocal() {
+    local = IniManager.config.get('directories', widget.directory) ?? '';
+    mode = BackupMode.fromValue(
+      int.tryParse(IniManager.config.get('modes', widget.directory) ?? '1')!,
     );
     setState(() {});
   }
 
-  void setLocal(String dir) async {
-    await storage.write(key: widget.directory, value: dir);
+  void setLocal(String dir) {
+    IniManager.config.set('directories', widget.directory, dir);
+    IniManager.save();
     getLocal();
   }
 
-  void setMode(int newMode) async {
-    await storage.write(
-      key: 'mode_${widget.directory}',
-      value: newMode.toString(),
-    );
+  void setMode(int newMode) {
+    IniManager.config.set('modes', widget.directory, newMode.toString());
+    IniManager.save();
     getLocal();
+  }
+
+  List<File> removableFiles() {
+    final List<File> removableFiles = <File>[];
+    if (mode == BackupMode.upload) {
+      for (final file in widget.remoteFiles) {
+        final localFile = File(
+          p.join(local, file.key.split('/').sublist(1).join('/')),
+        );
+        if (localFile.existsSync()) {
+          removableFiles.add(localFile);
+        }
+      }
+    }
+    return removableFiles;
   }
 
   @override
@@ -51,7 +69,7 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return ListView(
       children: [
         Center(
           child: Text(
@@ -63,7 +81,7 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
         ListTile(
           leading: const Icon(Icons.drive_folder_upload),
           title: const Text('Backup From'),
-          subtitle: Text(local ?? 'Not set'),
+          subtitle: Text(local.isEmpty ? 'Not set' : local),
           onTap: () async {
             final String? directoryPath = await getDirectoryPath();
             if (directoryPath != null) {
@@ -71,35 +89,105 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
             }
           },
         ),
-        const SizedBox(height: 8),
-        ListTile(
-          leading: const Icon(Icons.sync),
-          title: const Text('Backup Mode'),
-        ),
-        RadioListTile(
-          value: BackupMode.upload.value,
-          title: Text(BackupMode.upload.name),
-          subtitle: Text(BackupMode.upload.description),
-          dense: true,
-          groupValue: mode,
-          onChanged: (s) {
-            setMode(s!);
-          },
-        ),
-        RadioListTile(
-          value: BackupMode.sync.value,
-          title: Text(BackupMode.sync.name),
-          subtitle: Text(BackupMode.sync.description),
-          dense: true,
-          groupValue: mode,
-          onChanged: (s) {
-            setMode(s!);
-          },
-        ),
+        if (local.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.sync),
+            title: const Text('Backup Mode'),
+          ),
+          RadioListTile(
+            value: BackupMode.upload.value,
+            title: Text(BackupMode.upload.name),
+            subtitle: Text(BackupMode.upload.description),
+            dense: true,
+            groupValue: mode.value,
+            onChanged: (s) {
+              setMode(s!);
+            },
+          ),
+          RadioListTile(
+            value: BackupMode.sync.value,
+            title: Text(BackupMode.sync.name),
+            subtitle: Text(BackupMode.sync.description),
+            dense: true,
+            groupValue: mode.value,
+            onChanged: (s) {
+              setMode(s!);
+            },
+          ),
+        ],
+        if (mode == BackupMode.upload)
+          ListTile(
+            leading: const Icon(Icons.auto_delete),
+            title: const Text('Delete uploaded files'),
+            subtitle: const Text('Remove uploaded files from local directory'),
+            onTap: () async {
+              bool yes =
+                  await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Delete Uploaded Files'),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'The following files will be deleted from your local directory:',
+                          ),
+                          Container(
+                            height: 200,
+                            padding: EdgeInsets.only(top: 16),
+                            child: SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  for (final file in removableFiles())
+                                    Text(file.absolute.path),
+                                  if (removableFiles().isEmpty)
+                                    const Text('No files to delete'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: removableFiles().isNotEmpty
+                              ? () => Navigator.of(context).pop(true)
+                              : null,
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  ) ??
+                  false;
+              if (yes) {
+                for (final file in removableFiles()) {
+                  try {
+                    file.deleteSync();
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error deleting file ${file.path}: $e'),
+                      ),
+                    );
+                  }
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Files deleted successfully')),
+                );
+              }
+            },
+          ),
         const SizedBox(height: 8),
         ListTile(
           leading: const Icon(Icons.delete),
           title: Text('Delete'),
+          subtitle: Text('Delete ${widget.directory} from S3'),
           onTap: () async {
             bool yes =
                 await showDialog<bool>(
@@ -107,7 +195,7 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
                   builder: (context) => AlertDialog(
                     title: const Text('Delete Directory'),
                     content: Text(
-                      'Are you sure you want to delete ${widget.directory}?',
+                      'Are you sure you want to delete ${widget.directory} from S3?',
                     ),
                     actions: [
                       TextButton(

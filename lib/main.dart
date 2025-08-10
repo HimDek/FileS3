@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:s3_drive/directory_contents.dart';
+import 'package:s3_drive/services/ini_manager.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
+import 'package:s3_drive/settings.dart';
 import 'services/s3_file_manager.dart';
 import 'directory_options.dart';
 import 'services/job.dart';
@@ -34,12 +36,12 @@ class _HomeState extends State<Home> {
   late List<String> _dirs = <String>[];
   final List<String> _localDirs = <String>[];
   final List<BackupMode> _backupModes = <BackupMode>[];
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
   final List<Job> _jobs = <Job>[];
   final List<Job> _completedJobs = <Job>[];
   final List<Watcher> _watchers = <Watcher>[];
   final Map<String, List<RemoteFile>> _remoteFilesMap =
       <String, List<RemoteFile>>{};
+  String _localDir = '.';
   bool _showActiveJobs = false;
   bool _showCompletedJobs = false;
   Processor? _processor;
@@ -89,26 +91,23 @@ class _HomeState extends State<Home> {
     });
     _dirs = await _s3Manager.listDirectories();
 
+    for (final watcher in _watchers) {
+      watcher.stop();
+    }
+
     _localDirs.clear();
     _backupModes.clear();
+
     for (final dir in _dirs) {
-      final localDir = await _storage.read(key: dir);
-      final modeValue = int.parse(await _storage.read(key: 'mode_$dir') ?? '1');
+      final localDir = IniManager.config.get('directories', dir);
+      final modeValue = int.parse(IniManager.config.get('modes', dir) ?? '1');
+
       _backupModes.add(BackupMode.fromValue(modeValue));
       if (localDir != null && localDir.isNotEmpty) {
         _localDirs.add(localDir);
       } else {
         _localDirs.add('');
       }
-    }
-
-    for (final watcher in _watchers) {
-      watcher.stop();
-    }
-
-    for (final dir in _dirs) {
-      final localDir = await _storage.read(key: dir);
-      final modeValue = int.parse(await _storage.read(key: 'mode_$dir') ?? '1');
 
       await refreshRemote(dir);
 
@@ -165,6 +164,7 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading = true;
     });
+    IniManager.init();
     S3FileManager.create(context, httpClient).then((manager) {
       _s3Manager = manager;
       _listDirectories();
@@ -216,6 +216,33 @@ class _HomeState extends State<Home> {
                 : const Icon(Icons.refresh),
             onPressed: _loading ? null : _listDirectories,
           ),
+          MenuAnchor(
+            menuChildren: <Widget>[
+              MenuItemButton(
+                child: Text("Settings"),
+                onPressed: () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (context) => SettingsPage())),
+              ),
+            ],
+            builder:
+                (
+                  BuildContext context,
+                  MenuController controller,
+                  Widget? child,
+                ) {
+                  return IconButton(
+                    onPressed: () {
+                      if (controller.isOpen) {
+                        controller.close();
+                      } else {
+                        controller.open();
+                      }
+                    },
+                    icon: const Icon(Icons.more_vert),
+                  );
+                },
+          ),
         ],
       ),
       body: Stack(
@@ -239,21 +266,41 @@ class _HomeState extends State<Home> {
                                 enableDrag: true,
                                 showDragHandle: true,
                                 constraints: const BoxConstraints(
-                                  maxHeight: 600,
+                                  maxHeight: 800,
                                   maxWidth: 800,
                                 ),
                                 builder: (context) => DirectoryOptions(
                                   directory: dir,
                                   onDelete: _deleteDirectory,
+                                  remoteFiles: _remoteFilesMap[dir] ?? [],
                                 ),
                               ).then((value) => _listDirectories());
                             },
                       icon: const Icon(Icons.menu),
                     ),
+                    onTap: () {
+                      setState(() {
+                        _localDir = dir;
+                      });
+                    },
                   ),
                 )
                 .toList(),
           ),
+          if (_localDir != '.')
+            Container(
+              decoration: BoxDecoration(color: Theme.of(context).canvasColor),
+              child: DirectoryContents(
+                directory: _localDir,
+                jobs: _jobs,
+                remoteFilesMap: _remoteFilesMap,
+                onChangeDirectory: (String newDir) {
+                  setState(() {
+                    _localDir = newDir;
+                  });
+                },
+              ),
+            ),
           if (_showCompletedJobs)
             CompletedJobs(
               completedJobs: _completedJobs,

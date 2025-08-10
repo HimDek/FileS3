@@ -19,7 +19,9 @@ class S3FileManager {
         secretKey: cfg.secretKey,
       ),
       client: _client,
-      endpointUrl: cfg.host ?? 'https://s3.${cfg.region}.amazonaws.com',
+      endpointUrl: cfg.host.isEmpty
+          ? 'https://s3.${cfg.region}.amazonaws.com'
+          : cfg.host,
     );
     _bucket = cfg.bucket;
     _prefix = cfg.prefix[cfg.prefix.length - 1] != '/'

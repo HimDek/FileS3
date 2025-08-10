@@ -42,7 +42,7 @@ class S3TransferTask {
     _uri = Uri(
       scheme: 'https',
       host: '$bucket.s3.$region.amazonaws.com',
-      path: key,
+      path: '/${key.split('/').map(awsEncode).join('/')}',
     );
   }
 
@@ -64,8 +64,10 @@ class S3TransferTask {
       if (_isCancelled) {
         onStatus?.call('Cancelled');
       } else {
+        _client.close();
         onStatus?.call('Error: $e');
       }
+      rethrow;
     } finally {
       _client.close();
     }
