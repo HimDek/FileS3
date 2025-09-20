@@ -135,10 +135,9 @@ class S3FileManager {
   }
 
   Future<dynamic> deleteFile(String key) async {
-    // normalize prefix
     key = '$_prefix$key';
 
-    final bytes = <int>[]; // DELETE has no body
+    final bytes = <int>[];
     final contentHash = sha256.convert(bytes).toString();
     final md5hash = md5.convert(bytes).toString();
     final now = DateTime.now().toUtc();

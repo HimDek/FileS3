@@ -1,21 +1,28 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
+import 'package:s3_drive/file_options.dart';
 import 'package:s3_drive/services/job.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 
 class DirectoryContents extends StatefulWidget {
   final String directory;
+  final String localRoot;
   final List<Job> jobs;
   final Map<String, List<RemoteFile>> remoteFilesMap;
   final Function(String) onChangeDirectory;
+  final Function(String) deleteFile;
+  final Function() listDirectories;
 
   const DirectoryContents({
     super.key,
     required this.directory,
+    required this.localRoot,
     required this.jobs,
     required this.remoteFilesMap,
     required this.onChangeDirectory,
+    required this.deleteFile,
+    required this.listDirectories,
   });
 
   @override
@@ -119,7 +126,22 @@ class DirectoryContentsState extends State<DirectoryContents> {
                     leading: Icon(Icons.insert_drive_file),
                     title: Text(file.key.split('/').last),
                     onTap: () {
-                      //TODO: Handle tap on the remote file
+                      showModalBottomSheet(
+                        context: context,
+                        enableDrag: true,
+                        showDragHandle: true,
+                        constraints: const BoxConstraints(
+                          maxHeight: 800,
+                          maxWidth: 800,
+                        ),
+                        builder: (context) => FileOptions(
+                          file: File(
+                            p.join(widget.localRoot, file.key.split('/').last),
+                          ),
+                          remoteFile: file,
+                          onDelete: widget.deleteFile,
+                        ),
+                      ).then((value) => widget.listDirectories());
                     },
                   ),
                 ),

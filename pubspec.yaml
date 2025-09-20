@@ -30,12 +30,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  aws_s3_api:
-  file_selector:
   http:
   path:
-  crypto:
   yaml:
+  crypto:
+  open_file:
+  aws_s3_api:
+  file_selector:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

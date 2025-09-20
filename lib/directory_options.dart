@@ -95,25 +95,28 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
             leading: const Icon(Icons.sync),
             title: const Text('Backup Mode'),
           ),
-          RadioListTile(
-            value: BackupMode.upload.value,
-            title: Text(BackupMode.upload.name),
-            subtitle: Text(BackupMode.upload.description),
-            dense: true,
+          RadioGroup(
             groupValue: mode.value,
             onChanged: (s) {
               setMode(s!);
             },
-          ),
-          RadioListTile(
-            value: BackupMode.sync.value,
-            title: Text(BackupMode.sync.name),
-            subtitle: Text(BackupMode.sync.description),
-            dense: true,
-            groupValue: mode.value,
-            onChanged: (s) {
-              setMode(s!);
-            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile(
+                  value: BackupMode.upload.value,
+                  title: Text(BackupMode.upload.name),
+                  subtitle: Text(BackupMode.upload.description),
+                  dense: true,
+                ),
+                RadioListTile(
+                  value: BackupMode.sync.value,
+                  title: Text(BackupMode.sync.name),
+                  subtitle: Text(BackupMode.sync.description),
+                  dense: true,
+                ),
+              ],
+            ),
           ),
         ],
         if (mode == BackupMode.upload)

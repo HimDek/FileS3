@@ -43,6 +43,7 @@ class _HomeState extends State<Home> {
   final Map<String, List<RemoteFile>> _remoteFilesMap =
       <String, List<RemoteFile>>{};
   String _localDir = './';
+  String _localRoot = '';
   bool _showActiveJobs = false;
   bool _showCompletedJobs = false;
   Processor? _processor;
@@ -199,6 +200,12 @@ class _HomeState extends State<Home> {
                                 }
                                 setState(() {
                                   _localDir = "${p.normalize(newPath)}/";
+                                  _localRoot =
+                                      _dirs.contains("${p.normalize(newPath)}/")
+                                      ? _localDirs[_dirs.indexOf(
+                                          "${p.normalize(newPath)}/",
+                                        )]
+                                      : _localRoot;
                                 });
                               },
                         child: Text("$dir/"),
@@ -311,6 +318,9 @@ class _HomeState extends State<Home> {
                     onTap: () {
                       setState(() {
                         _localDir = dir;
+                        _localRoot = _dirs.contains(dir)
+                            ? _localDirs[_dirs.indexOf(dir)]
+                            : _localRoot;
                       });
                     },
                   ),
@@ -322,13 +332,21 @@ class _HomeState extends State<Home> {
               decoration: BoxDecoration(color: Theme.of(context).canvasColor),
               child: DirectoryContents(
                 directory: _localDir,
+                localRoot: _localRoot,
                 jobs: _jobs,
                 remoteFilesMap: _remoteFilesMap,
                 onChangeDirectory: (String newDir) {
                   setState(() {
                     _localDir = newDir;
+                    _localRoot = _dirs.contains(newDir)
+                        ? _localDirs[_dirs.indexOf(newDir)]
+                        : _localRoot;
                   });
                 },
+                deleteFile: (path) {
+                  // TODO: Handle file deletion from S3
+                },
+                listDirectories: _listDirectories,
               ),
             ),
           if (_showCompletedJobs)
