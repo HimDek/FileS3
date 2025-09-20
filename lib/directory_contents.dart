@@ -26,20 +26,64 @@ class DirectoryContentsState extends State<DirectoryContents> {
   @override
   Widget build(BuildContext context) {
     String dir = '${widget.directory.split('/').first}/';
+
+    List<String> subDirectories = (widget.remoteFilesMap[dir] ?? [])
+        .where(
+          (file) =>
+              (file.key.split('/').last.isNotEmpty &&
+                  '${File(file.key).parent.parent.path}/' ==
+                      widget.directory) ||
+              (file.key.split('/').last.isEmpty &&
+                  '${File(file.key).parent.path}/' == widget.directory),
+        )
+        .map(
+          (file) => '${File(file.key).parent.path}/' != widget.directory
+              ? File(file.key).parent.path
+              : p.normalize(File(file.key).path),
+        )
+        .toSet()
+        .toList();
+
+    List<String> jobs = widget.jobs
+        .where(
+          (job) =>
+              job.remoteKey.startsWith(widget.directory) &&
+              '${File(job.remoteKey).parent.path}/' == widget.directory,
+        )
+        .map((job) => job.remoteKey.split('/').last)
+        .toList();
+
     return ListView(
       children:
           [
             (
               {'name': '..', 'size': 0, 'file': null},
               ListTile(
-                title: Text('..'),
+                leading: Icon(Icons.folder),
+                title: Text('../'),
                 onTap: () {
                   widget.onChangeDirectory(
-                    Directory(widget.directory).parent.path,
+                    "${Directory(widget.directory).parent.path}/",
                   );
                 },
               ),
             ),
+
+            for (String subDir in subDirectories)
+              (
+                {
+                  'name': Directory(subDir).path.split('/').last,
+                  'size': 0,
+                  'file': null,
+                },
+                ListTile(
+                  leading: Icon(Icons.folder),
+                  title: Text("${Directory(subDir).path.split('/').last}/"),
+                  onTap: () {
+                    widget.onChangeDirectory("${Directory(subDir).path}/");
+                  },
+                ),
+              ),
 
             for (final job in widget.jobs.where(
               (job) =>
@@ -63,7 +107,8 @@ class DirectoryContentsState extends State<DirectoryContents> {
 
             for (RemoteFile file in widget.remoteFilesMap[dir] ?? [])
               if (file.key.split('/').last.isNotEmpty &&
-                  '${File(file.key).parent.path}/' == widget.directory)
+                  '${File(file.key).parent.path}/' == widget.directory &&
+                  !jobs.contains(file.key.split('/').last))
                 (
                   {
                     'name': file.key.split('/').last,
@@ -71,6 +116,7 @@ class DirectoryContentsState extends State<DirectoryContents> {
                     'file': file,
                   },
                   ListTile(
+                    leading: Icon(Icons.insert_drive_file),
                     title: Text(file.key.split('/').last),
                     onTap: () {
                       //TODO: Handle tap on the remote file

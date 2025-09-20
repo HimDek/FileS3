@@ -37,7 +37,8 @@ class SyncAnalyzer {
       }
     }
     final remoteMap = {
-      for (var f in remoteFiles.getRange(1, remoteFiles.length)) f.key: f,
+      for (var f in remoteFiles.where((f) => f.key.split('/').last.isNotEmpty))
+        f.key: f,
     };
 
     for (var e in localMap.entries) {
@@ -65,8 +66,10 @@ class SyncAnalyzer {
       }
     }
     final remoteOnly = remoteFiles
-        .getRange(1, remoteFiles.length)
-        .where((r) => !localMap.containsKey(r.key))
+        .where(
+          (r) =>
+              !localMap.containsKey(r.key) && r.key.split('/').last.isNotEmpty,
+        )
         .toList();
 
     return SyncAnalysisResult(

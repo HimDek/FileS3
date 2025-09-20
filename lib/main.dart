@@ -4,6 +4,7 @@ import 'package:s3_drive/directory_contents.dart';
 import 'package:s3_drive/services/ini_manager.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 'package:s3_drive/settings.dart';
+import 'package:path/path.dart' as p;
 import 'services/s3_file_manager.dart';
 import 'directory_options.dart';
 import 'services/job.dart';
@@ -41,7 +42,7 @@ class _HomeState extends State<Home> {
   final List<Watcher> _watchers = <Watcher>[];
   final Map<String, List<RemoteFile>> _remoteFilesMap =
       <String, List<RemoteFile>>{};
-  String _localDir = '.';
+  String _localDir = './';
   bool _showActiveJobs = false;
   bool _showCompletedJobs = false;
   Processor? _processor;
@@ -175,7 +176,36 @@ class _HomeState extends State<Home> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Home'),
+        title: _localDir == "./"
+            ? const Text('S3 Drive/')
+            : Row(
+                children: "S3 Drive/$_localDir"
+                    .split('/')
+                    .where((dir) => dir.isNotEmpty)
+                    .map(
+                      (dir) => GestureDetector(
+                        onTap: dir == "S3 Drive"
+                            ? () {
+                                setState(() {
+                                  _localDir = './';
+                                });
+                              }
+                            : () {
+                                String newPath = './';
+                                for (final part in _localDir.split('/')) {
+                                  if (part.isEmpty) continue;
+                                  newPath += '$part/';
+                                  if (part == dir) break;
+                                }
+                                setState(() {
+                                  _localDir = "${p.normalize(newPath)}/";
+                                });
+                              },
+                        child: Text("$dir/"),
+                      ),
+                    )
+                    .toList(),
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.create_new_folder_rounded),
@@ -206,7 +236,7 @@ class _HomeState extends State<Home> {
                 },
               );
               if (dir != null && dir.isNotEmpty) {
-                await _createDirectory(dir);
+                await _createDirectory(p.normalize(p.join(_localDir, dir)));
               }
             },
           ),
@@ -287,7 +317,7 @@ class _HomeState extends State<Home> {
                 )
                 .toList(),
           ),
-          if (_localDir != '.')
+          if (_localDir != './')
             Container(
               decoration: BoxDecoration(color: Theme.of(context).canvasColor),
               child: DirectoryContents(
