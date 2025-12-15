@@ -21,19 +21,21 @@ class SyncAnalysisResult {
 class SyncAnalyzer {
   final Directory localRoot;
   final List<RemoteFile> remoteFiles;
+
   SyncAnalyzer({required this.localRoot, required this.remoteFiles});
+
   Future<SyncAnalysisResult> analyze() async {
     final newFile = <File>[];
     final modifiedLocally = <File>[];
     final modifiedRemotely = <RemoteFile>[];
     final already = <File>[];
     final localMap = <String, File>{};
+
     await for (var ent in localRoot.list(recursive: true)) {
       if (ent is File) {
-        final rel = p
-            .relative(ent.path, from: localRoot.path)
-            .replaceAll('\\', '/');
-        localMap['${remoteFiles[0].key}$rel'] = ent;
+        final rel =
+            p.relative(ent.path, from: localRoot.path).replaceAll('\\', '/');
+        localMap[p.join(localRoot.path.split('/').last, rel)] = ent;
       }
     }
     final remoteMap = {

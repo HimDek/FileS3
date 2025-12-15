@@ -50,6 +50,18 @@ class DownloadJob extends Job {
   });
 }
 
+class GetLinkJob extends Job {
+  final int validForSeconds;
+  GetLinkJob({
+    required super.localFile,
+    required super.remoteKey,
+    required super.bytes,
+    required super.onStatus,
+    required super.md5,
+    this.validForSeconds = 3600,
+  });
+}
+
 class Watcher {
   final Directory localDir;
   final String remoteDir;
@@ -62,7 +74,7 @@ class Watcher {
   final void Function() onNewJobs;
   final void Function(Job job) onJobStatus;
   bool _watching = false;
-  bool _scanning = false;
+  int _scanning = 0;
 
   Watcher({
     required this.localDir,
@@ -77,21 +89,29 @@ class Watcher {
   });
 
   Future<void> _scan() async {
-    if (_scanning) {
+    if (_scanning > 1) {
+      debugPrint(
+        "A Scan is already waiting for a scan already in progress for ${localDir.path}. Skipping...",
+      );
+      return;
+    }
+
+    if (_scanning > 0) {
+      _scanning++;
       if (kDebugMode) {
         debugPrint(
           "Scan is already in progress for ${localDir.path}. Waiting...",
         );
       }
-      while (_scanning) {
+      while (_scanning > 1) {
         await Future.delayed(const Duration(milliseconds: 1000));
       }
       if (kDebugMode) {
         debugPrint("Scan completed for ${localDir.path}. Resuming...");
       }
+    } else {
+      _scanning++;
     }
-
-    _scanning = true;
 
     if (!await localDir.exists()) {
       if (kDebugMode) {
@@ -184,7 +204,7 @@ class Watcher {
       }
     }
 
-    _scanning = false;
+    _scanning--;
   }
 
   Future<void> start() async {
@@ -262,8 +282,7 @@ class Processor {
           secretKey: cfg.secretKey,
           region: cfg.region,
           bucket: cfg.bucket,
-          key:
-              (cfg.prefix[cfg.prefix.length - 1] != '/'
+          key: (cfg.prefix[cfg.prefix.length - 1] != '/'
                   ? '${cfg.prefix}/'
                   : cfg.prefix) +
               job.remoteKey,
@@ -299,8 +318,7 @@ class Processor {
           secretKey: cfg.secretKey,
           region: cfg.region,
           bucket: cfg.bucket,
-          key:
-              (cfg.prefix[cfg.prefix.length - 1] != '/'
+          key: (cfg.prefix[cfg.prefix.length - 1] != '/'
                   ? '${cfg.prefix}/'
                   : cfg.prefix) +
               job.remoteKey,
@@ -321,6 +339,33 @@ class Processor {
         job.completed = true;
         job.onStatus?.call(job);
         onCompleted(job, null);
+      }
+      if (job.runtimeType == GetLinkJob) {
+        job.running = true;
+        // final ifModifiedSince = await job.localFile.exists()
+        //     ? job.localFile.lastModifiedSync()
+        //     : null;
+        final dir = Directory(p.dirname(job.localFile.path));
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+        job.statusMsg = await S3TransferTask(
+          accessKey: cfg.accessKey,
+          secretKey: cfg.secretKey,
+          region: cfg.region,
+          bucket: cfg.bucket,
+          key: (cfg.prefix[cfg.prefix.length - 1] != '/'
+                  ? '${cfg.prefix}/'
+                  : cfg.prefix) +
+              job.remoteKey,
+          localFile: job.localFile,
+          task: TransferTask.getUrl,
+          md5: job.md5,
+          validForSeconds: (job as GetLinkJob).validForSeconds,
+        ).start();
+        job.bytesCompleted = job.bytes;
+        job.running = false;
+        job.completed = true;
       }
     } catch (e) {
       job.running = false;

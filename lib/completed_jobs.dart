@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:s3_drive/job_view.dart';
 import 'services/job.dart';
 
 class CompletedJobs extends StatefulWidget {
   final List<Job> completedJobs;
   final Processor processor;
-  final Function onClose;
   final Function onUpdate;
 
   const CompletedJobs({
     super.key,
     required this.completedJobs,
     required this.processor,
-    required this.onClose,
     required this.onUpdate,
   });
 
@@ -28,49 +27,23 @@ class CompletedJobsState extends State<CompletedJobs> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('Completed Jobs'),
-          SizedBox(width: 200),
-          if (widget.completedJobs.isNotEmpty)
-            IconButton(
-              onPressed: () {
-                widget.completedJobs.clear();
-                setState(() {});
-              },
-              icon: Icon(Icons.delete_sweep),
-            ),
-        ],
+    return SingleChildScrollView(
+      child: ListBody(
+        children: widget.completedJobs.map((job) {
+          return JobView(
+            job: job,
+            processor: widget.processor,
+            onUpdate: () {
+              setState(() {});
+            },
+            remove: () {
+              setState(() {
+                widget.completedJobs.remove(job);
+              });
+            },
+          );
+        }).toList(),
       ),
-      content: SingleChildScrollView(
-        child: ListBody(
-          children: widget.completedJobs.map((job) {
-            return ListTile(
-              leading: Icon(Icons.done),
-              title: Text(job.remoteKey),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(job.localFile.path, maxLines: 1),
-                  Text(job.statusMsg, maxLines: 1),
-                ],
-              ),
-              trailing: IconButton(
-                onPressed: () {
-                  widget.completedJobs.remove(job);
-                  setState(() {});
-                },
-                icon: Icon(Icons.close),
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => widget.onClose(), child: Text('Close')),
-      ],
     );
   }
 }

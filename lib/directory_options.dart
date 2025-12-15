@@ -71,10 +71,13 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
   Widget build(BuildContext context) {
     return ListView(
       children: [
-        Center(
-          child: Text(
-            'Options for ${widget.directory}',
-            style: Theme.of(context).textTheme.headlineSmall,
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Center(
+            child: Text(
+              'Options for ${widget.directory}',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -125,8 +128,7 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
             title: const Text('Delete uploaded files'),
             subtitle: const Text('Remove uploaded files from local directory'),
             onTap: () async {
-              bool yes =
-                  await showDialog<bool>(
+              bool yes = await showDialog<bool>(
                     context: context,
                     builder: (context) => AlertDialog(
                       title: const Text('Delete Uploaded Files'),
@@ -192,8 +194,7 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
           title: Text('Delete'),
           subtitle: Text('Delete ${widget.directory} from S3'),
           onTap: () async {
-            bool yes =
-                await showDialog<bool>(
+            bool yes = await showDialog<bool>(
                   context: context,
                   builder: (context) => AlertDialog(
                     title: const Text('Delete Directory'),

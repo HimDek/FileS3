@@ -1,7 +1,8 @@
-import 'dart:io';
+// import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'models/remote_file.dart';
@@ -38,7 +39,8 @@ class S3FileManager {
     _region = cfg.region;
   }
 
-  static Future<S3FileManager> create(context, http.Client client) async {
+  static Future<S3FileManager> create(
+      BuildContext context, http.Client client) async {
     final cfg = await ConfigManager.loadS3Config(context);
     return S3FileManager._(cfg, client);
   }
@@ -83,17 +85,16 @@ class S3FileManager {
       contentType: 'application/x-directory',
     );
 
-    final request =
-        http.Request(
-            'PUT',
-            Uri(
-              scheme: 'https',
-              host: '$_bucket.s3.$_region.amazonaws.com',
-              path: '/${key.split('/').map(awsEncode).join('/')}',
-            ),
-          )
-          ..headers.addAll(headers)
-          ..bodyBytes = bytes;
+    final request = http.Request(
+      'PUT',
+      Uri(
+        scheme: 'https',
+        host: '$_bucket.s3.$_region.amazonaws.com',
+        path: '/${key.split('/').map(awsEncode).join('/')}',
+      ),
+    )
+      ..headers.addAll(headers)
+      ..bodyBytes = bytes;
 
     final response = await _client.send(request);
 
@@ -211,9 +212,8 @@ class S3FileManager {
         .join();
 
     // 4. Build signedHeadersString from those same sorted keys
-    final signedHeadersString = sortedEntries
-        .map((e) => e.key.toLowerCase())
-        .join(';');
+    final signedHeadersString =
+        sortedEntries.map((e) => e.key.toLowerCase()).join(';');
 
     // 5. Canonical URI (already encoded)
     final encodedPath = '/${key.split('/').map(awsEncode).join('/')}';
@@ -229,9 +229,8 @@ class S3FileManager {
     ].join('\n');
 
     // 7. Hash the canonical request
-    final hashedCanonical = sha256
-        .convert(utf8.encode(canonicalRequest))
-        .toString();
+    final hashedCanonical =
+        sha256.convert(utf8.encode(canonicalRequest)).toString();
 
     // 8. Build string to sign
     final stringToSign = [
@@ -282,22 +281,22 @@ class S3FileManager {
   String _formatDate(DateTime time) =>
       time.toIso8601String().split('T').first.replaceAll('-', '');
 
-  String _guessMime(File f) {
-    final ext = f.path.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'png':
-        return 'image/png';
-      case 'pdf':
-        return 'application/pdf';
-      case 'txt':
-        return 'text/plain';
-      default:
-        return 'application/octet-stream';
-    }
-  }
+  // String _guessMime(File f) {
+  //   final ext = f.path.split('.').last.toLowerCase();
+  //   switch (ext) {
+  //     case 'jpg':
+  //     case 'jpeg':
+  //       return 'image/jpeg';
+  //     case 'png':
+  //       return 'image/png';
+  //     case 'pdf':
+  //       return 'application/pdf';
+  //     case 'txt':
+  //       return 'text/plain';
+  //     default:
+  //       return 'application/octet-stream';
+  //   }
+  // }
 
   String awsEncode(String input) {
     return input.codeUnits.map((unit) {
