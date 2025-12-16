@@ -127,6 +127,7 @@ class S3FileManager {
   }
 
   Future<void> renameFile(String oldKey, String newKey) async {
+    print('Renaming $oldKey to $newKey');
     await _s3.copyObject(
       bucket: _bucket,
       copySource: '$_bucket/$_prefix$oldKey',

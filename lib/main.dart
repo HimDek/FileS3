@@ -55,6 +55,8 @@ class _HomeState extends State<Home> {
       <String, List<RemoteFile>>{};
   final Set<(File, RemoteFile)> _selection = <(File, RemoteFile)>{};
   final GlobalKey<ScaffoldState> _drawerKey = GlobalKey<ScaffoldState>();
+  int _dirCount = 0;
+  int _fileCount = 0;
   int _navIndex = 0;
   String _localDir = './';
   String _localRoot = '';
@@ -79,19 +81,8 @@ class _HomeState extends State<Home> {
     setState(() {});
   }
 
-  void onJobComplete(Job job, dynamic result) {
-    if (job.runtimeType == UploadJob &&
-        result != null &&
-        result['etag'] != null) {
-      _remoteFilesMap['${job.remoteKey.split('/').first}/']!.add(
-        RemoteFile(
-          key: job.remoteKey,
-          size: job.bytes,
-          etag: result['etag']!.substring(1, result['etag']!.length - 1),
-          lastModified: job.localFile.lastModifiedSync(),
-        ),
-      );
-    }
+  void onJobComplete(Job job, dynamic result) async {
+    await refreshRemote('${job.remoteKey.split('/').first}/');
     _completedJobs.add(job);
     _jobs.remove(job);
     startProcessor();
@@ -110,6 +101,7 @@ class _HomeState extends State<Home> {
   Future<void> refreshRemote(String dir) async {
     final remoteFiles = await _s3Manager.listObjects(dir: dir);
     _remoteFilesMap[dir] = remoteFiles;
+    updateCounts();
   }
 
   Future<void> _listDirectories() async {
@@ -123,10 +115,9 @@ class _HomeState extends State<Home> {
     }
 
     _watchers.clear();
-
+    _jobs.clear();
     _localDirs.clear();
     _backupModes.clear();
-    _jobs.clear();
 
     for (final dir in _dirs) {
       final localDir = IniManager.config.get('directories', dir);
@@ -192,6 +183,30 @@ class _HomeState extends State<Home> {
     _listDirectories();
   }
 
+  Future<void> updateCounts() async {
+    setState(() {
+      _dirCount = 0;
+      _fileCount = 0;
+    });
+    if (_localDir == './') {
+      _dirCount = _dirs.length;
+    } else {
+      final remoteFiles =
+          _remoteFilesMap['${_localDir.split('/').first}/'] ?? [];
+      _dirCount = remoteFiles
+          .where((file) =>
+              file.key.split('/').last.isEmpty &&
+              '${Directory(file.key).parent.path}/' == _localDir)
+          .length;
+      _fileCount = remoteFiles
+          .where((file) =>
+              file.key.split('/').last.isNotEmpty &&
+              '${File(file.key).parent.path}/' == _localDir)
+          .length;
+    }
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -209,50 +224,62 @@ class _HomeState extends State<Home> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: _navIndex == 1
-            ? const Text("Completed Jobs")
-            : _navIndex == 2
-                ? const Text("Active Jobs")
-                : _localDir == "./"
-                    ? const Text('S3 Drive/')
-                    : _selection.isNotEmpty
-                        ? Text("${_selection.length} selected")
-                        : Row(
-                            children: "S3 Drive/$_localDir"
-                                .split('/')
-                                .where((dir) => dir.isNotEmpty)
-                                .map(
-                                  (dir) => GestureDetector(
-                                    onTap: dir == "S3 Drive"
-                                        ? () {
-                                            setState(() {
-                                              _localDir = './';
-                                            });
-                                          }
-                                        : () {
-                                            String newPath = './';
-                                            for (final part
-                                                in _localDir.split('/')) {
-                                              if (part.isEmpty) continue;
-                                              newPath += '$part/';
-                                              if (part == dir) break;
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _navIndex == 1
+                ? const Text("Completed Jobs")
+                : _navIndex == 2
+                    ? const Text("Active Jobs")
+                    : _localDir == "./"
+                        ? const Text('S3 Drive/')
+                        : SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: "S3 Drive/$_localDir"
+                                  .split('/')
+                                  .where((dir) => dir.isNotEmpty)
+                                  .map(
+                                    (dir) => GestureDetector(
+                                      onTap: dir == "S3 Drive"
+                                          ? () {
+                                              setState(() {
+                                                _localDir = './';
+                                              });
                                             }
-                                            setState(() {
-                                              _localDir =
-                                                  "${p.normalize(newPath)}/";
-                                              _localRoot = _dirs.contains(
-                                                      "${p.normalize(newPath)}/")
-                                                  ? _localDirs[_dirs.indexOf(
-                                                      "${p.normalize(newPath)}/",
-                                                    )]
-                                                  : _localRoot;
-                                            });
-                                          },
-                                    child: Text("$dir/"),
-                                  ),
-                                )
-                                .toList(),
+                                          : () {
+                                              String newPath = './';
+                                              for (final part
+                                                  in _localDir.split('/')) {
+                                                if (part.isEmpty) continue;
+                                                newPath += '$part/';
+                                                if (part == dir) break;
+                                              }
+                                              setState(() {
+                                                _localDir =
+                                                    "${p.normalize(newPath)}/";
+                                                _localRoot = _dirs.contains(
+                                                        "${p.normalize(newPath)}/")
+                                                    ? _localDirs[_dirs.indexOf(
+                                                        "${p.normalize(newPath)}/",
+                                                      )]
+                                                    : _localRoot;
+                                              });
+                                            },
+                                      child: Text("$dir/"),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
                           ),
+            if (_navIndex == 0)
+              _selection.isNotEmpty
+                  ? Text("${_selection.length} selected",
+                      style: Theme.of(context).textTheme.bodyMedium)
+                  : Text("$_dirCount Folders  $_fileCount Files",
+                      style: Theme.of(context).textTheme.bodyMedium),
+          ],
+        ),
         actions: _navIndex == 1
             ? [
                 if (_completedJobs.isNotEmpty)
@@ -304,6 +331,7 @@ class _HomeState extends State<Home> {
                                                 .map((e) => e.$2)
                                                 .toList(),
                                             _localRoot,
+                                            _s3Manager,
                                             _jobs,
                                             startProcessor,
                                             onJobStatus,
@@ -388,6 +416,7 @@ class _HomeState extends State<Home> {
                               ? _localDirs[_dirs.indexOf(dir)]
                               : _localRoot;
                         });
+                        updateCounts();
                       },
                     ),
                   )
@@ -397,6 +426,7 @@ class _HomeState extends State<Home> {
               ? DirectoryContents(
                   directory: _localDir,
                   localRoot: _localRoot,
+                  s3Manager: _s3Manager,
                   jobs: _jobs,
                   processor: _processor!,
                   remoteFilesMap: _remoteFilesMap,
@@ -411,10 +441,18 @@ class _HomeState extends State<Home> {
                           ? _localDirs[_dirs.indexOf(newDir)]
                           : _localRoot;
                     });
+                    updateCounts();
                   },
                   deleteFile: (key, path) {
                     _s3Manager.deleteFile(key);
                     if (File(path).existsSync()) File(path).deleteSync();
+                    setState(() {});
+                  },
+                  deleteDirectory: (key, path) {
+                    _s3Manager.deleteFile(key);
+                    if (Directory(path).existsSync()) {
+                      Directory(path).deleteSync(recursive: true);
+                    }
                     setState(() {});
                   },
                   listDirectories: _listDirectories,
@@ -462,7 +500,6 @@ class _HomeState extends State<Home> {
                               _localRoot,
                               _localDir.split('/').sublist(1).join('/'),
                               file.name)));
-                          _listDirectories();
                         } else {
                           final newname = await showDialog<String>(
                             context: context,
@@ -496,7 +533,6 @@ class _HomeState extends State<Home> {
                                 _localRoot,
                                 _localDir.split('/').sublist(1).join('/'),
                                 newname)));
-                            _listDirectories();
                           }
                         }
                       }

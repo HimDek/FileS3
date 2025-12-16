@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
 import 'package:s3_drive/services/job.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
+import 'package:s3_drive/services/s3_file_manager.dart';
 import 'package:share_plus/share_plus.dart';
 
 Future<int?> Function(BuildContext) expiryDialog = (BuildContext context) =>
@@ -43,9 +44,47 @@ Future<int?> Function(BuildContext) expiryDialog = (BuildContext context) =>
       },
     );
 
+Future<String?> Function(BuildContext, String) renameDialog =
+    (BuildContext context, String currentName) => showDialog<String>(
+          context: context,
+          builder: (_) {
+            TextEditingController controller =
+                TextEditingController(text: currentName);
+            return StatefulBuilder(
+              builder: (c, set) => AlertDialog(
+                title: const Text('Rename File'),
+                content: TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: 'New Name',
+                  ),
+                ),
+                actions: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(c, controller.text.trim()),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+
+String bytesToReadable(int bytes) {
+  const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  int i = 0;
+  double size = bytes.toDouble();
+  while (size >= 1024 && i < suffixes.length - 1) {
+    size /= 1024;
+    i++;
+  }
+  return '${size.toStringAsFixed(2)} ${suffixes[i]}';
+}
+
 class FileContextActionHandler {
   final String localRoot;
   final RemoteFile file;
+  final S3FileManager s3Manager;
   final List<Job> jobs;
   final Function startProcessor;
   final Function(Job)? onJobStatus;
@@ -55,6 +94,7 @@ class FileContextActionHandler {
   FileContextActionHandler({
     required this.localRoot,
     required this.file,
+    required this.s3Manager,
     required this.jobs,
     required this.startProcessor,
     required this.onJobStatus,
@@ -150,6 +190,21 @@ class FileContextActionHandler {
       );
       await processor.processJob(job, (job, result) {});
       await Clipboard.setData(ClipboardData(text: job.statusMsg));
+    };
+  }
+
+  Function()? rename(String newName) {
+    return () async {
+      final newKey = '${p.dirname(file.key)}/${newName.replaceAll('/', '_')}';
+      await s3Manager.renameFile(file.key, newKey);
+      if (File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
+          .existsSync()) {
+        final newLocalPath =
+            p.join(localRoot, newKey.split('/').sublist(1).join('/'));
+        File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
+            .renameSync(newLocalPath);
+      }
+      return 'Renamed to $newName';
     };
   }
 
@@ -266,6 +321,30 @@ class FileContextOption {
         },
       );
 
+  static FileContextOption rename(
+    String localRoot,
+    RemoteFile file,
+    FileContextActionHandler handler,
+    BuildContext context,
+  ) =>
+      FileContextOption(
+        title: 'Rename',
+        icon: Icons.edit,
+        action: () async {
+          final newName = await renameDialog(context, file.key.split('/').last);
+          if (newName != null &&
+              newName.isNotEmpty &&
+              newName != file.key.split('/').last) {
+            String msg = await handler.rename(newName)!();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg),
+              ),
+            );
+          }
+        },
+      );
+
   static FileContextOption delete(
     String localRoot,
     RemoteFile file,
@@ -328,6 +407,7 @@ class FileContextOption {
           localRoot, file, jobs, startProcessor, onJobStatus, handler, context),
       share(localRoot, file, handler),
       copyLink(onJobStatus, processor, localRoot, file, handler, context),
+      rename(localRoot, file, handler, context),
       delete(localRoot, file, deleteFile, handler, context),
     ];
   }
@@ -540,11 +620,56 @@ class FilesContextOption {
   }
 }
 
+class DirectoryContextActionHandler {
+  final String localRoot;
+  final String key;
+  final S3FileManager s3Manager;
+  final Function(Job)? onJobStatus;
+  final Processor processor;
+  final Function(String, String) deleteDirectory;
+
+  Function()? rename(String newName) {
+    return () async {
+      final key = this.key.endsWith('/') ? this.key : '${this.key}/';
+      final newKey = '${p.dirname(key)}/${newName.replaceAll('/', '_')}/';
+      await s3Manager.renameFile(key, newKey);
+      if (File(p.join(localRoot, key.split('/').sublist(1).join('/')))
+          .existsSync()) {
+        final newLocalPath =
+            p.join(localRoot, newKey.split('/').sublist(1).join('/'));
+        File(p.join(localRoot, key.split('/').sublist(1).join('/')))
+            .renameSync(newLocalPath);
+      }
+      return 'Renamed to $newName';
+    };
+  }
+
+  Function()? delete(bool? yes) {
+    return () {
+      if (yes ?? false) {
+        final key = this.key.endsWith('/') ? this.key : '${this.key}/';
+        deleteDirectory(
+            key, p.join(localRoot, key.split('/').sublist(1).join('/')));
+        return 'Deleted ${p.basename(key)}';
+      }
+    };
+  }
+
+  DirectoryContextActionHandler({
+    required this.localRoot,
+    required this.key,
+    required this.s3Manager,
+    required this.onJobStatus,
+    required this.processor,
+    required this.deleteDirectory,
+  });
+}
+
 class DirectoryContextOption {
   final String title;
   final IconData icon;
   final String? subtitle;
-  final dynamic Function(BuildContext context)? action;
+  final dynamic Function()? action;
 
   DirectoryContextOption({
     required this.title,
@@ -552,6 +677,89 @@ class DirectoryContextOption {
     this.subtitle,
     this.action,
   });
+
+  static DirectoryContextOption rename(
+    String localRoot,
+    String key,
+    DirectoryContextActionHandler handler,
+    BuildContext context,
+  ) =>
+      DirectoryContextOption(
+        title: 'Rename Directory',
+        icon: Icons.edit,
+        action: () async {
+          final newName = await renameDialog(context, p.basename(key));
+          if (newName != null &&
+              newName.isNotEmpty &&
+              newName != p.basename(key)) {
+            String msg = await handler.rename(newName)!();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg),
+              ),
+            );
+          }
+        },
+      );
+
+  static DirectoryContextOption delete(
+    String localRoot,
+    String key,
+    final Function(String, String) deleteFile,
+    DirectoryContextActionHandler handler,
+    BuildContext context,
+  ) =>
+      DirectoryContextOption(
+        title: 'Delete Directory',
+        icon: Icons.delete,
+        subtitle: 'Delete from device as well as S3',
+        action: () async {
+          final yes = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Delete Directory'),
+              content: Text(
+                'Are you sure you want to delete ${p.basename(key)} from your device and S3? This action cannot be undone.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          );
+          if (yes ?? false) {
+            String msg = handler.delete(true)!();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg),
+              ),
+            );
+          }
+        },
+      );
+
+  static List<DirectoryContextOption> allOptions(
+    String localRoot,
+    String key,
+    List<Job> jobs,
+    Function startProcessor,
+    Function(Job)? onJobStatus,
+    Processor processor,
+    Function(String, String) deleteFile,
+    DirectoryContextActionHandler handler,
+    BuildContext context,
+  ) {
+    return [
+      rename(localRoot, key, handler, context),
+      delete(localRoot, key, deleteFile, handler, context),
+    ];
+  }
 }
 
 class DirectoriesContextOption {
@@ -586,6 +794,7 @@ Widget buildFileContextMenu(
   BuildContext context,
   RemoteFile item,
   String localRoot,
+  S3FileManager s3Manager,
   List<Job> jobs,
   Function startProcessor,
   Function(Job)? onJobStatus,
@@ -595,6 +804,7 @@ Widget buildFileContextMenu(
   FileContextActionHandler handler = FileContextActionHandler(
     localRoot: localRoot,
     file: item,
+    s3Manager: s3Manager,
     jobs: jobs,
     startProcessor: startProcessor,
     onJobStatus: onJobStatus,
@@ -633,6 +843,7 @@ Widget buildFilesContextMenu(
   BuildContext context,
   List<RemoteFile> items,
   String localRoot,
+  S3FileManager s3Manager,
   List<Job> jobs,
   Function startProcessor,
   Function(Job)? onJobStatus,
@@ -645,6 +856,7 @@ Widget buildFilesContextMenu(
         (item) => FileContextActionHandler(
           localRoot: localRoot,
           file: item,
+          s3Manager: s3Manager,
           jobs: jobs,
           startProcessor: startProcessor,
           onJobStatus: onJobStatus,
@@ -665,6 +877,53 @@ Widget buildFilesContextMenu(
     handlers,
     context,
     clearSelection,
+  )
+          .map(
+            (option) => ListTile(
+              leading: Icon(option.icon),
+              title: Text(option.title),
+              subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
+              onTap: option.action != null
+                  ? () async {
+                      await option.action!();
+                      Navigator.of(context).pop();
+                    }
+                  : null,
+            ),
+          )
+          .toList());
+}
+
+Widget buildDirectoryContextMenu(
+  BuildContext context,
+  String key,
+  String localRoot,
+  S3FileManager s3Manager,
+  List<Job> jobs,
+  Function startProcessor,
+  Function(Job)? onJobStatus,
+  Processor processor,
+  Function(String, String) deleteDirectory,
+) {
+  DirectoryContextActionHandler handler = DirectoryContextActionHandler(
+    localRoot: localRoot,
+    key: key,
+    s3Manager: s3Manager,
+    onJobStatus: onJobStatus,
+    processor: processor,
+    deleteDirectory: deleteDirectory,
+  );
+  return ListView(
+      children: DirectoryContextOption.allOptions(
+    localRoot,
+    key,
+    jobs,
+    startProcessor,
+    onJobStatus,
+    processor,
+    deleteDirectory,
+    handler,
+    context,
   )
           .map(
             (option) => ListTile(

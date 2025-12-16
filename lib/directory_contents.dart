@@ -5,10 +5,12 @@ import 'package:s3_drive/components.dart';
 import 'package:s3_drive/job_view.dart';
 import 'package:s3_drive/services/job.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
+import 'package:s3_drive/services/s3_file_manager.dart';
 
 class DirectoryContents extends StatefulWidget {
   final String directory;
   final String localRoot;
+  final S3FileManager s3Manager;
   final Processor processor;
   final List<Job> jobs;
   final Map<String, List<RemoteFile>> remoteFilesMap;
@@ -18,6 +20,7 @@ class DirectoryContents extends StatefulWidget {
   final Function(Job, dynamic) onJobComplete;
   final Function(String) onChangeDirectory;
   final Function(String, String) deleteFile;
+  final Function(String, String) deleteDirectory;
   final Function() listDirectories;
   final Function() startProcessor;
 
@@ -25,6 +28,7 @@ class DirectoryContents extends StatefulWidget {
     super.key,
     required this.directory,
     required this.localRoot,
+    required this.s3Manager,
     required this.processor,
     required this.jobs,
     required this.remoteFilesMap,
@@ -34,6 +38,7 @@ class DirectoryContents extends StatefulWidget {
     required this.onJobComplete,
     required this.onChangeDirectory,
     required this.deleteFile,
+    required this.deleteDirectory,
     required this.listDirectories,
     required this.startProcessor,
   });
@@ -104,6 +109,30 @@ class DirectoryContentsState extends State<DirectoryContents> {
                   : () {
                       widget.onChangeDirectory("${Directory(subDir).path}/");
                     },
+              trailing: IconButton(
+                onPressed: () {
+                  showModalBottomSheet(
+                      context: context,
+                      enableDrag: true,
+                      showDragHandle: true,
+                      constraints: const BoxConstraints(
+                        maxHeight: 800,
+                        maxWidth: 800,
+                      ),
+                      builder: (context) => buildDirectoryContextMenu(
+                            context,
+                            "${Directory(subDir).path}/",
+                            widget.localRoot,
+                            widget.s3Manager,
+                            widget.jobs,
+                            widget.startProcessor,
+                            widget.onJobStatus,
+                            widget.processor,
+                            widget.deleteDirectory,
+                          )).then((value) => widget.listDirectories());
+                },
+                icon: Icon(Icons.more_vert),
+              ),
             ),
           ),
         for (final job in widget.jobs.where(
@@ -145,6 +174,8 @@ class DirectoryContentsState extends State<DirectoryContents> {
               ListTile(
                 leading: Icon(Icons.insert_drive_file),
                 title: Text(file.key.split('/').last),
+                subtitle: Text(
+                    '${bytesToReadable(file.size)}\t\t\t\t${file.lastModified.toLocal().toString().split('.').first}'),
                 onTap: widget.selection.isNotEmpty
                     ? () {
                         widget.selectFile((
@@ -168,6 +199,7 @@ class DirectoryContentsState extends State<DirectoryContents> {
                                   context,
                                   file,
                                   widget.localRoot,
+                                  widget.s3Manager,
                                   widget.jobs,
                                   widget.startProcessor,
                                   widget.onJobStatus,
