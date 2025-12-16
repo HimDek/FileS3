@@ -1,8 +1,7 @@
 import 'dart:io';
-import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
-import 'package:s3_drive/file_options.dart';
+import 'package:s3_drive/components.dart';
 import 'package:s3_drive/job_view.dart';
 import 'package:s3_drive/services/job.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
@@ -158,117 +157,23 @@ class DirectoryContentsState extends State<DirectoryContents> {
                       }
                     : () {
                         showModalBottomSheet(
-                          context: context,
-                          enableDrag: true,
-                          showDragHandle: true,
-                          constraints: const BoxConstraints(
-                            maxHeight: 800,
-                            maxWidth: 800,
-                          ),
-                          builder: (context) => FileOptions(
-                            file: File(
-                              p.join(widget.localRoot,
-                                  file.key.split('/').sublist(1).join('/')),
+                            context: context,
+                            enableDrag: true,
+                            showDragHandle: true,
+                            constraints: const BoxConstraints(
+                              maxHeight: 800,
+                              maxWidth: 800,
                             ),
-                            remoteFile: file,
-                            onDownload: widget.localRoot.isEmpty
-                                ? null
-                                : () {
-                                    FileSaveLocation fileSaveLocation =
-                                        FileSaveLocation(p.join(
-                                            widget.localRoot,
-                                            file.key
-                                                .split('/')
-                                                .sublist(1)
-                                                .join('/')));
-                                    final localPath = fileSaveLocation.path;
-                                    widget.jobs.add(
-                                      DownloadJob(
-                                        localFile: File(localPath),
-                                        remoteKey: file.key,
-                                        bytes: file.size,
-                                        onStatus: widget.onJobStatus,
-                                        md5: file.etag,
-                                      ),
-                                    );
-                                    widget.startProcessor();
-                                  },
-                            onSave: () async {
-                              FileSaveLocation? fileSaveLocation =
-                                  await getSaveLocation(
-                                      suggestedName: file.key.split('/').last,
-                                      canCreateDirectories: true);
-                              if (fileSaveLocation != null) {
-                                final localPath = fileSaveLocation.path;
-                                if (File(localPath).existsSync()) {
-                                  File(localPath).deleteSync();
-                                }
-                                if (File(p.join(
-                                        widget.localRoot,
-                                        file.key
-                                            .split('/')
-                                            .sublist(1)
-                                            .join('/')))
-                                    .existsSync()) {
-                                  File(p.join(
-                                          widget.localRoot,
-                                          file.key
-                                              .split('/')
-                                              .sublist(1)
-                                              .join('/')))
-                                      .copySync(localPath);
-                                } else {
-                                  widget.jobs.add(
-                                    DownloadJob(
-                                      localFile: File(localPath),
-                                      remoteKey: file.key,
-                                      bytes: file.size,
-                                      onStatus: widget.onJobStatus,
-                                      md5: file.etag,
-                                    ),
-                                  );
-                                  widget.startProcessor();
-                                }
-                              }
-                            },
-                            onShare: File(p.join(
-                                        widget.localRoot,
-                                        file.key
-                                            .split('/')
-                                            .sublist(1)
-                                            .join('/')))
-                                    .existsSync()
-                                ? () {
-                                    return XFile(p.join(
-                                        widget.localRoot,
-                                        file.key
-                                            .split('/')
-                                            .sublist(1)
-                                            .join('/')));
-                                  }
-                                : null,
-                            onCopyFileLink: (seconds) async {
-                              final GetLinkJob job = GetLinkJob(
-                                localFile: File(
-                                  p.join(widget.localRoot,
-                                      file.key.split('/').sublist(1).join('/')),
-                                ),
-                                remoteKey: file.key,
-                                bytes: file.size,
-                                onStatus: widget.onJobStatus,
-                                md5: file.etag,
-                                validForSeconds: seconds,
-                              );
-                              await widget.processor
-                                  .processJob(job, (job, result) {});
-                              return job.statusMsg;
-                            },
-                            onDelete: () => widget.deleteFile(
-                                file.key,
-                                p.join(widget.localRoot,
-                                    file.key.split('/').sublist(1).join('/'))),
-                          ),
-                        ).then((value) => widget.listDirectories());
+                            builder: (context) => buildFileContextMenu(
+                                  context,
+                                  file,
+                                  widget.localRoot,
+                                  widget.jobs,
+                                  widget.startProcessor,
+                                  widget.onJobStatus,
+                                  widget.processor,
+                                  widget.deleteFile,
+                                )).then((value) => widget.listDirectories());
                       },
                 onLongPress: () {
                   widget.selectFile((

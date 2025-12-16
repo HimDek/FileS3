@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
+import 'package:s3_drive/components.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 
@@ -97,46 +98,9 @@ class FileOptionsState extends State<FileOptions> {
           leading: const Icon(Icons.link),
           title: Text('Copy Link'),
           onTap: () async {
-            final seconds = await showDialog<int>(
-              context: context,
-              builder: (_) {
-                int d = 0, h = 1;
-                return StatefulBuilder(
-                  builder: (c, set) => AlertDialog(
-                    title: const Text('Select Validity Duration'),
-                    content: Row(children: [
-                      DropdownButton<int>(
-                        value: d,
-                        items: List.generate(
-                            31,
-                            (i) => DropdownMenuItem(
-                                value: i, child: Text('$i d'))),
-                        onChanged: (v) => set(() => d = v!),
-                      ),
-                      DropdownButton<int>(
-                        value: h,
-                        items: List.generate(
-                            24,
-                            (i) => DropdownMenuItem(
-                                value: i, child: Text('$i h'))),
-                        onChanged: (v) => set(() => h = v!),
-                      ),
-                    ]),
-                    actions: [
-                      ElevatedButton(
-                        onPressed: d * 86400 + h * 3600 == 0
-                            ? null
-                            : () => Navigator.pop(c, d * 86400 + h * 3600),
-                        child: const Text('OK'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-            Clipboard.setData(
-              ClipboardData(text: await widget.onCopyFileLink(seconds ?? 3600)),
-            );
+            await Clipboard.setData(ClipboardData(
+                text: await widget
+                    .onCopyFileLink(await expiryDialog(context) ?? 3600)));
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('File link copied to clipboard')),
             );

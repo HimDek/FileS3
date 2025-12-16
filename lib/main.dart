@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:s3_drive/components.dart';
 import 'package:s3_drive/directory_contents.dart';
-import 'package:s3_drive/files_options.dart';
 import 'package:s3_drive/services/ini_manager.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 'package:s3_drive/settings.dart';
@@ -126,6 +126,7 @@ class _HomeState extends State<Home> {
 
     _localDirs.clear();
     _backupModes.clear();
+    _jobs.clear();
 
     for (final dir in _dirs) {
       final localDir = IniManager.config.get('directories', dir);
@@ -290,29 +291,32 @@ class _HomeState extends State<Home> {
                         ? [
                             IconButton(
                                 onPressed: () => showModalBottomSheet(
-                                      context: context,
-                                      enableDrag: true,
-                                      showDragHandle: true,
-                                      constraints: const BoxConstraints(
-                                        maxHeight: 800,
-                                        maxWidth: 800,
-                                      ),
-                                      builder: (context) => FilesOptions(
-                                        files: _selection.toList(),
-                                        jobs: _jobs,
-                                        localRoot: _localRoot,
-                                        processor: _processor!,
-                                        deleteFile: (key, path) {
+                                    context: context,
+                                    enableDrag: true,
+                                    showDragHandle: true,
+                                    constraints: const BoxConstraints(
+                                      maxHeight: 800,
+                                      maxWidth: 800,
+                                    ),
+                                    builder: (context) => buildFilesContextMenu(
+                                            context,
+                                            _selection
+                                                .map((e) => e.$2)
+                                                .toList(),
+                                            _localRoot,
+                                            _jobs,
+                                            startProcessor,
+                                            onJobStatus,
+                                            _processor!, (key, path) {
                                           _s3Manager.deleteFile(key);
                                           if (File(path).existsSync()) {
                                             File(path).deleteSync();
                                           }
                                           setState(() {});
-                                        },
-                                        onJobStatus: onJobStatus,
-                                        startProcessor: startProcessor,
-                                      ),
-                                    ).then((value) => _listDirectories()),
+                                        }, () {
+                                          _selection.clear();
+                                          setState(() {});
+                                        })).then((value) => _listDirectories()),
                                 icon: Icon(Icons.more_vert))
                           ]
                         : [
