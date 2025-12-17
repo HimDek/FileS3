@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
+import 'package:s3_drive/services/models/common.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:s3_drive/components.dart';
 import 'package:s3_drive/job_view.dart';
@@ -14,22 +15,27 @@ class DirectoryContents extends StatefulWidget {
   final Processor processor;
   final List<Job> jobs;
   final Map<String, List<RemoteFile>> remoteFilesMap;
+  final bool foldersFirst;
+  final SortMode sortMode;
   final Set<dynamic> selection;
   final Function(dynamic) select;
+  final Function(List<dynamic>) updateAllSelectableItems;
   final void Function(Job job) onJobStatus;
   final Function(Job, dynamic) onJobComplete;
   final Function(String) onChangeDirectory;
   final Future<String> Function(RemoteFile, int?) getLink;
-  final Function(RemoteFile, String) downloadFile;
-  final Function(RemoteFile, String, String) saveFile;
-  final Function(String, String) downloadDirectory;
-  final Function(String, String, String) saveDirectory;
-  final Function(String, String, String, String) copyFile;
-  final Function(String, String, String, String) moveFile;
-  final Function(String, String) deleteFile;
-  final Function(String, String, String, String) copyDirectory;
-  final Function(String, String, String, String) moveDirectory;
-  final Function(String, String) deleteDirectory;
+  final Function(RemoteFile) downloadFile;
+  final Function(RemoteFile, String) saveFile;
+  final Function(String) downloadDirectory;
+  final Function(String, String) saveDirectory;
+  final Function(dynamic) cut;
+  final Function(dynamic) copy;
+  final Function(String, String) copyFile;
+  final Function(String, String) moveFile;
+  final Function(String) deleteFile;
+  final Function(String, String) copyDirectory;
+  final Function(String, String) moveDirectory;
+  final Function(String) deleteDirectory;
   final Function() listDirectories;
   final Function() startProcessor;
 
@@ -40,8 +46,11 @@ class DirectoryContents extends StatefulWidget {
     required this.processor,
     required this.jobs,
     required this.remoteFilesMap,
+    required this.foldersFirst,
+    required this.sortMode,
     required this.selection,
     required this.select,
+    required this.updateAllSelectableItems,
     required this.onJobStatus,
     required this.onJobComplete,
     required this.onChangeDirectory,
@@ -50,6 +59,8 @@ class DirectoryContents extends StatefulWidget {
     required this.saveFile,
     required this.downloadDirectory,
     required this.saveDirectory,
+    required this.cut,
+    required this.copy,
     required this.copyFile,
     required this.moveFile,
     required this.deleteFile,
@@ -66,6 +77,71 @@ class DirectoryContents extends StatefulWidget {
 
 class DirectoryContentsState extends State<DirectoryContents> {
   String? focusedKey;
+
+  List<(Map<String, dynamic>, Widget)> sort(
+      List<(Map<String, dynamic>, Widget)> items) {
+    List<(Map<String, dynamic>, Widget)> sortedItems = List.from(items);
+    sortedItems.sort((a, b) {
+      var aIsDir = a.$1['file'] == null && a.$1['job'] == null;
+      var bIsDir = b.$1['file'] == null && b.$1['job'] == null;
+
+      if (a.$1['name'] == '..') return -1;
+      if (b.$1['name'] == '..') return 1;
+
+      if (widget.foldersFirst) {
+        if (aIsDir && !bIsDir) return -1;
+        if (!aIsDir && bIsDir) return 1;
+      }
+
+      switch (widget.sortMode) {
+        case SortMode.nameAsc:
+          return a.$1['name']
+              .toLowerCase()
+              .compareTo(b.$1['name'].toLowerCase());
+        case SortMode.nameDesc:
+          return b.$1['name']
+              .toLowerCase()
+              .compareTo(a.$1['name'].toLowerCase());
+        case SortMode.dateAsc:
+          DateTime aDate = a.$1['file'] != null
+              ? (a.$1['file'] as RemoteFile).lastModified
+              : DateTime.fromMillisecondsSinceEpoch(0);
+          DateTime bDate = b.$1['file'] != null
+              ? (b.$1['file'] as RemoteFile).lastModified
+              : DateTime.fromMillisecondsSinceEpoch(0);
+          return aDate.compareTo(bDate);
+        case SortMode.dateDesc:
+          DateTime aDate = a.$1['file'] != null
+              ? (a.$1['file'] as RemoteFile).lastModified
+              : DateTime.fromMillisecondsSinceEpoch(0);
+          DateTime bDate = b.$1['file'] != null
+              ? (b.$1['file'] as RemoteFile).lastModified
+              : DateTime.fromMillisecondsSinceEpoch(0);
+          return bDate.compareTo(aDate);
+        case SortMode.sizeAsc:
+          return a.$1['size'].compareTo(b.$1['size']);
+        case SortMode.sizeDesc:
+          return b.$1['size'].compareTo(a.$1['size']);
+        case SortMode.typeAsc:
+          String aExt = a.$1['name'].contains('.')
+              ? a.$1['name'].split('.').last.toLowerCase()
+              : '';
+          String bExt = b.$1['name'].contains('.')
+              ? b.$1['name'].split('.').last.toLowerCase()
+              : '';
+          return aExt.compareTo(bExt);
+        case SortMode.typeDesc:
+          String aExt = a.$1['name'].contains('.')
+              ? a.$1['name'].split('.').last.toLowerCase()
+              : '';
+          String bExt = b.$1['name'].contains('.')
+              ? b.$1['name'].split('.').last.toLowerCase()
+              : '';
+          return bExt.compareTo(aExt);
+      }
+    });
+    return sortedItems;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,8 +173,16 @@ class DirectoryContentsState extends State<DirectoryContents> {
         .map((job) => job.remoteKey.split('/').last)
         .toList();
 
+    widget.updateAllSelectableItems([
+      ...subDirectories.map((subDir) => "${Directory(subDir).path}/"),
+      ...widget.remoteFilesMap[dir]!.where((file) =>
+          file.key.split('/').last.isNotEmpty &&
+          '${File(file.key).parent.path}/' == widget.directory &&
+          !jobs.contains(file.key.split('/').last)),
+    ]);
+
     return ListView(
-      children: [
+      children: sort([
         (
           {'name': '..', 'size': 0, 'file': null},
           ListTile(
@@ -168,6 +252,8 @@ class DirectoryContentsState extends State<DirectoryContents> {
                                   widget.localRoot,
                                   widget.downloadDirectory,
                                   widget.saveDirectory,
+                                  widget.cut,
+                                  widget.copy,
                                   widget.copyDirectory,
                                   widget.moveDirectory,
                                   widget.deleteDirectory,
@@ -252,6 +338,8 @@ class DirectoryContentsState extends State<DirectoryContents> {
                                     widget.getLink,
                                     widget.downloadFile,
                                     widget.saveFile,
+                                    widget.cut,
+                                    widget.copy,
                                     widget.copyFile,
                                     widget.moveFile,
                                     widget.deleteFile,
@@ -284,7 +372,7 @@ class DirectoryContentsState extends State<DirectoryContents> {
                 },
               ),
             ),
-      ]
+      ])
           .map((item) {
             return item.$2;
           })

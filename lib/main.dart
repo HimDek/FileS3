@@ -4,6 +4,7 @@ import 'package:s3_drive/components.dart';
 import 'package:s3_drive/directory_contents.dart';
 import 'package:s3_drive/services/hash_util.dart';
 import 'package:s3_drive/services/ini_manager.dart';
+import 'package:s3_drive/services/models/common.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 'package:s3_drive/settings.dart';
 import 'package:file_selector/file_selector.dart';
@@ -55,7 +56,11 @@ class _HomeState extends State<Home> {
   final Map<String, List<RemoteFile>> _remoteFilesMap =
       <String, List<RemoteFile>>{};
   final Set<dynamic> _selection = {};
+  final List<dynamic> _allSelectableItems = [];
   final GlobalKey<ScaffoldState> _drawerKey = GlobalKey<ScaffoldState>();
+  bool _foldersFirst = true;
+  SortMode _sortMode = SortMode.nameAsc;
+  SelectionAction _selectionAction = SelectionAction.none;
   int _dirCount = 0;
   int _fileCount = 0;
   int _navIndex = 0;
@@ -64,6 +69,13 @@ class _HomeState extends State<Home> {
   Processor? _processor;
   bool _loading = true;
   http.Client httpClient = http.Client();
+
+  String _pathFromKey(String key) {
+    final localDir = _dirs.contains(key.split('/').first)
+        ? _localDirs[_dirs.indexOf(key.split('/').first)]
+        : _localRoot;
+    return p.join(localDir, key.split('/').sublist(1).join('/'));
+  }
 
   void _select(dynamic item) {
     if (_selection.any((selected) {
@@ -88,6 +100,11 @@ class _HomeState extends State<Home> {
       _selection.add(item);
     }
     setState(() {});
+  }
+
+  void _updateAllSelectableItems(List<dynamic> items) {
+    _allSelectableItems.clear();
+    _allSelectableItems.addAll(items);
   }
 
   void _onJobStatus(Job job) {
@@ -198,22 +215,21 @@ class _HomeState extends State<Home> {
     _listDirectories();
   }
 
-  Future<void> _copyFile(String key, String newKey, String path, String newPath,
+  Future<void> _copyFile(String key, String newKey,
       {bool refresh = true}) async {
     setState(() {
       _loading = true;
     });
     await _s3Manager.copyFile(key, newKey);
-    if (File(path).existsSync()) {
-      File(path).copySync(newPath);
+    if (File(_pathFromKey(key)).existsSync()) {
+      File(_pathFromKey(key)).copySync(_pathFromKey(newKey));
     }
     if (refresh) {
       _listDirectories();
     }
   }
 
-  Future<void> _copyDirectory(
-      String dir, String newDir, String path, String newPath,
+  Future<void> _copyDirectory(String dir, String newDir,
       {bool refresh = true}) async {
     setState(() {
       _loading = true;
@@ -228,12 +244,12 @@ class _HomeState extends State<Home> {
         }
       }
     }
-    if (Directory(path).existsSync()) {
-      for (final entity
-          in Directory(path).listSync(recursive: true, followLinks: false)) {
+    if (Directory(_pathFromKey(dir)).existsSync()) {
+      for (final entity in Directory(_pathFromKey(dir))
+          .listSync(recursive: true, followLinks: false)) {
         if (entity is File) {
-          final relativePath = p.relative(entity.path, from: path);
-          final newFilePath = p.join(newPath, relativePath);
+          final relativePath = p.relative(entity.path, from: _pathFromKey(dir));
+          final newFilePath = p.join(_pathFromKey(newDir), relativePath);
           final newFileDir = p.dirname(newFilePath);
           if (!Directory(newFileDir).existsSync()) {
             Directory(newFileDir).createSync(recursive: true);
@@ -247,14 +263,13 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _deleteFile(String key, String path,
-      {bool refresh = true}) async {
+  Future<void> _deleteFile(String key, {bool refresh = true}) async {
     setState(() {
       _loading = true;
     });
     _s3Manager.deleteFile(key);
-    if (File(path).existsSync()) {
-      File(path).deleteSync();
+    if (File(_pathFromKey(key)).existsSync()) {
+      File(_pathFromKey(key)).deleteSync();
     }
     if (refresh) {
       _listDirectories();
@@ -287,47 +302,50 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _deleteDirectory(String dir, String path,
-      {bool refresh = true}) async {
+  Future<void> _deleteDirectory(String dir, {bool refresh = true}) async {
     setState(() {
       _loading = true;
     });
     _deleteS3Directory(dir, refresh: false);
-    if (Directory(path).existsSync()) {
-      Directory(path).deleteSync(recursive: true);
+    if (Directory(_pathFromKey(dir)).existsSync()) {
+      Directory(_pathFromKey(dir)).deleteSync(recursive: true);
     }
     if (refresh) {
       _listDirectories();
     }
   }
 
-  Future<void> _moveFile(
-      String key, String newKey, String path, String newPath) async {
+  Future<void> _moveFile(String key, String newKey,
+      {bool refresh = true}) async {
     setState(() {
       _loading = true;
     });
-    await _copyFile(key, newKey, path, newPath, refresh: false);
-    await _deleteFile(key, path, refresh: false);
-    _listDirectories();
-  }
-
-  Future<void> _moveDirectory(
-      String dir, String newDir, String path, String newPath) async {
-    setState(() {
-      _loading = true;
-    });
-    await _copyDirectory(dir, newDir, path, newPath, refresh: false);
-    await _deleteS3Directory(dir, refresh: false);
-    if (Directory(path).existsSync()) {
-      Directory(path).deleteSync(recursive: true);
+    await _copyFile(key, newKey, refresh: false);
+    await _deleteFile(key, refresh: false);
+    if (refresh) {
+      _listDirectories();
     }
-    _listDirectories();
   }
 
-  Future<void> _downloadFile(RemoteFile file, String path) async {
+  Future<void> _moveDirectory(String dir, String newDir,
+      {bool refresh = true}) async {
+    setState(() {
+      _loading = true;
+    });
+    await _copyDirectory(dir, newDir, refresh: false);
+    await _deleteS3Directory(dir, refresh: false);
+    if (Directory(_pathFromKey(dir)).existsSync()) {
+      Directory(_pathFromKey(dir)).deleteSync(recursive: true);
+    }
+    if (refresh) {
+      _listDirectories();
+    }
+  }
+
+  Future<void> _downloadFile(RemoteFile file) async {
     _jobs.add(
       DownloadJob(
-        localFile: File(path),
+        localFile: File(_pathFromKey(file.key)),
         remoteKey: file.key,
         bytes: file.size,
         md5: file.etag,
@@ -337,14 +355,14 @@ class _HomeState extends State<Home> {
     _startProcessor();
   }
 
-  Future<void> _downloadDirectory(String dir, String path) async {
+  Future<void> _downloadDirectory(String dir) async {
     for (final map in _remoteFilesMap.entries) {
       for (final file in map.value) {
         if (file.key.startsWith(dir) &&
             file.key != dir &&
             !file.key.endsWith('/')) {
           final relativePath = p.relative(file.key, from: dir);
-          final localFilePath = p.join(path, relativePath);
+          final localFilePath = p.join(_pathFromKey(dir), relativePath);
           final localFileDir = p.dirname(localFilePath);
           if (!Directory(localFileDir).existsSync()) {
             Directory(localFileDir).createSync(recursive: true);
@@ -366,29 +384,71 @@ class _HomeState extends State<Home> {
     _startProcessor();
   }
 
-  Future<void> _saveFile(RemoteFile file, String path, String savePath) async {
+  void _cut(dynamic item) {
+    if (item != null) {
+      _selection.add(item);
+    }
+    _selectionAction = SelectionAction.cut;
+    setState(() {});
+  }
+
+  void _copy(dynamic item) {
+    if (item != null) {
+      _selection.add(item);
+    }
+    _selectionAction = SelectionAction.copy;
+    setState(() {});
+  }
+
+  Future<void> _paste() async {
+    final selection = _selection.toList();
+    for (final item in selection) {
+      if (item is RemoteFile) {
+        final file = item;
+        final newKey = p.join(_localDir, p.basename(file.key));
+        if (_selectionAction == SelectionAction.copy) {
+          _copyFile(file.key, newKey, refresh: false);
+        } else if (_selectionAction == SelectionAction.cut) {
+          _moveFile(file.key, newKey, refresh: false);
+        }
+      } else if (item is String) {
+        final dir = item;
+        final newDir = p.join(_localDir, p.basename(dir));
+        if (_selectionAction == SelectionAction.copy) {
+          _copyDirectory(dir, newDir, refresh: false);
+        } else if (_selectionAction == SelectionAction.cut) {
+          _moveDirectory(dir, newDir, refresh: false);
+        }
+      }
+    }
+    _selection.clear();
+    _selectionAction = SelectionAction.none;
+    _listDirectories();
+  }
+
+  Future<void> _saveFile(RemoteFile file, String savePath) async {
     if (File(savePath).existsSync()) {
       File(savePath).deleteSync();
     }
-    if (File(path).existsSync()) {
+    if (File(_pathFromKey(file.key)).existsSync()) {
       if (!File(savePath).parent.existsSync()) {
         File(savePath).parent.createSync(recursive: true);
       }
-      File(path).copySync(savePath);
+      File(_pathFromKey(file.key)).copySync(savePath);
     } else {
-      _downloadFile(file, savePath);
+      _downloadFile(file);
     }
   }
 
-  Future<void> _saveDirectory(String dir, String path, String savePath) async {
+  Future<void> _saveDirectory(String dir, String savePath) async {
     if (Directory(savePath).existsSync()) {
       Directory(savePath).deleteSync(recursive: true);
     }
-    if (Directory(path).existsSync()) {
-      for (final entity
-          in Directory(path).listSync(recursive: true, followLinks: false)) {
+    if (Directory(_pathFromKey(dir)).existsSync()) {
+      for (final entity in Directory(_pathFromKey(dir))
+          .listSync(recursive: true, followLinks: false)) {
         if (entity is File) {
-          final relativePath = p.relative(entity.path, from: path);
+          final relativePath = p.relative(entity.path, from: _pathFromKey(dir));
           final newFilePath = p.join(savePath, relativePath);
           final newFileDir = p.dirname(newFilePath);
           if (!Directory(newFileDir).existsSync()) {
@@ -398,7 +458,7 @@ class _HomeState extends State<Home> {
         }
       }
     } else {
-      _downloadDirectory(dir, savePath);
+      _downloadDirectory(dir);
     }
   }
 
@@ -506,9 +566,17 @@ class _HomeState extends State<Home> {
                           ),
             if (_navIndex == 0)
               _selection.isNotEmpty
-                  ? Text(
-                      "${_selection.whereType<String>().isNotEmpty ? '${_selection.whereType<String>().length} Folders ' : ''}${_selection.whereType<RemoteFile>().isNotEmpty ? '${_selection.whereType<RemoteFile>().length} Files ' : ''}selected",
-                      style: Theme.of(context).textTheme.bodyMedium)
+                  ? _selectionAction == SelectionAction.none
+                      ? Text(
+                          "${_selection.whereType<String>().isNotEmpty ? '${_selection.whereType<String>().length} Folders ' : ''}${_selection.whereType<RemoteFile>().isNotEmpty ? '${_selection.whereType<RemoteFile>().length} Files ' : ''}selected",
+                          style: Theme.of(context).textTheme.bodyMedium)
+                      : _selectionAction == SelectionAction.copy
+                          ? Text(
+                              "Copying ${_selection.whereType<String>().isNotEmpty ? '${_selection.whereType<String>().length} Folders ' : ''}${_selection.whereType<RemoteFile>().isNotEmpty ? '${_selection.whereType<RemoteFile>().length} Files ' : ''}",
+                              style: Theme.of(context).textTheme.bodyMedium)
+                          : Text(
+                              "Cutting ${_selection.whereType<String>().isNotEmpty ? '${_selection.whereType<String>().length} Folders ' : ''}${_selection.whereType<RemoteFile>().isNotEmpty ? '${_selection.whereType<RemoteFile>().length} Files ' : ''}",
+                              style: Theme.of(context).textTheme.bodyMedium)
                   : Text("$_dirCount Folders  $_fileCount Files",
                       style: Theme.of(context).textTheme.bodyMedium),
           ],
@@ -548,39 +616,216 @@ class _HomeState extends State<Home> {
                         const CircularProgressIndicator(),
                       ]
                     : _selection.isNotEmpty
-                        ? [
-                            IconButton(
-                                onPressed: () => showModalBottomSheet(
-                                    context: context,
-                                    enableDrag: true,
-                                    showDragHandle: true,
-                                    constraints: const BoxConstraints(
-                                      maxHeight: 800,
-                                      maxWidth: 800,
-                                    ),
-                                    builder: (context) => buildBulkContextMenu(
-                                          context,
-                                          _selection.toList(),
-                                          _localRoot,
-                                          _getLink,
-                                          _downloadFile,
-                                          _downloadDirectory,
-                                          _saveFile,
-                                          _saveDirectory,
-                                          _copyFile,
-                                          _copyDirectory,
-                                          _moveFile,
-                                          _moveDirectory,
-                                          _deleteFile,
-                                          _deleteDirectory,
-                                          () {
-                                            _selection.clear();
-                                            setState(() {});
-                                          },
-                                        )).then((value) => _listDirectories()),
-                                icon: Icon(Icons.more_vert))
-                          ]
+                        ? _selectionAction == SelectionAction.none
+                            ? [
+                                if (_selection.length <
+                                    _allSelectableItems.length)
+                                  IconButton(
+                                    onPressed: () {
+                                      _selection.addAll(_allSelectableItems);
+                                      setState(() {});
+                                    },
+                                    icon: const Icon(Icons.select_all),
+                                  ),
+                                IconButton(
+                                  onPressed: () {
+                                    _selection.clear();
+                                    setState(() {});
+                                  },
+                                  icon: Icon(Icons.close),
+                                ),
+                                IconButton(
+                                  onPressed: () => showModalBottomSheet(
+                                          context: context,
+                                          enableDrag: true,
+                                          showDragHandle: true,
+                                          constraints: const BoxConstraints(
+                                            maxHeight: 800,
+                                            maxWidth: 800,
+                                          ),
+                                          builder: (context) =>
+                                              buildBulkContextMenu(
+                                                context,
+                                                _selection.toList(),
+                                                _localRoot,
+                                                _getLink,
+                                                _downloadFile,
+                                                _downloadDirectory,
+                                                _saveFile,
+                                                _saveDirectory,
+                                                _copyFile,
+                                                _copyDirectory,
+                                                _moveFile,
+                                                _moveDirectory,
+                                                _cut,
+                                                _copy,
+                                                _deleteFile,
+                                                _deleteDirectory,
+                                                () {
+                                                  _selection.clear();
+                                                  setState(() {});
+                                                },
+                                              ))
+                                      .then((value) => _listDirectories()),
+                                  icon: Icon(Icons.more_vert),
+                                ),
+                              ]
+                            : [
+                                IconButton(
+                                  onPressed: _paste,
+                                  icon: const Icon(Icons.paste),
+                                ),
+                                IconButton(
+                                  onPressed: () {
+                                    _selectionAction = SelectionAction.none;
+                                    setState(() {});
+                                  },
+                                  icon: const Icon(Icons.close),
+                                ),
+                              ]
                         : [
+                            if (_localDir != './')
+                              IconButton(
+                                icon: const Icon(Icons.more_vert),
+                                onPressed: () {
+                                  showMenu(
+                                    context: context,
+                                    position:
+                                        RelativeRect.fromLTRB(1000, 60, 0, 0),
+                                    menuPadding: EdgeInsets.zero,
+                                    items: [
+                                      PopupMenuItem(
+                                        padding: EdgeInsets.zero,
+                                        enabled: false,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            ListTile(
+                                              contentPadding: EdgeInsets.only(
+                                                  left: 16, right: 16),
+                                              titleTextStyle: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium,
+                                              title: Text('Name'),
+                                              trailing: _sortMode ==
+                                                      SortMode.nameAsc
+                                                  ? Icon(Icons.arrow_upward)
+                                                  : _sortMode ==
+                                                          SortMode.nameDesc
+                                                      ? Icon(
+                                                          Icons.arrow_downward)
+                                                      : null,
+                                              onTap: () {
+                                                setState(() {
+                                                  _sortMode = _sortMode ==
+                                                          SortMode.nameAsc
+                                                      ? SortMode.nameDesc
+                                                      : SortMode.nameAsc;
+                                                });
+                                                Navigator.of(context).pop();
+                                              },
+                                            ),
+                                            ListTile(
+                                              contentPadding: EdgeInsets.only(
+                                                  left: 16, right: 16),
+                                              titleTextStyle: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium,
+                                              title: Text('Date'),
+                                              trailing: _sortMode ==
+                                                      SortMode.dateAsc
+                                                  ? Icon(Icons.arrow_upward)
+                                                  : _sortMode ==
+                                                          SortMode.dateDesc
+                                                      ? Icon(
+                                                          Icons.arrow_downward)
+                                                      : null,
+                                              onTap: () {
+                                                setState(() {
+                                                  _sortMode = _sortMode ==
+                                                          SortMode.dateAsc
+                                                      ? SortMode.dateDesc
+                                                      : SortMode.dateAsc;
+                                                });
+                                                Navigator.of(context).pop();
+                                              },
+                                            ),
+                                            ListTile(
+                                              contentPadding: EdgeInsets.only(
+                                                  left: 16, right: 16),
+                                              titleTextStyle: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium,
+                                              title: Text('Size'),
+                                              trailing: _sortMode ==
+                                                      SortMode.sizeAsc
+                                                  ? Icon(Icons.arrow_upward)
+                                                  : _sortMode ==
+                                                          SortMode.sizeDesc
+                                                      ? Icon(
+                                                          Icons.arrow_downward)
+                                                      : null,
+                                              onTap: () {
+                                                setState(() {
+                                                  _sortMode = _sortMode ==
+                                                          SortMode.sizeAsc
+                                                      ? SortMode.sizeDesc
+                                                      : SortMode.sizeAsc;
+                                                });
+                                                Navigator.of(context).pop();
+                                              },
+                                            ),
+                                            ListTile(
+                                              contentPadding: EdgeInsets.only(
+                                                  left: 16, right: 16),
+                                              titleTextStyle: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium,
+                                              title: Text('Type'),
+                                              trailing: _sortMode ==
+                                                      SortMode.typeAsc
+                                                  ? Icon(Icons.arrow_upward)
+                                                  : _sortMode ==
+                                                          SortMode.typeDesc
+                                                      ? Icon(
+                                                          Icons.arrow_downward)
+                                                      : null,
+                                              onTap: () {
+                                                setState(() {
+                                                  _sortMode = _sortMode ==
+                                                          SortMode.typeAsc
+                                                      ? SortMode.typeDesc
+                                                      : SortMode.typeAsc;
+                                                });
+                                                Navigator.of(context).pop();
+                                              },
+                                            ),
+                                            const PopupMenuDivider(),
+                                            CheckboxListTile(
+                                              contentPadding: EdgeInsets.only(
+                                                  left: 16, right: 16),
+                                              title: Text(
+                                                'Folders First',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium,
+                                              ),
+                                              value: _foldersFirst,
+                                              onChanged: (value) {
+                                                setState(() {
+                                                  _foldersFirst = value ?? true;
+                                                });
+                                                Navigator.of(context).pop();
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
                             IconButton(
                               icon: const Icon(Icons.refresh),
                               onPressed: _loading ? null : _listDirectories,
@@ -662,8 +907,11 @@ class _HomeState extends State<Home> {
                   jobs: _jobs,
                   processor: _processor!,
                   remoteFilesMap: _remoteFilesMap,
+                  foldersFirst: _foldersFirst,
+                  sortMode: _sortMode,
                   selection: _selection,
                   select: _select,
+                  updateAllSelectableItems: _updateAllSelectableItems,
                   onJobStatus: _onJobStatus,
                   onJobComplete: _onJobComplete,
                   onChangeDirectory: (String newDir) {
@@ -683,6 +931,8 @@ class _HomeState extends State<Home> {
                   copyFile: _copyFile,
                   moveFile: _moveFile,
                   deleteFile: _deleteFile,
+                  cut: _cut,
+                  copy: _copy,
                   copyDirectory: _copyDirectory,
                   moveDirectory: _moveDirectory,
                   deleteDirectory: _deleteDirectory,

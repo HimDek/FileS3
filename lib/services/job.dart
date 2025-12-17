@@ -68,7 +68,7 @@ class Watcher {
   final List<RemoteFile> remoteFiles;
   final List<StreamSubscription<FileSystemEvent>> _subscriptions = [];
   final Future<void> Function() remoteRefresh;
-  final void Function(RemoteFile, String) downloadFile;
+  final void Function(RemoteFile) downloadFile;
   final void Function(String, File) uploadFile;
   final void Function(Job job) onJobStatus;
   bool _watching = false;
@@ -161,10 +161,7 @@ class Watcher {
         return;
       }
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
-        downloadFile(
-          file,
-          p.join(localDir.path, file.key.split('/').sublist(1).join('/')),
-        );
+        downloadFile(file);
       }
     }
 
@@ -175,10 +172,7 @@ class Watcher {
         return;
       }
       if (mode == BackupMode.sync) {
-        downloadFile(
-          file,
-          p.join(localDir.path, file.key.split('/').sublist(1).join('/')),
-        );
+        downloadFile(file);
       }
     }
 
