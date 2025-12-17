@@ -57,7 +57,6 @@ class _HomeState extends State<Home> {
       <String, List<RemoteFile>>{};
   final Set<dynamic> _selection = {};
   final List<dynamic> _allSelectableItems = [];
-  final GlobalKey<ScaffoldState> _drawerKey = GlobalKey<ScaffoldState>();
   bool _foldersFirst = true;
   SortMode _sortMode = SortMode.nameAsc;
   SelectionAction _selectionAction = SelectionAction.none;
@@ -684,177 +683,179 @@ class _HomeState extends State<Home> {
                                 ),
                               ]
                         : [
-                            if (_localDir != './')
-                              IconButton(
-                                icon: const Icon(Icons.more_vert),
-                                onPressed: () {
-                                  showMenu(
-                                    context: context,
-                                    position:
-                                        RelativeRect.fromLTRB(1000, 60, 0, 0),
-                                    menuPadding: EdgeInsets.zero,
-                                    items: [
-                                      PopupMenuItem(
-                                        padding: EdgeInsets.zero,
-                                        enabled: false,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            ListTile(
-                                              contentPadding: EdgeInsets.only(
-                                                  left: 16, right: 16),
-                                              titleTextStyle: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium,
-                                              title: Text('Name'),
-                                              trailing: _sortMode ==
-                                                      SortMode.nameAsc
-                                                  ? Icon(Icons.arrow_upward)
-                                                  : _sortMode ==
-                                                          SortMode.nameDesc
-                                                      ? Icon(
-                                                          Icons.arrow_downward)
-                                                      : null,
-                                              onTap: () {
-                                                setState(() {
-                                                  _sortMode = _sortMode ==
-                                                          SortMode.nameAsc
-                                                      ? SortMode.nameDesc
-                                                      : SortMode.nameAsc;
-                                                });
-                                                Navigator.of(context).pop();
-                                              },
-                                            ),
-                                            ListTile(
-                                              contentPadding: EdgeInsets.only(
-                                                  left: 16, right: 16),
-                                              titleTextStyle: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium,
-                                              title: Text('Date'),
-                                              trailing: _sortMode ==
-                                                      SortMode.dateAsc
-                                                  ? Icon(Icons.arrow_upward)
-                                                  : _sortMode ==
-                                                          SortMode.dateDesc
-                                                      ? Icon(
-                                                          Icons.arrow_downward)
-                                                      : null,
-                                              onTap: () {
-                                                setState(() {
-                                                  _sortMode = _sortMode ==
-                                                          SortMode.dateAsc
-                                                      ? SortMode.dateDesc
-                                                      : SortMode.dateAsc;
-                                                });
-                                                Navigator.of(context).pop();
-                                              },
-                                            ),
-                                            ListTile(
-                                              contentPadding: EdgeInsets.only(
-                                                  left: 16, right: 16),
-                                              titleTextStyle: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium,
-                                              title: Text('Size'),
-                                              trailing: _sortMode ==
-                                                      SortMode.sizeAsc
-                                                  ? Icon(Icons.arrow_upward)
-                                                  : _sortMode ==
-                                                          SortMode.sizeDesc
-                                                      ? Icon(
-                                                          Icons.arrow_downward)
-                                                      : null,
-                                              onTap: () {
-                                                setState(() {
-                                                  _sortMode = _sortMode ==
-                                                          SortMode.sizeAsc
-                                                      ? SortMode.sizeDesc
-                                                      : SortMode.sizeAsc;
-                                                });
-                                                Navigator.of(context).pop();
-                                              },
-                                            ),
-                                            ListTile(
-                                              contentPadding: EdgeInsets.only(
-                                                  left: 16, right: 16),
-                                              titleTextStyle: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium,
-                                              title: Text('Type'),
-                                              trailing: _sortMode ==
-                                                      SortMode.typeAsc
-                                                  ? Icon(Icons.arrow_upward)
-                                                  : _sortMode ==
-                                                          SortMode.typeDesc
-                                                      ? Icon(
-                                                          Icons.arrow_downward)
-                                                      : null,
-                                              onTap: () {
-                                                setState(() {
-                                                  _sortMode = _sortMode ==
-                                                          SortMode.typeAsc
-                                                      ? SortMode.typeDesc
-                                                      : SortMode.typeAsc;
-                                                });
-                                                Navigator.of(context).pop();
-                                              },
-                                            ),
-                                            const PopupMenuDivider(),
-                                            CheckboxListTile(
-                                              contentPadding: EdgeInsets.only(
-                                                  left: 16, right: 16),
-                                              title: Text(
-                                                'Folders First',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodyMedium,
-                                              ),
-                                              value: _foldersFirst,
-                                              onChanged: (value) {
-                                                setState(() {
-                                                  _foldersFirst = value ?? true;
-                                                });
-                                                Navigator.of(context).pop();
-                                              },
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              ),
                             IconButton(
                               icon: const Icon(Icons.refresh),
                               onPressed: _loading ? null : _listDirectories,
                             ),
+                            IconButton(
+                              icon: const Icon(Icons.more_vert),
+                              onPressed: () {
+                                showMenu(
+                                  context: context,
+                                  position:
+                                      RelativeRect.fromLTRB(1000, 60, 0, 0),
+                                  menuPadding: EdgeInsets.zero,
+                                  items: [
+                                    PopupMenuItem(
+                                      padding: EdgeInsets.zero,
+                                      enabled: false,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          if (_localDir != './')
+                                            for (var w in [
+                                              ListTile(
+                                                contentPadding: EdgeInsets.only(
+                                                    left: 16, right: 16),
+                                                titleTextStyle:
+                                                    Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium,
+                                                title: Text('Name'),
+                                                trailing: _sortMode ==
+                                                        SortMode.nameAsc
+                                                    ? Icon(Icons.arrow_upward)
+                                                    : _sortMode ==
+                                                            SortMode.nameDesc
+                                                        ? Icon(Icons
+                                                            .arrow_downward)
+                                                        : null,
+                                                onTap: () {
+                                                  setState(() {
+                                                    _sortMode = _sortMode ==
+                                                            SortMode.nameAsc
+                                                        ? SortMode.nameDesc
+                                                        : SortMode.nameAsc;
+                                                  });
+                                                  Navigator.of(context).pop();
+                                                },
+                                              ),
+                                              ListTile(
+                                                contentPadding: EdgeInsets.only(
+                                                    left: 16, right: 16),
+                                                titleTextStyle:
+                                                    Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium,
+                                                title: Text('Date'),
+                                                trailing: _sortMode ==
+                                                        SortMode.dateAsc
+                                                    ? Icon(Icons.arrow_upward)
+                                                    : _sortMode ==
+                                                            SortMode.dateDesc
+                                                        ? Icon(Icons
+                                                            .arrow_downward)
+                                                        : null,
+                                                onTap: () {
+                                                  setState(() {
+                                                    _sortMode = _sortMode ==
+                                                            SortMode.dateAsc
+                                                        ? SortMode.dateDesc
+                                                        : SortMode.dateAsc;
+                                                  });
+                                                  Navigator.of(context).pop();
+                                                },
+                                              ),
+                                              ListTile(
+                                                contentPadding: EdgeInsets.only(
+                                                    left: 16, right: 16),
+                                                titleTextStyle:
+                                                    Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium,
+                                                title: Text('Size'),
+                                                trailing: _sortMode ==
+                                                        SortMode.sizeAsc
+                                                    ? Icon(Icons.arrow_upward)
+                                                    : _sortMode ==
+                                                            SortMode.sizeDesc
+                                                        ? Icon(Icons
+                                                            .arrow_downward)
+                                                        : null,
+                                                onTap: () {
+                                                  setState(() {
+                                                    _sortMode = _sortMode ==
+                                                            SortMode.sizeAsc
+                                                        ? SortMode.sizeDesc
+                                                        : SortMode.sizeAsc;
+                                                  });
+                                                  Navigator.of(context).pop();
+                                                },
+                                              ),
+                                              ListTile(
+                                                contentPadding: EdgeInsets.only(
+                                                    left: 16, right: 16),
+                                                titleTextStyle:
+                                                    Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium,
+                                                title: Text('Type'),
+                                                trailing: _sortMode ==
+                                                        SortMode.typeAsc
+                                                    ? Icon(Icons.arrow_upward)
+                                                    : _sortMode ==
+                                                            SortMode.typeDesc
+                                                        ? Icon(Icons
+                                                            .arrow_downward)
+                                                        : null,
+                                                onTap: () {
+                                                  setState(() {
+                                                    _sortMode = _sortMode ==
+                                                            SortMode.typeAsc
+                                                        ? SortMode.typeDesc
+                                                        : SortMode.typeAsc;
+                                                  });
+                                                  Navigator.of(context).pop();
+                                                },
+                                              ),
+                                              const PopupMenuDivider(),
+                                              CheckboxListTile(
+                                                contentPadding: EdgeInsets.only(
+                                                    left: 16, right: 16),
+                                                title: Text(
+                                                  'Folders First',
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .bodyMedium,
+                                                ),
+                                                value: _foldersFirst,
+                                                onChanged: (value) {
+                                                  setState(() {
+                                                    _foldersFirst =
+                                                        value ?? true;
+                                                  });
+                                                  Navigator.of(context).pop();
+                                                },
+                                              ),
+                                              const PopupMenuDivider(),
+                                            ])
+                                              w,
+                                          ListTile(
+                                            contentPadding: EdgeInsets.only(
+                                                left: 16, right: 16),
+                                            titleTextStyle: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium,
+                                            title: Text('Settings'),
+                                            onTap: () {
+                                              Navigator.of(context).pop();
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (context) =>
+                                                      SettingsPage(),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
                           ],
-      ),
-      drawer: Drawer(
-        key: _drawerKey,
-        child: ListView(
-          children: [
-            Padding(
-              padding: EdgeInsetsGeometry.all(16),
-              child: Text(
-                'S3 Drive',
-                style: Theme.of(context).textTheme.headlineLarge,
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.settings),
-              title: Text('Settings'),
-              onTap: () {
-                _drawerKey.currentState?.closeDrawer();
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => SettingsPage(),
-                ));
-              },
-            ),
-          ],
-        ),
       ),
       body: _localDir == './' && _navIndex == 0
           ? ListView(
