@@ -658,7 +658,9 @@ class DirectoryContextOption {
         icon: Icons.save,
         action: () async {
           final directory = await getDirectoryPath(canCreateDirectories: true);
-          final handle = handler.saveAs(directory);
+          final handle = handler.saveAs(directory == null
+              ? null
+              : p.join(directory, p.basename(handler.key)));
           if (handle != null) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -891,7 +893,23 @@ class BulkContextOption {
           final directory = await getDirectoryPath(canCreateDirectories: true);
           bool saved = false;
           for (final handler in handlers) {
-            final handle = handler.saveAs(directory);
+            late String Function()? handle;
+            if (handler is FileContextActionHandler) {
+              handle = handler.saveAs(
+                directory == null
+                    ? null
+                    : p.join(directory, handler.file.key.split('/').last),
+              );
+            } else {
+              handle = handler.saveAs(
+                directory == null
+                    ? null
+                    : p.join(
+                        directory,
+                        p.basename(
+                            (handler as DirectoryContextActionHandler).key)),
+              );
+            }
             if (handle != null) {
               handle();
               saved = true;
