@@ -1,13 +1,11 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
-import 'package:file_selector/file_selector.dart';
-import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:open_file/open_file.dart';
-import 'package:s3_drive/services/job.dart';
-import 'package:s3_drive/services/models/remote_file.dart';
-import 'package:s3_drive/services/s3_file_manager.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:s3_drive/services/models/remote_file.dart';
 
 Future<int?> Function(BuildContext) expiryDialog = (BuildContext context) =>
     showDialog<int>(
@@ -81,28 +79,40 @@ String bytesToReadable(int bytes) {
   return '${size.toStringAsFixed(2)} ${suffixes[i]}';
 }
 
-class FileContextActionHandler {
+abstract class ContextActionHandler {
   final String localRoot;
+
+  ContextActionHandler({
+    required this.localRoot,
+  });
+
+  void Function()? download();
+  String Function()? saveAs(String? path);
+  Future<String> Function() rename(String newName);
+  Future<String> Function()? delete(bool? yes);
+}
+
+class FileContextActionHandler extends ContextActionHandler {
   final RemoteFile file;
-  final S3FileManager s3Manager;
-  final List<Job> jobs;
-  final Function startProcessor;
-  final Function(Job)? onJobStatus;
-  final Processor processor;
+  final Future<String> Function(RemoteFile, int?) getLink;
+  final Function(RemoteFile, String) downloadFile;
+  final Function(RemoteFile, String, String) saveFile;
+  final Function(String, String, String, String) copyFile;
+  final Function(String, String, String, String) moveFile;
   final Function(String, String) deleteFile;
 
   FileContextActionHandler({
-    required this.localRoot,
+    required super.localRoot,
     required this.file,
-    required this.s3Manager,
-    required this.jobs,
-    required this.startProcessor,
-    required this.onJobStatus,
-    required this.processor,
+    required this.getLink,
+    required this.downloadFile,
+    required this.saveFile,
+    required this.copyFile,
+    required this.moveFile,
     required this.deleteFile,
   });
 
-  Function()? open() {
+  void Function()? open() {
     return File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
             .existsSync()
         ? () {
@@ -112,110 +122,71 @@ class FileContextActionHandler {
         : null;
   }
 
-  Function()? download() {
-    return localRoot.isEmpty
+  @override
+  void Function()? download() {
+    return localRoot.isEmpty ||
+            File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
+                .existsSync()
         ? null
         : () {
-            final localPath =
-                p.join(localRoot, file.key.split('/').sublist(1).join('/'));
-            jobs.add(
-              DownloadJob(
-                localFile: File(localPath),
-                remoteKey: file.key,
-                bytes: file.size,
-                md5: file.etag,
-                onStatus: onJobStatus,
-              ),
-            );
-            startProcessor();
+            downloadFile(file,
+                p.join(localRoot, file.key.split('/').sublist(1).join('/')));
           };
   }
 
-  Function()? saveAs(FileSaveLocation? savePath) {
-    return () {
-      if (savePath != null) {
-        final localPath = savePath.path;
-        if (File(localPath).existsSync()) {
-          File(localPath).deleteSync();
-        }
-        if (File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
-            .existsSync()) {
-          File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
-              .copySync(localPath);
-        } else {
-          jobs.add(
-            DownloadJob(
-              localFile: File(localPath),
-              remoteKey: file.key,
-              bytes: file.size,
-              onStatus: onJobStatus,
-              md5: file.etag,
-            ),
-          );
-          startProcessor();
-        }
-        return 'Saving to $localPath';
-      }
-      return 'Save cancelled';
-    };
-  }
-
-  Function()? share() {
-    return File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
-            .existsSync()
+  @override
+  String Function()? saveAs(String? path) {
+    return path != null
         ? () {
-            SharePlus.instance.share(
-              ShareParams(
-                files: [
-                  XFile(p.join(
-                      localRoot, file.key.split('/').sublist(1).join('/')))
-                ],
-              ),
+            saveFile(
+              file,
+              p.join(localRoot, file.key.split('/').sublist(1).join('/')),
+              path,
             );
+            return 'Saving to $path';
           }
         : null;
   }
 
-  Function()? copyLink(int? seconds) {
+  XFile Function()? getXFile() {
+    return File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
+            .existsSync()
+        ? () {
+            return XFile(
+                p.join(localRoot, file.key.split('/').sublist(1).join('/')));
+          }
+        : null;
+  }
+
+  Future<String> Function() getLinkToCopy(int? seconds) {
     return () async {
-      Job job = GetLinkJob(
-        localFile: File(
-          p.join(localRoot, file.key.split('/').sublist(1).join('/')),
-        ),
-        remoteKey: file.key,
-        bytes: file.size,
-        onStatus: onJobStatus,
-        md5: file.etag,
-        validForSeconds: seconds ?? 3600,
-      );
-      await processor.processJob(job, (job, result) {});
-      await Clipboard.setData(ClipboardData(text: job.statusMsg));
+      return await getLink(file, seconds);
     };
   }
 
-  Function()? rename(String newName) {
+  @override
+  Future<String> Function() rename(String newName) {
     return () async {
-      final newKey = '${p.dirname(file.key)}/${newName.replaceAll('/', '_')}';
-      await s3Manager.renameFile(file.key, newKey);
-      if (File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
-          .existsSync()) {
-        final newLocalPath =
-            p.join(localRoot, newKey.split('/').sublist(1).join('/'));
-        File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
-            .renameSync(newLocalPath);
-      }
+      final newKey = p.join(p.dirname(file.key), newName.replaceAll('/', '_'));
+      await moveFile(
+        file.key,
+        newKey,
+        p.join(localRoot, file.key.split('/').sublist(1).join('/')),
+        p.join(localRoot, newKey.split('/').sublist(1).join('/')),
+      );
       return 'Renamed to $newName';
     };
   }
 
-  Function()? delete(bool? yes) {
-    return () {
-      if (yes ?? false) {
-        deleteFile(file.key,
-            p.join(localRoot, file.key.split('/').sublist(1).join('/')));
-        return 'Deleted ${file.key.split('/').last}';
-      }
-    };
+  @override
+  Future<String> Function()? delete(bool? yes) {
+    return yes ?? false
+        ? () async {
+            await deleteFile(file.key,
+                p.join(localRoot, file.key.split('/').sublist(1).join('/')));
+            return 'Deleted ${file.key.split('/').last}';
+          }
+        : null;
   }
 }
 
@@ -233,8 +204,6 @@ class FileContextOption {
   });
 
   static FileContextOption open(
-    String localRoot,
-    RemoteFile file,
     FileContextActionHandler handler,
   ) =>
       FileContextOption(
@@ -244,11 +213,6 @@ class FileContextOption {
       );
 
   static FileContextOption download(
-    String localRoot,
-    RemoteFile file,
-    List<Job> jobs,
-    Function startProcessor,
-    Function(Job)? onJobStatus,
     FileContextActionHandler handler,
   ) =>
       FileContextOption(
@@ -258,11 +222,7 @@ class FileContextOption {
       );
 
   static FileContextOption saveAs(
-    String localRoot,
     RemoteFile file,
-    List<Job> jobs,
-    Function startProcessor,
-    Function(Job)? onJobStatus,
     FileContextActionHandler handler,
     BuildContext context,
   ) =>
@@ -270,17 +230,17 @@ class FileContextOption {
         title: 'Save As...',
         icon: Icons.save,
         action: () async {
-          final handle = handler.saveAs(
-            await getSaveLocation(
+          final String Function()? handle = handler.saveAs(
+            (await getSaveLocation(
               suggestedName: file.key.split('/').last,
               canCreateDirectories: true,
-            ),
+            ))
+                ?.path,
           );
           if (handle != null) {
-            String msg = handle();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(msg),
+                content: Text(handle()),
               ),
             );
           }
@@ -288,22 +248,29 @@ class FileContextOption {
       );
 
   static FileContextOption share(
-    String localRoot,
-    RemoteFile file,
     FileContextActionHandler handler,
   ) =>
       FileContextOption(
         title: 'Share',
         icon: Icons.share,
         subtitle: 'Only downloaded files can be shared',
-        action: handler.share(),
+        action: () {
+          final XFile Function()? handle = handler.getXFile();
+          return handle != null
+              ? () {
+                  SharePlus.instance.share(
+                    ShareParams(
+                      files: <XFile>[
+                        handle(),
+                      ],
+                    ),
+                  );
+                }
+              : null;
+        }(),
       );
 
   static FileContextOption copyLink(
-    Function(Job)? onJobStatus,
-    Processor processor,
-    String localRoot,
-    RemoteFile file,
     FileContextActionHandler handler,
     BuildContext context,
   ) =>
@@ -311,18 +278,16 @@ class FileContextOption {
         title: 'Copy Link',
         icon: Icons.link,
         action: () async {
-          final handle = handler.copyLink(await expiryDialog(context));
-          if (handle != null) {
-            handle();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('File link copied to clipboard')),
-            );
-          }
+          Clipboard.setData(ClipboardData(
+              text:
+                  await handler.getLinkToCopy(await expiryDialog(context))()));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File link copied to clipboard')),
+          );
         },
       );
 
   static FileContextOption rename(
-    String localRoot,
     RemoteFile file,
     FileContextActionHandler handler,
     BuildContext context,
@@ -335,10 +300,9 @@ class FileContextOption {
           if (newName != null &&
               newName.isNotEmpty &&
               newName != file.key.split('/').last) {
-            String msg = await handler.rename(newName)!();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(msg),
+                content: Text(await handler.rename(newName)()),
               ),
             );
           }
@@ -346,7 +310,6 @@ class FileContextOption {
       );
 
   static FileContextOption delete(
-    String localRoot,
     RemoteFile file,
     final Function(String, String) deleteFile,
     FileContextActionHandler handler,
@@ -379,10 +342,9 @@ class FileContextOption {
             ),
           );
           if (handle != null) {
-            String msg = handle();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(msg),
+                content: Text(await handle()),
               ),
             );
           }
@@ -392,23 +354,18 @@ class FileContextOption {
   static List<FileContextOption> allOptions(
     String localRoot,
     RemoteFile file,
-    List<Job> jobs,
-    Function startProcessor,
-    Function(Job)? onJobStatus,
-    Processor processor,
     Function(String, String) deleteFile,
     FileContextActionHandler handler,
     BuildContext context,
   ) {
     return [
-      open(localRoot, file, handler),
-      download(localRoot, file, jobs, startProcessor, onJobStatus, handler),
-      saveAs(
-          localRoot, file, jobs, startProcessor, onJobStatus, handler, context),
-      share(localRoot, file, handler),
-      copyLink(onJobStatus, processor, localRoot, file, handler, context),
-      rename(localRoot, file, handler, context),
-      delete(localRoot, file, deleteFile, handler, context),
+      open(handler),
+      download(handler),
+      saveAs(file, handler, context),
+      share(handler),
+      copyLink(handler, context),
+      rename(file, handler, context),
+      delete(file, deleteFile, handler, context),
     ];
   }
 }
@@ -427,30 +384,23 @@ class FilesContextOption {
   });
 
   static FilesContextOption downloadAll(
-    String localRoot,
-    List<RemoteFile> files,
-    List<Job> jobs,
-    Function startProcessor,
-    Function(Job)? onJobStatus,
     List<FileContextActionHandler> handlers,
   ) =>
       FilesContextOption(
-          title: 'Download',
-          icon: Icons.download,
-          action: () {
-            for (final handler in handlers) {
-              if (handler.download() != null) {
-                handler.download()!();
+        title: 'Download',
+        icon: Icons.download,
+        action: handlers.any((handler) => handler.download() != null)
+            ? () {
+                for (final handler in handlers) {
+                  if (handler.download() != null) {
+                    handler.download()!();
+                  }
+                }
               }
-            }
-          });
+            : null,
+      );
 
   static FilesContextOption saveAllTo(
-    String localRoot,
-    List<RemoteFile> files,
-    List<Job> jobs,
-    Function startProcessor,
-    Function(Job)? onJobStatus,
     List<FileContextActionHandler> handlers,
     BuildContext context,
   ) =>
@@ -468,8 +418,8 @@ class FilesContextOption {
                       p.join(directory, handler.file.key.split('/').last),
                     ),
             );
-            if (handler.saveAs(savePath) != null) {
-              handler.saveAs(savePath)!();
+            if (handler.saveAs(savePath.path) != null) {
+              handler.saveAs(savePath.path)!();
               saved = true;
             }
           }
@@ -484,39 +434,29 @@ class FilesContextOption {
       );
 
   static FilesContextOption shareAll(
-    String localRoot,
-    List<RemoteFile> files,
     List<FileContextActionHandler> handlers,
   ) =>
       FilesContextOption(
         title: 'Share',
         icon: Icons.share,
         subtitle: 'Only downloaded files can be shared',
-        action: () {
-          List<XFile> shareFiles = [];
-          for (final handler in handlers) {
-            if (handler.share() != null) {
-              shareFiles.add(
-                XFile(p.join(localRoot,
-                    handler.file.key.split('/').sublist(1).join('/'))),
-              );
-            }
-          }
-          if (shareFiles.isNotEmpty) {
-            SharePlus.instance.share(
-              ShareParams(
-                files: shareFiles,
-              ),
-            );
-          }
-        },
+        action: handlers.any((handler) => handler.getXFile() != null)
+            ? () {
+                SharePlus.instance.share(
+                  ShareParams(
+                    files: handlers
+                        .where((handler) => handler.getXFile() != null)
+                        .map(
+                          (handler) => handler.getXFile()!(),
+                        )
+                        .toList(),
+                  ),
+                );
+              }
+            : null,
       );
 
   static FilesContextOption copyAllLinks(
-    Function(Job)? onJobStatus,
-    Processor processor,
-    String localRoot,
-    List<RemoteFile> files,
     List<FileContextActionHandler> handlers,
     BuildContext context,
   ) =>
@@ -527,19 +467,7 @@ class FilesContextOption {
           String allLinks = '';
           int? seconds = await expiryDialog(context);
           for (final handler in handlers) {
-            Job job = GetLinkJob(
-              localFile: File(
-                p.join(localRoot,
-                    handler.file.key.split('/').sublist(1).join('/')),
-              ),
-              remoteKey: handler.file.key,
-              bytes: handler.file.size,
-              onStatus: onJobStatus,
-              md5: handler.file.etag,
-              validForSeconds: seconds ?? 3600,
-            );
-            await processor.processJob(job, (job, result) {});
-            allLinks += '${job.statusMsg}\n\n';
+            allLinks += '${await handler.getLinkToCopy(seconds)()}\n\n';
           }
           if (allLinks.isNotEmpty) {
             Clipboard.setData(ClipboardData(text: allLinks));
@@ -551,9 +479,6 @@ class FilesContextOption {
       );
 
   static FilesContextOption deleteAll(
-    String localRoot,
-    List<RemoteFile> files,
-    final Function(String, String) deleteFile,
     List<FileContextActionHandler> handlers,
     BuildContext context,
     Function() clearSelection,
@@ -568,7 +493,7 @@ class FilesContextOption {
             builder: (context) => AlertDialog(
               title: const Text('Delete Selected Files'),
               content: const Text(
-                'Are you sure you want to delete all selected files from your device and S3? This action cannot be undone.',
+                'Are you sure you want to delete selected files from your device and S3? This action cannot be undone.',
               ),
               actions: [
                 TextButton(
@@ -598,69 +523,97 @@ class FilesContextOption {
   static List<FilesContextOption> allOptions(
     String localRoot,
     List<RemoteFile> files,
-    List<Job> jobs,
-    Function startProcessor,
-    Function(Job)? onJobStatus,
-    Processor processor,
     Function(String, String) deleteFile,
     List<FileContextActionHandler> handlers,
     BuildContext context,
     Function() clearSelection,
   ) {
     return [
-      downloadAll(
-          localRoot, files, jobs, startProcessor, onJobStatus, handlers),
-      saveAllTo(localRoot, files, jobs, startProcessor, onJobStatus, handlers,
-          context),
-      shareAll(localRoot, files, handlers),
-      copyAllLinks(onJobStatus, processor, localRoot, files, handlers, context),
-      deleteAll(
-          localRoot, files, deleteFile, handlers, context, clearSelection),
+      downloadAll(handlers),
+      saveAllTo(handlers, context),
+      shareAll(handlers),
+      copyAllLinks(handlers, context),
+      deleteAll(handlers, context, clearSelection),
     ];
   }
 }
 
-class DirectoryContextActionHandler {
-  final String localRoot;
+class DirectoryContextActionHandler extends ContextActionHandler {
   final String key;
-  final S3FileManager s3Manager;
-  final Function(Job)? onJobStatus;
-  final Processor processor;
+  final Function(String, String) downloadDirectory;
+  final Function(String, String, String) saveDirectory;
+  final Function(String, String, String, String) copyDirectory;
+  final Function(String, String, String, String) moveDirectory;
   final Function(String, String) deleteDirectory;
 
-  Function()? rename(String newName) {
+  void Function()? open() {
+    return Directory(p.join(localRoot, key.split('/').sublist(1).join('/')))
+            .existsSync()
+        ? () {
+            OpenFile.open(
+                p.join(localRoot, key.split('/').sublist(1).join('/')));
+          }
+        : null;
+  }
+
+  @override
+  void Function()? download() {
+    return localRoot.isEmpty
+        ? null
+        : () {
+            downloadDirectory(
+                key, p.join(localRoot, key.split('/').sublist(1).join('/')));
+          };
+  }
+
+  @override
+  String Function()? saveAs(String? path) {
+    return path == null
+        ? null
+        : () {
+            saveDirectory(
+              key,
+              p.join(localRoot, key.split('/').sublist(1).join('/')),
+              path,
+            );
+            return 'Saving to $path';
+          };
+  }
+
+  @override
+  Future<String> Function() rename(String newName) {
     return () async {
       final key = this.key.endsWith('/') ? this.key : '${this.key}/';
       final newKey = '${p.dirname(key)}/${newName.replaceAll('/', '_')}/';
-      await s3Manager.renameFile(key, newKey);
-      if (File(p.join(localRoot, key.split('/').sublist(1).join('/')))
-          .existsSync()) {
-        final newLocalPath =
-            p.join(localRoot, newKey.split('/').sublist(1).join('/'));
-        File(p.join(localRoot, key.split('/').sublist(1).join('/')))
-            .renameSync(newLocalPath);
-      }
+      await moveDirectory(
+        key,
+        newKey,
+        p.join(localRoot, key.split('/').sublist(1).join('/')),
+        p.join(localRoot, newKey.split('/').sublist(1).join('/')),
+      );
       return 'Renamed to $newName';
     };
   }
 
-  Function()? delete(bool? yes) {
-    return () {
-      if (yes ?? false) {
-        final key = this.key.endsWith('/') ? this.key : '${this.key}/';
-        deleteDirectory(
-            key, p.join(localRoot, key.split('/').sublist(1).join('/')));
-        return 'Deleted ${p.basename(key)}';
-      }
-    };
+  @override
+  Future<String> Function()? delete(bool? yes) {
+    return yes ?? false
+        ? () async {
+            final key = this.key.endsWith('/') ? this.key : '${this.key}/';
+            deleteDirectory(
+                key, p.join(localRoot, key.split('/').sublist(1).join('/')));
+            return 'Deleted ${p.basename(key)}';
+          }
+        : null;
   }
 
   DirectoryContextActionHandler({
-    required this.localRoot,
+    required super.localRoot,
     required this.key,
-    required this.s3Manager,
-    required this.onJobStatus,
-    required this.processor,
+    required this.downloadDirectory,
+    required this.saveDirectory,
+    required this.copyDirectory,
+    required this.moveDirectory,
     required this.deleteDirectory,
   });
 }
@@ -678,6 +631,44 @@ class DirectoryContextOption {
     this.action,
   });
 
+  static DirectoryContextOption open(
+    DirectoryContextActionHandler handler,
+  ) =>
+      DirectoryContextOption(
+        title: 'Open in File Explorer',
+        icon: Icons.open_in_new,
+        action: handler.open(),
+      );
+
+  static DirectoryContextOption download(
+    DirectoryContextActionHandler handler,
+  ) =>
+      DirectoryContextOption(
+        title: 'Download',
+        icon: Icons.download,
+        action: handler.download(),
+      );
+
+  static DirectoryContextOption saveTo(
+    DirectoryContextActionHandler handler,
+    BuildContext context,
+  ) =>
+      DirectoryContextOption(
+        title: 'Save To...',
+        icon: Icons.save,
+        action: () async {
+          final directory = await getDirectoryPath(canCreateDirectories: true);
+          final handle = handler.saveAs(directory);
+          if (handle != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(handle()),
+              ),
+            );
+          }
+        },
+      );
+
   static DirectoryContextOption rename(
     String localRoot,
     String key,
@@ -685,17 +676,16 @@ class DirectoryContextOption {
     BuildContext context,
   ) =>
       DirectoryContextOption(
-        title: 'Rename Directory',
+        title: 'Rename',
         icon: Icons.edit,
         action: () async {
           final newName = await renameDialog(context, p.basename(key));
           if (newName != null &&
               newName.isNotEmpty &&
               newName != p.basename(key)) {
-            String msg = await handler.rename(newName)!();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(msg),
+                content: Text(await handler.rename(newName)()),
               ),
             );
           }
@@ -710,7 +700,7 @@ class DirectoryContextOption {
     BuildContext context,
   ) =>
       DirectoryContextOption(
-        title: 'Delete Directory',
+        title: 'Delete',
         icon: Icons.delete,
         subtitle: 'Delete from device as well as S3',
         action: () async {
@@ -734,10 +724,9 @@ class DirectoryContextOption {
             ),
           );
           if (yes ?? false) {
-            String msg = handler.delete(true)!();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(msg),
+                content: Text(await handler.delete(true)!()),
               ),
             );
           }
@@ -747,15 +736,14 @@ class DirectoryContextOption {
   static List<DirectoryContextOption> allOptions(
     String localRoot,
     String key,
-    List<Job> jobs,
-    Function startProcessor,
-    Function(Job)? onJobStatus,
-    Processor processor,
     Function(String, String) deleteFile,
     DirectoryContextActionHandler handler,
     BuildContext context,
   ) {
     return [
+      open(handler),
+      download(handler),
+      saveTo(handler, context),
       rename(localRoot, key, handler, context),
       delete(localRoot, key, deleteFile, handler, context),
     ];
@@ -767,6 +755,103 @@ class DirectoriesContextOption {
   final IconData icon;
   final String? subtitle;
   final dynamic Function(BuildContext context)? action;
+
+  static DirectoriesContextOption downloadAll(
+    List<DirectoryContextActionHandler> handlers,
+  ) =>
+      DirectoriesContextOption(
+        title: 'Download',
+        icon: Icons.download,
+        action: (BuildContext context) {
+          for (final handler in handlers) {
+            handler.download()!();
+          }
+        },
+      );
+
+  static DirectoriesContextOption saveAllTo(
+    List<DirectoryContextActionHandler> handlers,
+    BuildContext context,
+  ) =>
+      DirectoriesContextOption(
+        title: 'Save To...',
+        icon: Icons.save,
+        action: (BuildContext context) async {
+          final directory = await getDirectoryPath(canCreateDirectories: true);
+          bool saved = false;
+          for (final handler in handlers) {
+            final handle = handler.saveAs(directory);
+            if (handle != null) {
+              handle();
+              saved = true;
+            }
+          }
+          if (saved) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Saving directories to $directory'),
+              ),
+            );
+          }
+        },
+      );
+
+  static DirectoriesContextOption deleteAll(
+    List<DirectoryContextActionHandler> handlers,
+    BuildContext context,
+    Function() clearSelection,
+  ) =>
+      DirectoriesContextOption(
+        title: 'Delete Selection',
+        icon: Icons.delete,
+        action: (BuildContext context) async {
+          final yes = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Delete Selected Directories'),
+              content: const Text(
+                'Are you sure you want to delete the selected directories from your device and S3? This action cannot be undone.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          );
+          if (yes ?? false) {
+            for (final handler in handlers) {
+              handler.delete(true)!.call();
+            }
+            clearSelection();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content:
+                      Text('Selected directories deleted from device and S3')),
+            );
+          }
+        },
+      );
+
+  static List<DirectoriesContextOption> allOptions(
+    String localRoot,
+    List<String> keys,
+    Function(String, String) deleteDirectory,
+    List<DirectoryContextActionHandler> handlers,
+    BuildContext context,
+    Function() clearSelection,
+  ) {
+    return [
+      downloadAll(handlers),
+      saveAllTo(handlers, context),
+      deleteAll(handlers, context, clearSelection),
+    ];
+  }
 
   DirectoriesContextOption({
     required this.title,
@@ -782,6 +867,100 @@ class BulkContextOption {
   final String? subtitle;
   final dynamic Function(BuildContext context)? action;
 
+  static BulkContextOption downloadAll(
+    List<ContextActionHandler> handlers,
+  ) =>
+      BulkContextOption(
+        title: 'Download',
+        icon: Icons.download,
+        action: (BuildContext context) {
+          for (final handler in handlers) {
+            handler.download()!();
+          }
+        },
+      );
+
+  static BulkContextOption saveAllTo(
+    List<ContextActionHandler> handlers,
+    BuildContext context,
+  ) =>
+      BulkContextOption(
+        title: 'Save To...',
+        icon: Icons.save,
+        action: (BuildContext context) async {
+          final directory = await getDirectoryPath(canCreateDirectories: true);
+          bool saved = false;
+          for (final handler in handlers) {
+            final handle = handler.saveAs(directory);
+            if (handle != null) {
+              handle();
+              saved = true;
+            }
+          }
+          if (saved) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Saving items to $directory'),
+              ),
+            );
+          }
+        },
+      );
+
+  static BulkContextOption deleteAll(
+    List<ContextActionHandler> handlers,
+    BuildContext context,
+    Function() clearSelection,
+  ) =>
+      BulkContextOption(
+        title: 'Delete Selection',
+        icon: Icons.delete,
+        action: (BuildContext context) async {
+          final yes = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Delete Selected Items'),
+                  content: const Text(
+                    'Are you sure you want to delete the selected items from your device and S3? This action cannot be undone.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('Delete'),
+                    ),
+                  ],
+                ),
+              ) ??
+              false;
+          if (yes) {
+            for (final handler in handlers) {
+              handler.delete(true)!.call();
+            }
+            clearSelection();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('Selected items deleted from device and S3')),
+            );
+          }
+        },
+      );
+
+  static List<BulkContextOption> allOptions(
+    List<ContextActionHandler> handlers,
+    BuildContext context,
+    Function() clearSelection,
+  ) {
+    return [
+      downloadAll(handlers),
+      saveAllTo(handlers, context),
+      deleteAll(handlers, context, clearSelection),
+    ];
+  }
+
   BulkContextOption({
     required this.title,
     required this.icon,
@@ -794,31 +973,27 @@ Widget buildFileContextMenu(
   BuildContext context,
   RemoteFile item,
   String localRoot,
-  S3FileManager s3Manager,
-  List<Job> jobs,
-  Function startProcessor,
-  Function(Job)? onJobStatus,
-  Processor processor,
+  Future<String> Function(RemoteFile, int?) getLink,
+  Function(RemoteFile, String) downloadFile,
+  Function(RemoteFile, String, String) saveFile,
+  Function(String, String, String, String) copyFile,
+  Function(String, String, String, String) moveFile,
   Function(String, String) deleteFile,
 ) {
   FileContextActionHandler handler = FileContextActionHandler(
     localRoot: localRoot,
     file: item,
-    s3Manager: s3Manager,
-    jobs: jobs,
-    startProcessor: startProcessor,
-    onJobStatus: onJobStatus,
-    processor: processor,
+    getLink: getLink,
+    downloadFile: downloadFile,
+    saveFile: saveFile,
+    copyFile: copyFile,
+    moveFile: moveFile,
     deleteFile: deleteFile,
   );
   return ListView(
       children: FileContextOption.allOptions(
     localRoot,
     item,
-    jobs,
-    startProcessor,
-    onJobStatus,
-    processor,
     deleteFile,
     handler,
     context,
@@ -843,11 +1018,11 @@ Widget buildFilesContextMenu(
   BuildContext context,
   List<RemoteFile> items,
   String localRoot,
-  S3FileManager s3Manager,
-  List<Job> jobs,
-  Function startProcessor,
-  Function(Job)? onJobStatus,
-  Processor processor,
+  Future<String> Function(RemoteFile, int?) getLink,
+  Function(RemoteFile, String) downloadFile,
+  Function(RemoteFile, String, String) saveFile,
+  Function(String, String, String, String) copyFile,
+  Function(String, String, String, String) moveFile,
   Function(String, String) deleteFile,
   Function() clearSelection,
 ) {
@@ -856,11 +1031,11 @@ Widget buildFilesContextMenu(
         (item) => FileContextActionHandler(
           localRoot: localRoot,
           file: item,
-          s3Manager: s3Manager,
-          jobs: jobs,
-          startProcessor: startProcessor,
-          onJobStatus: onJobStatus,
-          processor: processor,
+          getLink: getLink,
+          downloadFile: downloadFile,
+          saveFile: saveFile,
+          copyFile: copyFile,
+          moveFile: moveFile,
           deleteFile: deleteFile,
         ),
       )
@@ -869,10 +1044,6 @@ Widget buildFilesContextMenu(
       children: FilesContextOption.allOptions(
     localRoot,
     items,
-    jobs,
-    startProcessor,
-    onJobStatus,
-    processor,
     deleteFile,
     handlers,
     context,
@@ -898,29 +1069,25 @@ Widget buildDirectoryContextMenu(
   BuildContext context,
   String key,
   String localRoot,
-  S3FileManager s3Manager,
-  List<Job> jobs,
-  Function startProcessor,
-  Function(Job)? onJobStatus,
-  Processor processor,
+  Function(String, String) downloadDirectory,
+  Function(String, String, String) saveDirectory,
+  Function(String, String, String, String) copyDirectory,
+  Function(String, String, String, String) moveDirectory,
   Function(String, String) deleteDirectory,
 ) {
   DirectoryContextActionHandler handler = DirectoryContextActionHandler(
     localRoot: localRoot,
     key: key,
-    s3Manager: s3Manager,
-    onJobStatus: onJobStatus,
-    processor: processor,
+    downloadDirectory: downloadDirectory,
+    saveDirectory: saveDirectory,
+    copyDirectory: copyDirectory,
+    moveDirectory: moveDirectory,
     deleteDirectory: deleteDirectory,
   );
   return ListView(
       children: DirectoryContextOption.allOptions(
     localRoot,
     key,
-    jobs,
-    startProcessor,
-    onJobStatus,
-    processor,
     deleteDirectory,
     handler,
     context,
@@ -939,4 +1106,146 @@ Widget buildDirectoryContextMenu(
             ),
           )
           .toList());
+}
+
+Widget buildDirectoriesContextMenu(
+  BuildContext context,
+  List<String> keys,
+  String localRoot,
+  Function(String, String) downloadDirectory,
+  Function(String, String, String) saveDirectory,
+  Function(String, String, String, String) copyDirectory,
+  Function(String, String, String, String) moveDirectory,
+  Function(String, String) deleteDirectory,
+  Function() clearSelection,
+) {
+  List<DirectoryContextActionHandler> handlers = keys
+      .map(
+        (key) => DirectoryContextActionHandler(
+          localRoot: localRoot,
+          key: key,
+          downloadDirectory: downloadDirectory,
+          saveDirectory: saveDirectory,
+          copyDirectory: copyDirectory,
+          moveDirectory: moveDirectory,
+          deleteDirectory: deleteDirectory,
+        ),
+      )
+      .toList();
+  return ListView(
+      children: DirectoriesContextOption.allOptions(
+    localRoot,
+    keys,
+    deleteDirectory,
+    handlers,
+    context,
+    clearSelection,
+  )
+          .map(
+            (option) => ListTile(
+              leading: Icon(option.icon),
+              title: Text(option.title),
+              subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
+              onTap: option.action != null
+                  ? () async {
+                      await option.action!(context);
+                      Navigator.of(context).pop();
+                    }
+                  : null,
+            ),
+          )
+          .toList());
+}
+
+Widget buildBulkContextMenu(
+  BuildContext context,
+  List<dynamic> items,
+  String localRoot,
+  Future<String> Function(RemoteFile, int?) getLink,
+  Function(RemoteFile, String) downloadFile,
+  Function(String, String) downloadDirectory,
+  Function(RemoteFile, String, String) saveFile,
+  Function(String, String, String) saveDirectory,
+  Function(String, String, String, String) copyFile,
+  Function(String, String, String, String) copyDirectory,
+  Function(String, String, String, String) moveFile,
+  Function(String, String, String, String) moveDirectory,
+  Function(String, String) deleteFile,
+  Function(String, String) deleteDirectory,
+  Function() clearSelection,
+) {
+  if (items.every((item) => item is RemoteFile)) {
+    return buildFilesContextMenu(
+      context,
+      items.cast<RemoteFile>(),
+      localRoot,
+      getLink,
+      downloadFile,
+      saveFile,
+      copyFile,
+      moveFile,
+      deleteFile,
+      clearSelection,
+    );
+  } else if (items.every((item) => item is String)) {
+    return buildDirectoriesContextMenu(
+      context,
+      items.cast<String>(),
+      localRoot,
+      downloadDirectory,
+      saveDirectory,
+      copyDirectory,
+      moveDirectory,
+      deleteDirectory,
+      clearSelection,
+    );
+  } else {
+    List<ContextActionHandler> handlers = items.map((item) {
+      if (item is RemoteFile) {
+        return FileContextActionHandler(
+          localRoot: localRoot,
+          file: item,
+          getLink: getLink,
+          downloadFile: downloadFile,
+          saveFile: saveFile,
+          copyFile: copyFile,
+          moveFile: moveFile,
+          deleteFile: deleteFile,
+        );
+      } else if (item is String) {
+        return DirectoryContextActionHandler(
+          localRoot: localRoot,
+          key: item,
+          downloadDirectory: downloadDirectory,
+          saveDirectory: saveDirectory,
+          copyDirectory: copyDirectory,
+          moveDirectory: moveDirectory,
+          deleteDirectory: deleteDirectory,
+        );
+      } else {
+        throw Exception('Unknown item type');
+      }
+    }).toList();
+    return ListView(
+      children: BulkContextOption.allOptions(
+        handlers,
+        context,
+        clearSelection,
+      )
+          .map(
+            (option) => ListTile(
+              leading: Icon(option.icon),
+              title: Text(option.title),
+              subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
+              onTap: option.action != null
+                  ? () async {
+                      await option.action!(context);
+                      Navigator.of(context).pop();
+                    }
+                  : null,
+            ),
+          )
+          .toList(),
+    );
+  }
 }

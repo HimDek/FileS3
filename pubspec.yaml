@@ -43,6 +43,7 @@ dependencies:
   percent_indicator:
   share_plus:
   collection:
+  url_launcher:
 
 dev_dependencies:
   flutter_test:

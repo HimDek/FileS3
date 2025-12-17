@@ -126,14 +126,12 @@ class S3FileManager {
         .toList();
   }
 
-  Future<void> renameFile(String oldKey, String newKey) async {
-    print('Renaming $oldKey to $newKey');
-    await _s3.copyObject(
+  Future<dynamic> copyFile(String sourceKey, String destinationKey) async {
+    return await _s3.copyObject(
       bucket: _bucket,
-      copySource: '$_bucket/$_prefix$oldKey',
-      key: '$_prefix$newKey',
+      copySource: '$_bucket/$_prefix$sourceKey',
+      key: '$_prefix$destinationKey',
     );
-    await deleteFile(oldKey);
   }
 
   Future<dynamic> deleteFile(String key) async {

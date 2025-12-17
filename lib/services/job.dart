@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:s3_drive/services/hash_util.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
-import 's3_file_manager.dart';
 import 'models/backup_mode.dart';
 import 'sync_analyzer.dart';
 import 's3_transfer_task.dart';
@@ -66,12 +64,12 @@ class Watcher {
   final Directory localDir;
   final String remoteDir;
   final BackupMode mode;
-  final S3FileManager s3Manager;
   final List<Job> jobs;
   final List<RemoteFile> remoteFiles;
   final List<StreamSubscription<FileSystemEvent>> _subscriptions = [];
   final Future<void> Function() remoteRefresh;
-  final void Function() onNewJobs;
+  final void Function(RemoteFile, String) downloadFile;
+  final void Function(String, File) uploadFile;
   final void Function(Job job) onJobStatus;
   bool _watching = false;
   int _scanning = 0;
@@ -80,11 +78,11 @@ class Watcher {
     required this.localDir,
     required this.remoteDir,
     required this.mode,
-    required this.s3Manager,
     required this.jobs,
     required this.remoteFiles,
     required this.remoteRefresh,
-    required this.onNewJobs,
+    required this.downloadFile,
+    required this.uploadFile,
     required this.onJobStatus,
   });
 
@@ -146,17 +144,13 @@ class Watcher {
         return;
       }
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
-        jobs.add(
-          UploadJob(
-            localFile: file,
-            remoteKey:
-                '$remoteDir${p.relative(file.path, from: localDir.path)}',
-            bytes: file.lengthSync(),
-            onStatus: onJobStatus,
-            md5: await HashUtil.md5Hash(file),
+        uploadFile(
+          p.join(
+            remoteDir,
+            p.relative(file.path, from: localDir.path),
           ),
+          file,
         );
-        onNewJobs();
       }
     }
 
@@ -167,18 +161,10 @@ class Watcher {
         return;
       }
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
-        jobs.add(
-          DownloadJob(
-            localFile: File(
-              p.join(localDir.path, file.key.split('/').sublist(1).join('/')),
-            ),
-            remoteKey: file.key,
-            bytes: file.size,
-            onStatus: onJobStatus,
-            md5: file.etag,
-          ),
+        downloadFile(
+          file,
+          p.join(localDir.path, file.key.split('/').sublist(1).join('/')),
         );
-        onNewJobs();
       }
     }
 
@@ -189,18 +175,10 @@ class Watcher {
         return;
       }
       if (mode == BackupMode.sync) {
-        jobs.add(
-          DownloadJob(
-            localFile: File(
-              p.join(localDir.path, file.key.split('/').sublist(1).join('/')),
-            ),
-            remoteKey: file.key,
-            bytes: file.size,
-            onStatus: onJobStatus,
-            md5: file.etag,
-          ),
+        downloadFile(
+          file,
+          p.join(localDir.path, file.key.split('/').sublist(1).join('/')),
         );
-        onNewJobs();
       }
     }
 

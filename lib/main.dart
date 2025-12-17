@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:s3_drive/components.dart';
 import 'package:s3_drive/directory_contents.dart';
+import 'package:s3_drive/services/hash_util.dart';
 import 'package:s3_drive/services/ini_manager.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 'package:s3_drive/settings.dart';
@@ -53,7 +54,7 @@ class _HomeState extends State<Home> {
   final List<Watcher> _watchers = <Watcher>[];
   final Map<String, List<RemoteFile>> _remoteFilesMap =
       <String, List<RemoteFile>>{};
-  final Set<(File, RemoteFile)> _selection = <(File, RemoteFile)>{};
+  final Set<dynamic> _selection = {};
   final GlobalKey<ScaffoldState> _drawerKey = GlobalKey<ScaffoldState>();
   int _dirCount = 0;
   int _fileCount = 0;
@@ -64,44 +65,56 @@ class _HomeState extends State<Home> {
   bool _loading = true;
   http.Client httpClient = http.Client();
 
-  void selectFile((File, RemoteFile) filePair) {
-    if (_selection.any((selected) =>
-        selected.$1.path == filePair.$1.path &&
-        selected.$2.key == filePair.$2.key)) {
-      _selection.removeWhere((selected) =>
-          selected.$1.path == filePair.$1.path &&
-          selected.$2.key == filePair.$2.key);
+  void _select(dynamic item) {
+    if (_selection.any((selected) {
+      if (item is RemoteFile && selected is RemoteFile) {
+        return selected.key == item.key;
+      }
+      if (item is String && selected is String) {
+        return selected == item;
+      }
+      return false;
+    })) {
+      _selection.removeWhere((selected) {
+        if (item is RemoteFile && selected is RemoteFile) {
+          return selected.key == item.key;
+        }
+        if (item is String && selected is String) {
+          return selected == item;
+        }
+        return false;
+      });
     } else {
-      _selection.add(filePair);
+      _selection.add(item);
     }
     setState(() {});
   }
 
-  void onJobStatus(Job job) {
+  void _onJobStatus(Job job) {
     setState(() {});
   }
 
-  void onJobComplete(Job job, dynamic result) async {
-    await refreshRemote('${job.remoteKey.split('/').first}/');
+  void _onJobComplete(Job job, dynamic result) async {
+    await _refreshRemote('${job.remoteKey.split('/').first}/');
     _completedJobs.add(job);
     _jobs.remove(job);
-    startProcessor();
+    _startProcessor();
     setState(() {});
   }
 
-  void startProcessor() async {
+  void _startProcessor() async {
     _processor ??= Processor(
       cfg: await ConfigManager.loadS3Config(context),
       jobs: _jobs,
-      onJobComplete: onJobComplete,
+      onJobComplete: _onJobComplete,
     );
     _processor!.start();
   }
 
-  Future<void> refreshRemote(String dir) async {
+  Future<void> _refreshRemote(String dir) async {
     final remoteFiles = await _s3Manager.listObjects(dir: dir);
     _remoteFilesMap[dir] = remoteFiles;
-    updateCounts();
+    _updateCounts();
   }
 
   Future<void> _listDirectories() async {
@@ -132,7 +145,7 @@ class _HomeState extends State<Home> {
         _localDirs.add('');
       }
 
-      await refreshRemote(dir);
+      await _refreshRemote(dir);
 
       if (localDir != null &&
           localDir.isNotEmpty &&
@@ -142,15 +155,12 @@ class _HomeState extends State<Home> {
             localDir: Directory(localDir),
             remoteDir: dir,
             mode: BackupMode.fromValue(modeValue),
-            s3Manager: _s3Manager,
             jobs: _jobs,
             remoteFiles: _remoteFilesMap[dir] ?? [],
-            remoteRefresh: () => refreshRemote(dir),
-            onNewJobs: () {
-              setState(() {});
-              startProcessor();
-            },
-            onJobStatus: onJobStatus,
+            remoteRefresh: () => _refreshRemote(dir),
+            downloadFile: _downloadFile,
+            uploadFile: _uploadFile,
+            onJobStatus: _onJobStatus,
           ),
         );
       }
@@ -160,11 +170,24 @@ class _HomeState extends State<Home> {
       watcher.start();
     }
 
-    startProcessor();
+    _startProcessor();
 
     setState(() {
       _loading = false;
     });
+  }
+
+  Future<String> _getLink(RemoteFile file, int? seconds) async {
+    Job job = GetLinkJob(
+      localFile: File(''),
+      remoteKey: file.key,
+      bytes: file.size,
+      onStatus: _onJobStatus,
+      md5: file.etag,
+      validForSeconds: seconds ?? 3600,
+    );
+    await _processor!.processJob(job, (job, result) {});
+    return job.statusMsg;
   }
 
   Future<void> _createDirectory(String dir) async {
@@ -175,15 +198,224 @@ class _HomeState extends State<Home> {
     _listDirectories();
   }
 
-  Future<void> _deleteDirectory(String dir) async {
+  Future<void> _copyFile(String key, String newKey, String path, String newPath,
+      {bool refresh = true}) async {
     setState(() {
       _loading = true;
     });
+    await _s3Manager.copyFile(key, newKey);
+    if (File(path).existsSync()) {
+      File(path).copySync(newPath);
+    }
+    if (refresh) {
+      _listDirectories();
+    }
+  }
+
+  Future<void> _copyDirectory(
+      String dir, String newDir, String path, String newPath,
+      {bool refresh = true}) async {
+    setState(() {
+      _loading = true;
+    });
+    for (final map in _remoteFilesMap.entries) {
+      for (final file in map.value) {
+        if (file.key.startsWith(dir) &&
+            file.key != dir &&
+            !file.key.endsWith('/')) {
+          final newKey = file.key.replaceFirst(dir, newDir);
+          await _s3Manager.copyFile(file.key, newKey);
+        }
+      }
+    }
+    if (Directory(path).existsSync()) {
+      for (final entity
+          in Directory(path).listSync(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          final relativePath = p.relative(entity.path, from: path);
+          final newFilePath = p.join(newPath, relativePath);
+          final newFileDir = p.dirname(newFilePath);
+          if (!Directory(newFileDir).existsSync()) {
+            Directory(newFileDir).createSync(recursive: true);
+          }
+          entity.copySync(newFilePath);
+        }
+      }
+    }
+    if (refresh) {
+      _listDirectories();
+    }
+  }
+
+  Future<void> _deleteFile(String key, String path,
+      {bool refresh = true}) async {
+    setState(() {
+      _loading = true;
+    });
+    _s3Manager.deleteFile(key);
+    if (File(path).existsSync()) {
+      File(path).deleteSync();
+    }
+    if (refresh) {
+      _listDirectories();
+    }
+  }
+
+  Future<void> _deleteS3Directory(String dir, {bool refresh = true}) async {
+    setState(() {
+      _loading = true;
+    });
+    for (final map in _remoteFilesMap.entries) {
+      for (final file in map.value) {
+        if (file.key.startsWith(dir) &&
+            file.key != dir &&
+            !file.key.endsWith('/')) {
+          await _s3Manager.deleteFile(file.key);
+        }
+      }
+      for (final file in map.value) {
+        if (file.key.startsWith(dir) &&
+            file.key != dir &&
+            file.key.endsWith('/')) {
+          await _s3Manager.deleteFile(file.key);
+        }
+      }
+    }
     await _s3Manager.deleteFile(dir);
+    if (refresh) {
+      _listDirectories();
+    }
+  }
+
+  Future<void> _deleteDirectory(String dir, String path,
+      {bool refresh = true}) async {
+    setState(() {
+      _loading = true;
+    });
+    _deleteS3Directory(dir, refresh: false);
+    if (Directory(path).existsSync()) {
+      Directory(path).deleteSync(recursive: true);
+    }
+    if (refresh) {
+      _listDirectories();
+    }
+  }
+
+  Future<void> _moveFile(
+      String key, String newKey, String path, String newPath) async {
+    setState(() {
+      _loading = true;
+    });
+    await _copyFile(key, newKey, path, newPath, refresh: false);
+    await _deleteFile(key, path, refresh: false);
     _listDirectories();
   }
 
-  Future<void> updateCounts() async {
+  Future<void> _moveDirectory(
+      String dir, String newDir, String path, String newPath) async {
+    setState(() {
+      _loading = true;
+    });
+    await _copyDirectory(dir, newDir, path, newPath, refresh: false);
+    await _deleteS3Directory(dir, refresh: false);
+    if (Directory(path).existsSync()) {
+      Directory(path).deleteSync(recursive: true);
+    }
+    _listDirectories();
+  }
+
+  Future<void> _downloadFile(RemoteFile file, String path) async {
+    _jobs.add(
+      DownloadJob(
+        localFile: File(path),
+        remoteKey: file.key,
+        bytes: file.size,
+        md5: file.etag,
+        onStatus: _onJobStatus,
+      ),
+    );
+    _startProcessor();
+  }
+
+  Future<void> _downloadDirectory(String dir, String path) async {
+    for (final map in _remoteFilesMap.entries) {
+      for (final file in map.value) {
+        if (file.key.startsWith(dir) &&
+            file.key != dir &&
+            !file.key.endsWith('/')) {
+          final relativePath = p.relative(file.key, from: dir);
+          final localFilePath = p.join(path, relativePath);
+          final localFileDir = p.dirname(localFilePath);
+          if (!Directory(localFileDir).existsSync()) {
+            Directory(localFileDir).createSync(recursive: true);
+          }
+          if (!File(localFilePath).existsSync()) {
+            _jobs.add(
+              DownloadJob(
+                localFile: File(localFilePath),
+                remoteKey: file.key,
+                bytes: file.size,
+                md5: file.etag,
+                onStatus: _onJobStatus,
+              ),
+            );
+          }
+        }
+      }
+    }
+    _startProcessor();
+  }
+
+  Future<void> _saveFile(RemoteFile file, String path, String savePath) async {
+    if (File(savePath).existsSync()) {
+      File(savePath).deleteSync();
+    }
+    if (File(path).existsSync()) {
+      if (!File(savePath).parent.existsSync()) {
+        File(savePath).parent.createSync(recursive: true);
+      }
+      File(path).copySync(savePath);
+    } else {
+      _downloadFile(file, savePath);
+    }
+  }
+
+  Future<void> _saveDirectory(String dir, String path, String savePath) async {
+    if (Directory(savePath).existsSync()) {
+      Directory(savePath).deleteSync(recursive: true);
+    }
+    if (Directory(path).existsSync()) {
+      for (final entity
+          in Directory(path).listSync(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          final relativePath = p.relative(entity.path, from: path);
+          final newFilePath = p.join(savePath, relativePath);
+          final newFileDir = p.dirname(newFilePath);
+          if (!Directory(newFileDir).existsSync()) {
+            Directory(newFileDir).createSync(recursive: true);
+          }
+          entity.copySync(newFilePath);
+        }
+      }
+    } else {
+      _downloadDirectory(dir, savePath);
+    }
+  }
+
+  Future<void> _uploadFile(String key, File file) async {
+    _jobs.add(
+      UploadJob(
+        localFile: file,
+        remoteKey: key,
+        bytes: file.lengthSync(),
+        onStatus: _onJobStatus,
+        md5: await HashUtil.md5Hash(file),
+      ),
+    );
+    _startProcessor();
+  }
+
+  Future<void> _updateCounts() async {
     setState(() {
       _dirCount = 0;
       _fileCount = 0;
@@ -274,7 +506,8 @@ class _HomeState extends State<Home> {
                           ),
             if (_navIndex == 0)
               _selection.isNotEmpty
-                  ? Text("${_selection.length} selected",
+                  ? Text(
+                      "${_selection.whereType<String>().isNotEmpty ? '${_selection.whereType<String>().length} Folders ' : ''}${_selection.whereType<RemoteFile>().isNotEmpty ? '${_selection.whereType<RemoteFile>().length} Files ' : ''}selected",
                       style: Theme.of(context).textTheme.bodyMedium)
                   : Text("$_dirCount Folders  $_fileCount Files",
                       style: Theme.of(context).textTheme.bodyMedium),
@@ -325,26 +558,26 @@ class _HomeState extends State<Home> {
                                       maxHeight: 800,
                                       maxWidth: 800,
                                     ),
-                                    builder: (context) => buildFilesContextMenu(
-                                            context,
-                                            _selection
-                                                .map((e) => e.$2)
-                                                .toList(),
-                                            _localRoot,
-                                            _s3Manager,
-                                            _jobs,
-                                            startProcessor,
-                                            onJobStatus,
-                                            _processor!, (key, path) {
-                                          _s3Manager.deleteFile(key);
-                                          if (File(path).existsSync()) {
-                                            File(path).deleteSync();
-                                          }
-                                          setState(() {});
-                                        }, () {
-                                          _selection.clear();
-                                          setState(() {});
-                                        })).then((value) => _listDirectories()),
+                                    builder: (context) => buildBulkContextMenu(
+                                          context,
+                                          _selection.toList(),
+                                          _localRoot,
+                                          _getLink,
+                                          _downloadFile,
+                                          _downloadDirectory,
+                                          _saveFile,
+                                          _saveDirectory,
+                                          _copyFile,
+                                          _copyDirectory,
+                                          _moveFile,
+                                          _moveDirectory,
+                                          _deleteFile,
+                                          _deleteDirectory,
+                                          () {
+                                            _selection.clear();
+                                            setState(() {});
+                                          },
+                                        )).then((value) => _listDirectories()),
                                 icon: Icon(Icons.more_vert))
                           ]
                         : [
@@ -402,12 +635,12 @@ class _HomeState extends State<Home> {
                                   ),
                                   builder: (context) => DirectoryOptions(
                                     directory: dir,
-                                    onDelete: _deleteDirectory,
+                                    onDelete: _deleteS3Directory,
                                     remoteFiles: _remoteFilesMap[dir] ?? [],
                                   ),
                                 ).then((value) => _listDirectories());
                               },
-                        icon: const Icon(Icons.menu),
+                        icon: const Icon(Icons.more_vert),
                       ),
                       onTap: () {
                         setState(() {
@@ -416,7 +649,7 @@ class _HomeState extends State<Home> {
                               ? _localDirs[_dirs.indexOf(dir)]
                               : _localRoot;
                         });
-                        updateCounts();
+                        _updateCounts();
                       },
                     ),
                   )
@@ -426,14 +659,13 @@ class _HomeState extends State<Home> {
               ? DirectoryContents(
                   directory: _localDir,
                   localRoot: _localRoot,
-                  s3Manager: _s3Manager,
                   jobs: _jobs,
                   processor: _processor!,
                   remoteFilesMap: _remoteFilesMap,
                   selection: _selection,
-                  selectFile: selectFile,
-                  onJobStatus: onJobStatus,
-                  onJobComplete: onJobComplete,
+                  select: _select,
+                  onJobStatus: _onJobStatus,
+                  onJobComplete: _onJobComplete,
                   onChangeDirectory: (String newDir) {
                     setState(() {
                       _localDir = newDir;
@@ -441,22 +673,21 @@ class _HomeState extends State<Home> {
                           ? _localDirs[_dirs.indexOf(newDir)]
                           : _localRoot;
                     });
-                    updateCounts();
+                    _updateCounts();
                   },
-                  deleteFile: (key, path) {
-                    _s3Manager.deleteFile(key);
-                    if (File(path).existsSync()) File(path).deleteSync();
-                    setState(() {});
-                  },
-                  deleteDirectory: (key, path) {
-                    _s3Manager.deleteFile(key);
-                    if (Directory(path).existsSync()) {
-                      Directory(path).deleteSync(recursive: true);
-                    }
-                    setState(() {});
-                  },
+                  getLink: _getLink,
+                  downloadFile: _downloadFile,
+                  saveFile: _saveFile,
+                  downloadDirectory: _downloadDirectory,
+                  saveDirectory: _saveDirectory,
+                  copyFile: _copyFile,
+                  moveFile: _moveFile,
+                  deleteFile: _deleteFile,
+                  copyDirectory: _copyDirectory,
+                  moveDirectory: _moveDirectory,
+                  deleteDirectory: _deleteDirectory,
                   listDirectories: _listDirectories,
-                  startProcessor: startProcessor,
+                  startProcessor: _startProcessor,
                 )
               : _navIndex == 1
                   ? CompletedJobs(
@@ -472,7 +703,7 @@ class _HomeState extends State<Home> {
                       onUpdate: () {
                         setState(() {});
                       },
-                      onJobComplete: onJobComplete,
+                      onJobComplete: _onJobComplete,
                     ),
       floatingActionButton: _navIndex == 0 && !_loading && _selection.isEmpty
           ? Column(
