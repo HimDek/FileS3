@@ -622,22 +622,21 @@ class _HomeState extends State<Home> {
       delegate: FileSearchDelegate(
         searchFieldLabel: 'Search in "$_localDir"',
         items: () {
+          final allItems = [
+            ..._dirs,
+            ..._remoteFilesMap.entries.expand((entry) => entry.value),
+          ];
           if (_localDir == './') {
-            return [
-              ..._dirs,
-              ..._remoteFilesMap.entries.expand((entry) => entry.value),
-            ];
+            return allItems;
           } else {
-            final remoteFiles =
-                (_remoteFilesMap['${_localDir.split('/').first}/'] ?? [])
-                    .map((file) => file);
-            return remoteFiles
-                .where((file) =>
-                    (file.key.split('/').last.isNotEmpty &&
-                        '${File(file.key).parent.path}/' == _localDir) ||
-                    (file.key.split('/').last.isEmpty &&
-                        '${File(file.key).parent.parent.path}/' == _localDir))
-                .toList();
+            return allItems.where((item) {
+              if (item is String) {
+                return p.isWithin(_localDir, item);
+              } else if (item is RemoteFile) {
+                return p.isWithin(_localDir, item.key);
+              }
+              return false;
+            }).toList();
           }
         }(),
         providedBuildResults: (context, query, results) {
