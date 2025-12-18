@@ -738,7 +738,7 @@ class _HomeState extends State<Home> {
                       ? Text("$_dirCount Folders  $_fileCount Files",
                           style: Theme.of(context).textTheme.bodyMedium)
                       : Text(
-                          "${_searchResults.whereType<String>().isNotEmpty ? '${_searchResults.whereType<String>().length} Folders ' : ''}${_searchResults.whereType<RemoteFile>().isNotEmpty ? '${_searchResults.whereType<RemoteFile>().length} Files ' : ''} found in '$_searchdir'",
+                          "${_searchResults.whereType<String>().isNotEmpty ? '${_searchResults.whereType<String>().length} Folders ' : ''}${_searchResults.whereType<RemoteFile>().isNotEmpty ? '${_searchResults.whereType<RemoteFile>().length} Files ' : ''} found in \"$_searchdir\"",
                           style: Theme.of(context).textTheme.bodyMedium),
           ],
         ),
