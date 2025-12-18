@@ -6,6 +6,7 @@ import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 Future<int?> Function(BuildContext) expiryDialog = (BuildContext context) =>
     showDialog<int>(
@@ -97,7 +98,6 @@ class FileContextActionHandler extends ContextActionHandler {
   final Future<String> Function(RemoteFile, int?) getLink;
   final Function(RemoteFile) downloadFile;
   final Function(RemoteFile, String) saveFile;
-  final Function(String, String) copyFile;
   final Function(String, String) moveFile;
   final Function(String) deleteFile;
 
@@ -107,19 +107,24 @@ class FileContextActionHandler extends ContextActionHandler {
     required this.getLink,
     required this.downloadFile,
     required this.saveFile,
-    required this.copyFile,
     required this.moveFile,
     required this.deleteFile,
   });
 
-  void Function()? open() {
+  bool rootExists() {
+    return localRoot.isNotEmpty;
+  }
+
+  dynamic Function() open() {
     return File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
             .existsSync()
         ? () {
             OpenFile.open(
                 p.join(localRoot, file.key.split('/').sublist(1).join('/')));
           }
-        : null;
+        : () async {
+            launchUrl(Uri.parse(await getLink(file, null)));
+          };
   }
 
   @override
@@ -208,8 +213,21 @@ class FileContextOption {
     FileContextActionHandler handler,
   ) =>
       FileContextOption(
-        title: 'Download',
-        icon: Icons.download,
+        title: handler.download() == null
+            ? handler.rootExists()
+                ? 'Downloaded'
+                : 'Cannot Download'
+            : 'Download',
+        subtitle: handler.download() == null
+            ? handler.rootExists()
+                ? null
+                : 'Set backup directory to enable downloads'
+            : null,
+        icon: handler.download() == null
+            ? handler.rootExists()
+                ? Icons.file_download_done_rounded
+                : Icons.file_download_off
+            : Icons.file_download_outlined,
         action: handler.download(),
       );
 
@@ -220,7 +238,7 @@ class FileContextOption {
   ) =>
       FileContextOption(
         title: 'Save As...',
-        icon: Icons.save,
+        icon: Icons.save_as,
         action: () async {
           final String Function()? handle = handler.saveAs(
             (await getSaveLocation(
@@ -243,9 +261,11 @@ class FileContextOption {
     FileContextActionHandler handler,
   ) =>
       FileContextOption(
-        title: 'Share',
+        title: handler.getXFile() == null ? 'Cannot Share' : 'Share',
         icon: Icons.share,
-        subtitle: 'Only downloaded files can be shared',
+        subtitle: handler.getXFile() == null
+            ? 'Only downloaded files can be shared'
+            : null,
         action: () {
           final XFile Function()? handle = handler.getXFile();
           return handle != null
@@ -282,7 +302,7 @@ class FileContextOption {
   static FileContextOption cut(
       FileContextActionHandler handler, Function(RemoteFile) cutKey) {
     return FileContextOption(
-      title: 'Cut',
+      title: 'Move To...',
       icon: Icons.cut,
       action: () {
         cutKey(handler.file);
@@ -293,8 +313,8 @@ class FileContextOption {
   static FileContextOption copy(
       FileContextActionHandler handler, Function(RemoteFile) copyKey) {
     return FileContextOption(
-      title: 'Copy',
-      icon: Icons.copy,
+      title: 'Copy To...',
+      icon: Icons.file_copy_rounded,
       action: () {
         copyKey(handler.file);
       },
@@ -404,9 +424,22 @@ class FilesContextOption {
     List<FileContextActionHandler> handlers,
   ) =>
       FilesContextOption(
-        title: 'Download',
-        icon: Icons.download,
-        action: handlers.any((handler) => handler.download() != null)
+        title: handlers.every((handler) => handler.download() == null)
+            ? handlers.every((handler) => handler.rootExists())
+                ? 'Downloaded'
+                : 'Cannot Download'
+            : 'Download',
+        subtitle: handlers.every((handler) => handler.download() == null)
+            ? handlers.every((handler) => handler.rootExists())
+                ? null
+                : 'Set backup directory to enable downloads'
+            : 'Only missing files will be downloaded',
+        icon: handlers.every((handler) => handler.download() == null)
+            ? handlers.every((handler) => handler.rootExists())
+                ? Icons.file_download_done_rounded
+                : Icons.file_download_off
+            : Icons.file_download_outlined,
+        action: handlers.every((handler) => handler.download() != null)
             ? () {
                 for (final handler in handlers) {
                   if (handler.download() != null) {
@@ -423,7 +456,7 @@ class FilesContextOption {
   ) =>
       FilesContextOption(
         title: 'Save To...',
-        icon: Icons.save,
+        icon: Icons.save_as,
         action: () async {
           final directory = await getDirectoryPath(canCreateDirectories: true);
           bool saved = false;
@@ -454,9 +487,15 @@ class FilesContextOption {
     List<FileContextActionHandler> handlers,
   ) =>
       FilesContextOption(
-        title: 'Share',
+        title: handlers.any((handler) => handler.getXFile() != null)
+            ? 'Share'
+            : 'Cannot Share',
         icon: Icons.share,
-        subtitle: 'Only downloaded files can be shared',
+        subtitle: handlers.every((handler) => handler.getXFile() != null)
+            ? null
+            : handlers.any((handler) => handler.getXFile() != null)
+                ? 'Only downloaded files will be shared'
+                : 'No downloaded files to share',
         action: handlers.any((handler) => handler.getXFile() != null)
             ? () {
                 SharePlus.instance.share(
@@ -499,7 +538,7 @@ class FilesContextOption {
     Function(RemoteFile?) cutKey,
   ) =>
       FilesContextOption(
-        title: 'Cut',
+        title: 'Move To...',
         icon: Icons.cut,
         action: () {
           cutKey(null);
@@ -510,8 +549,8 @@ class FilesContextOption {
     Function(RemoteFile?) copyKey,
   ) =>
       FilesContextOption(
-        title: 'Copy',
-        icon: Icons.copy,
+        title: 'Copy To...',
+        icon: Icons.file_copy_rounded,
         action: () {
           copyKey(null);
         },
@@ -524,7 +563,7 @@ class FilesContextOption {
   ) =>
       FilesContextOption(
         title: 'Delete Selection',
-        icon: Icons.delete,
+        icon: Icons.delete_sweep,
         subtitle: 'Delete from device as well as S3',
         action: () async {
           final yes = await showDialog<bool>(
@@ -585,7 +624,6 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   final String key;
   final Function(String) downloadDirectory;
   final Function(String, String) saveDirectory;
-  final Function(String, String) copyDirectory;
   final Function(String, String) moveDirectory;
   final Function(String) deleteDirectory;
 
@@ -647,7 +685,6 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     required this.key,
     required this.downloadDirectory,
     required this.saveDirectory,
-    required this.copyDirectory,
     required this.moveDirectory,
     required this.deleteDirectory,
   });
@@ -670,8 +707,11 @@ class DirectoryContextOption {
     DirectoryContextActionHandler handler,
   ) =>
       DirectoryContextOption(
-        title: 'Open in File Explorer',
-        icon: Icons.open_in_new,
+        title: handler.open() == null ? 'Cannot Open' : 'Open',
+        subtitle:
+            handler.open() == null ? 'Directory does not exist locally' : null,
+        icon:
+            handler.open() == null ? Icons.open_in_new_off : Icons.open_in_new,
         action: handler.open(),
       );
 
@@ -679,8 +719,13 @@ class DirectoryContextOption {
     DirectoryContextActionHandler handler,
   ) =>
       DirectoryContextOption(
-        title: 'Download',
-        icon: Icons.download,
+        title: handler.download() == null ? 'Cannot Download' : 'Download',
+        subtitle: handler.download() == null
+            ? 'Set backup directory to enable downloads'
+            : 'Only missing files will be downloaded',
+        icon: handler.download() == null
+            ? Icons.file_download_off
+            : Icons.file_download_outlined,
         action: handler.download(),
       );
 
@@ -690,7 +735,7 @@ class DirectoryContextOption {
   ) =>
       DirectoryContextOption(
         title: 'Save To...',
-        icon: Icons.save,
+        icon: Icons.save_as,
         action: () async {
           final directory = await getDirectoryPath(canCreateDirectories: true);
           final handle = handler.saveAs(directory == null
@@ -711,7 +756,7 @@ class DirectoryContextOption {
     Function(String) cutKey,
   ) =>
       DirectoryContextOption(
-        title: 'Cut',
+        title: 'Move To...',
         icon: Icons.cut,
         action: () {
           cutKey(key);
@@ -723,8 +768,8 @@ class DirectoryContextOption {
     Function(String) copyKey,
   ) =>
       DirectoryContextOption(
-        title: 'Copy',
-        icon: Icons.copy,
+        title: 'Copy To...',
+        icon: Icons.folder_copy,
         action: () {
           copyKey(key);
         },
@@ -761,7 +806,7 @@ class DirectoryContextOption {
   ) =>
       DirectoryContextOption(
         title: 'Delete',
-        icon: Icons.delete,
+        icon: Icons.folder_delete,
         subtitle: 'Delete from device as well as S3',
         action: () async {
           final yes = await showDialog<bool>(
@@ -823,13 +868,24 @@ class DirectoriesContextOption {
     List<DirectoryContextActionHandler> handlers,
   ) =>
       DirectoriesContextOption(
-        title: 'Download',
-        icon: Icons.download,
-        action: (BuildContext context) {
-          for (final handler in handlers) {
-            handler.download()!();
-          }
-        },
+        title: handlers.any((handler) => handler.download() == null)
+            ? 'Cannot Download'
+            : 'Download',
+        subtitle: handlers.any((handler) => handler.download() == null)
+            ? 'Set backup directory to enable downloads'
+            : 'Only missing files will be downloaded',
+        icon: handlers.any((handler) => handler.download() == null)
+            ? Icons.file_download_off
+            : Icons.file_download_outlined,
+        action: handlers.any((handler) => handler.download() != null)
+            ? (BuildContext context) {
+                for (final handler in handlers) {
+                  if (handler.download() != null) {
+                    handler.download();
+                  }
+                }
+              }
+            : null,
       );
 
   static DirectoriesContextOption saveAllTo(
@@ -838,7 +894,7 @@ class DirectoriesContextOption {
   ) =>
       DirectoriesContextOption(
         title: 'Save To...',
-        icon: Icons.save,
+        icon: Icons.save_as,
         action: (BuildContext context) async {
           final directory = await getDirectoryPath(canCreateDirectories: true);
           bool saved = false;
@@ -863,7 +919,7 @@ class DirectoriesContextOption {
     Function(String?) cutKey,
   ) =>
       DirectoriesContextOption(
-        title: 'Cut',
+        title: 'Move To...',
         icon: Icons.cut,
         action: (BuildContext context) {
           cutKey(null);
@@ -874,8 +930,8 @@ class DirectoriesContextOption {
     Function(String?) copyKey,
   ) =>
       DirectoriesContextOption(
-        title: 'Copy',
-        icon: Icons.copy,
+        title: 'Copy To...',
+        icon: Icons.folder_copy,
         action: (BuildContext context) {
           copyKey(null);
         },
@@ -888,7 +944,7 @@ class DirectoriesContextOption {
   ) =>
       DirectoriesContextOption(
         title: 'Delete Selection',
-        icon: Icons.delete,
+        icon: Icons.delete_sweep,
         action: (BuildContext context) async {
           final yes = await showDialog<bool>(
             context: context,
@@ -959,13 +1015,22 @@ class BulkContextOption {
     List<ContextActionHandler> handlers,
   ) =>
       BulkContextOption(
-        title: 'Download',
-        icon: Icons.download,
-        action: (BuildContext context) {
-          for (final handler in handlers) {
-            handler.download()!();
-          }
-        },
+        title: handlers.every((handler) => handler.download() == null)
+            ? 'Cannot Download'
+            : 'Download',
+        subtitle: handlers.every((handler) => handler.download() == null)
+            ? 'Set backup directory to enable downloads'
+            : 'Only missing items will be downloaded',
+        icon: handlers.every((handler) => handler.download() == null)
+            ? Icons.file_download_off
+            : Icons.file_download_outlined,
+        action: handlers.any((handler) => handler.download() != null)
+            ? (BuildContext context) {
+                for (final handler in handlers) {
+                  handler.download()!();
+                }
+              }
+            : null,
       );
 
   static BulkContextOption saveAllTo(
@@ -974,7 +1039,7 @@ class BulkContextOption {
   ) =>
       BulkContextOption(
         title: 'Save To...',
-        icon: Icons.save,
+        icon: Icons.save_as,
         action: (BuildContext context) async {
           final directory = await getDirectoryPath(canCreateDirectories: true);
           bool saved = false;
@@ -1015,7 +1080,7 @@ class BulkContextOption {
     Function(dynamic) cutKey,
   ) =>
       BulkContextOption(
-        title: 'Cut',
+        title: 'Move To...',
         icon: Icons.cut,
         action: (BuildContext context) {
           cutKey(null);
@@ -1026,7 +1091,7 @@ class BulkContextOption {
     Function(dynamic) copyKey,
   ) =>
       BulkContextOption(
-        title: 'Copy',
+        title: 'Copy To...',
         icon: Icons.copy,
         action: (BuildContext context) {
           copyKey(null);
@@ -1040,7 +1105,7 @@ class BulkContextOption {
   ) =>
       BulkContextOption(
         title: 'Delete Selection',
-        icon: Icons.delete,
+        icon: Icons.delete_sweep,
         action: (BuildContext context) async {
           final yes = await showDialog<bool>(
                 context: context,
@@ -1108,7 +1173,6 @@ Widget buildFileContextMenu(
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile) cut,
   Function(RemoteFile) copy,
-  Function(String, String) copyFile,
   Function(String, String) moveFile,
   Function(String) deleteFile,
 ) {
@@ -1118,7 +1182,6 @@ Widget buildFileContextMenu(
     getLink: getLink,
     downloadFile: downloadFile,
     saveFile: saveFile,
-    copyFile: copyFile,
     moveFile: moveFile,
     deleteFile: deleteFile,
   );
@@ -1157,7 +1220,6 @@ Widget buildFilesContextMenu(
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
-  Function(String, String) copyFile,
   Function(String, String) moveFile,
   Function(String) deleteFile,
   Function() clearSelection,
@@ -1170,7 +1232,6 @@ Widget buildFilesContextMenu(
           getLink: getLink,
           downloadFile: downloadFile,
           saveFile: saveFile,
-          copyFile: copyFile,
           moveFile: moveFile,
           deleteFile: deleteFile,
         ),
@@ -1211,7 +1272,6 @@ Widget buildDirectoryContextMenu(
   Function(String, String) saveDirectory,
   Function(String) cut,
   Function(String) copy,
-  Function(String, String) copyDirectory,
   Function(String, String) moveDirectory,
   Function(String) deleteDirectory,
 ) {
@@ -1220,7 +1280,6 @@ Widget buildDirectoryContextMenu(
     key: key,
     downloadDirectory: downloadDirectory,
     saveDirectory: saveDirectory,
-    copyDirectory: copyDirectory,
     moveDirectory: moveDirectory,
     deleteDirectory: deleteDirectory,
   );
@@ -1257,7 +1316,6 @@ Widget buildDirectoriesContextMenu(
   Function(String, String) saveDirectory,
   Function(String?) cut,
   Function(String?) copy,
-  Function(String, String) copyDirectory,
   Function(String, String) moveDirectory,
   Function(String) deleteDirectory,
   Function() clearSelection,
@@ -1269,7 +1327,6 @@ Widget buildDirectoriesContextMenu(
           key: key,
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
-          copyDirectory: copyDirectory,
           moveDirectory: moveDirectory,
           deleteDirectory: deleteDirectory,
         ),
@@ -1310,8 +1367,6 @@ Widget buildBulkContextMenu(
   Function(String) downloadDirectory,
   Function(RemoteFile, String) saveFile,
   Function(String, String) saveDirectory,
-  Function(String, String) copyFile,
-  Function(String, String) copyDirectory,
   Function(String, String) moveFile,
   Function(String, String) moveDirectory,
   Function(dynamic) cut,
@@ -1330,7 +1385,6 @@ Widget buildBulkContextMenu(
       saveFile,
       cut,
       copy,
-      copyFile,
       moveFile,
       deleteFile,
       clearSelection,
@@ -1344,7 +1398,6 @@ Widget buildBulkContextMenu(
       saveDirectory,
       cut,
       copy,
-      copyDirectory,
       moveDirectory,
       deleteDirectory,
       clearSelection,
@@ -1358,7 +1411,6 @@ Widget buildBulkContextMenu(
           getLink: getLink,
           downloadFile: downloadFile,
           saveFile: saveFile,
-          copyFile: copyFile,
           moveFile: moveFile,
           deleteFile: deleteFile,
         );
@@ -1368,7 +1420,6 @@ Widget buildBulkContextMenu(
           key: item,
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
-          copyDirectory: copyDirectory,
           moveDirectory: moveDirectory,
           deleteDirectory: deleteDirectory,
         );

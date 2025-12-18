@@ -34,12 +34,12 @@ class JobViewState extends State<JobView> {
     return ListTile(
       leading: widget.job.running
           ? CircularPercentIndicator(
-              radius: 28.0,
+              radius: 20.0,
               lineWidth: 4.0,
               percent: widget.job.bytesCompleted / widget.job.bytes,
               center: Text(
                 '${((widget.job.bytesCompleted / widget.job.bytes) * 100).toStringAsFixed(0)}%',
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme.of(context).textTheme.labelSmall,
               ),
               progressColor: Theme.of(context).primaryColor,
             )
@@ -53,11 +53,12 @@ class JobViewState extends State<JobView> {
                   icon: Icon(Icons.start),
                 ),
       title: Text(widget.job.remoteKey),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      subtitle: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          Text(widget.job.localFile.path, maxLines: 1),
           Text(widget.job.statusMsg, maxLines: 1),
+          SizedBox(width: 16),
+          Text(widget.job.localFile.path, maxLines: 1),
         ],
       ),
       trailing: widget.job.completed && widget.remove != null

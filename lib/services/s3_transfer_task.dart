@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+import 'package:s3_drive/components.dart';
 import 'hash_util.dart';
 
 typedef ProgressCallback = void Function(int bytesTransferred, int totalBytes);
@@ -127,7 +128,8 @@ class S3TransferTask {
         request.sink.add(chunk);
         uploaded += chunk.length;
         onProgress?.call(uploaded, totalBytes);
-        onStatus?.call('Uploading... ${uploaded}B / ${totalBytes}B');
+        onStatus?.call(
+            'Uploading... ${bytesToReadable(uploaded)} / ${bytesToReadable(totalBytes)}');
       },
       onDone: () async {
         await request.sink.close();
@@ -172,8 +174,11 @@ class S3TransferTask {
     final response = await _client.send(request);
     if (_isCancelled) return;
 
+    final File tempFile = await File(
+            '${Directory.systemTemp.path}/app_${DateTime.now().microsecondsSinceEpoch}')
+        .create();
     if (response.statusCode == 200) {
-      final fileSink = localFile.openWrite();
+      final IOSink fileSink = tempFile.openWrite();
       int received = 0;
       final total = response.contentLength ?? 0;
 
@@ -183,7 +188,8 @@ class S3TransferTask {
           fileSink.add(chunk);
           received += chunk.length;
           onProgress?.call(received, total);
-          onStatus?.call('Downloading... ${received}B / ${total}B');
+          onStatus?.call(
+              'Downloading... ${bytesToReadable(received)} / ${bytesToReadable(total)}');
         },
         onDone: () async {
           await fileSink.close();
@@ -199,15 +205,19 @@ class S3TransferTask {
       throw Exception('Download failed: ${response.statusCode} - $body');
     }
 
-    final filemd5 = await HashUtil.md5Hash(localFile);
+    final filemd5 = HashUtil.md5Hash(tempFile);
     if (filemd5 == md5) {
+      if (localFile.existsSync()) {
+        localFile.deleteSync();
+      }
+      tempFile.copySync(localFile.path);
       onStatus?.call('Download complete');
     } else {
-      await localFile.delete();
       throw Exception(
         'Download failed: MD5 mismatch! expected $md5, got $filemd5',
       );
     }
+    tempFile.deleteSync();
 
     return null;
   }

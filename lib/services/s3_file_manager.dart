@@ -127,11 +127,50 @@ class S3FileManager {
   }
 
   Future<dynamic> copyFile(String sourceKey, String destinationKey) async {
-    return await _s3.copyObject(
-      bucket: _bucket,
-      copySource: '$_bucket/$_prefix$sourceKey',
-      key: '$_prefix$destinationKey',
+    sourceKey = '$_prefix$sourceKey';
+    destinationKey = '$_prefix$destinationKey';
+
+    final copySource =
+        '/$_bucket/${sourceKey.split('/').map(awsEncode).join('/')}';
+
+    final bytes = <int>[];
+    final contentHash = sha256.convert(bytes).toString();
+    final md5hash = md5.convert(bytes).toString();
+    final now = DateTime.now().toUtc();
+    final amzDate = _formatAmzDate(now);
+    final shortDate = _formatDate(now);
+
+    final headers = _buildSignedHeaders(
+      key: destinationKey,
+      method: 'PUT',
+      amzDate: amzDate,
+      shortDate: shortDate,
+      copySource: copySource,
+      contentHash: contentHash,
+      contentMD5: base64.encode([
+        for (var i = 0; i < md5hash.length; i += 2)
+          int.parse(md5hash.substring(i, i + 2), radix: 16),
+      ]),
+      contentType: 'application/octet-stream',
     );
+
+    final request = http.Request(
+      'PUT',
+      Uri(
+        scheme: 'https',
+        host: '$_bucket.s3.$_region.amazonaws.com',
+        path: '/${destinationKey.split('/').map(awsEncode).join('/')}',
+      ),
+    )..headers.addAll(headers);
+
+    final response = await _client.send(request);
+
+    if (response.statusCode != 200) {
+      final body = await response.stream.bytesToString();
+      throw Exception('copy failed: ${response.statusCode} - $body');
+    }
+
+    return response.headers;
   }
 
   Future<dynamic> deleteFile(String key) async {
@@ -184,6 +223,7 @@ class S3FileManager {
     required String contentHash,
     String? contentMD5,
     String? contentType,
+    String? copySource,
   }) {
     final service = 's3';
     final host = '$_bucket.s3.$_region.amazonaws.com';
@@ -194,6 +234,7 @@ class S3FileManager {
       'Host': host,
       'x-amz-content-sha256': contentHash,
       'x-amz-date': amzDate,
+      if (copySource != null) 'x-amz-copy-source': copySource,
       if (contentMD5 != null) 'Content-MD5': contentMD5,
       if (contentType != null) 'Content-Type': contentType,
     };

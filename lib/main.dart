@@ -111,7 +111,7 @@ class _HomeState extends State<Home> {
   }
 
   void _onJobComplete(Job job, dynamic result) async {
-    await _refreshRemote('${job.remoteKey.split('/').first}/');
+    await _refreshWatchers();
     _completedJobs.add(job);
     _jobs.remove(job);
     _startProcessor();
@@ -127,10 +127,54 @@ class _HomeState extends State<Home> {
     _processor!.start();
   }
 
+  Future<void> _stopWatchers() async {
+    for (final watcher in _watchers) {
+      await watcher.stop();
+    }
+  }
+
+  void _startWatchers() {
+    for (final watcher in _watchers) {
+      watcher.start();
+    }
+  }
+
   Future<void> _refreshRemote(String dir) async {
     final remoteFiles = await _s3Manager.listObjects(dir: dir);
     _remoteFilesMap[dir] = remoteFiles;
     _updateCounts();
+  }
+
+  Future<void> _refreshWatchers() async {
+    await _stopWatchers();
+    _watchers.clear();
+
+    for (final dir in _dirs) {
+      final localDir = IniManager.config.get('directories', dir);
+      final modeValue = int.parse(IniManager.config.get('modes', dir) ?? '1');
+
+      await _refreshRemote(dir);
+
+      if (localDir != null &&
+          localDir.isNotEmpty &&
+          Directory(localDir).existsSync()) {
+        _watchers.add(
+          Watcher(
+            localDir: Directory(localDir),
+            remoteDir: dir,
+            mode: BackupMode.fromValue(modeValue),
+            jobs: _jobs,
+            remoteFiles: _remoteFilesMap[dir] ?? [],
+            remoteRefresh: () => _refreshRemote(dir),
+            downloadFile: _downloadFile,
+            uploadFile: _uploadFile,
+            onJobStatus: _onJobStatus,
+          ),
+        );
+      }
+    }
+
+    _startWatchers();
   }
 
   Future<void> _listDirectories() async {
@@ -139,9 +183,7 @@ class _HomeState extends State<Home> {
     });
     _dirs = await _s3Manager.listDirectories();
 
-    for (final watcher in _watchers) {
-      watcher.stop();
-    }
+    await _stopWatchers();
 
     _watchers.clear();
     _jobs.clear();
@@ -182,10 +224,7 @@ class _HomeState extends State<Home> {
       }
     }
 
-    for (final watcher in _watchers) {
-      watcher.start();
-    }
-
+    _startWatchers();
     _startProcessor();
 
     setState(() {
@@ -221,6 +260,9 @@ class _HomeState extends State<Home> {
     });
     await _s3Manager.copyFile(key, newKey);
     if (File(_pathFromKey(key)).existsSync()) {
+      if (!File(_pathFromKey(newKey)).parent.existsSync()) {
+        File(_pathFromKey(newKey)).parent.createSync(recursive: true);
+      }
       File(_pathFromKey(key)).copySync(_pathFromKey(newKey));
     }
     if (refresh) {
@@ -238,22 +280,9 @@ class _HomeState extends State<Home> {
         if (file.key.startsWith(dir) &&
             file.key != dir &&
             !file.key.endsWith('/')) {
-          final newKey = file.key.replaceFirst(dir, newDir);
-          await _s3Manager.copyFile(file.key, newKey);
-        }
-      }
-    }
-    if (Directory(_pathFromKey(dir)).existsSync()) {
-      for (final entity in Directory(_pathFromKey(dir))
-          .listSync(recursive: true, followLinks: false)) {
-        if (entity is File) {
-          final relativePath = p.relative(entity.path, from: _pathFromKey(dir));
-          final newFilePath = p.join(_pathFromKey(newDir), relativePath);
-          final newFileDir = p.dirname(newFilePath);
-          if (!Directory(newFileDir).existsSync()) {
-            Directory(newFileDir).createSync(recursive: true);
-          }
-          entity.copySync(newFilePath);
+          await _copyFile(
+              file.key, p.join(newDir, p.relative(file.key, from: dir)),
+              refresh: false);
         }
       }
     }
@@ -266,7 +295,7 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading = true;
     });
-    _s3Manager.deleteFile(key);
+    await _s3Manager.deleteFile(key);
     if (File(_pathFromKey(key)).existsSync()) {
       File(_pathFromKey(key)).deleteSync();
     }
@@ -305,7 +334,7 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading = true;
     });
-    _deleteS3Directory(dir, refresh: false);
+    await _deleteS3Directory(dir, refresh: false);
     if (Directory(_pathFromKey(dir)).existsSync()) {
       Directory(_pathFromKey(dir)).deleteSync(recursive: true);
     }
@@ -332,19 +361,16 @@ class _HomeState extends State<Home> {
       _loading = true;
     });
     await _copyDirectory(dir, newDir, refresh: false);
-    await _deleteS3Directory(dir, refresh: false);
-    if (Directory(_pathFromKey(dir)).existsSync()) {
-      Directory(_pathFromKey(dir)).deleteSync(recursive: true);
-    }
+    await _deleteDirectory(dir, refresh: false);
     if (refresh) {
       _listDirectories();
     }
   }
 
-  Future<void> _downloadFile(RemoteFile file) async {
+  void _downloadFile(RemoteFile file, {String? localPath}) {
     _jobs.add(
       DownloadJob(
-        localFile: File(_pathFromKey(file.key)),
+        localFile: File(localPath ?? _pathFromKey(file.key)),
         remoteKey: file.key,
         bytes: file.size,
         md5: file.etag,
@@ -354,14 +380,15 @@ class _HomeState extends State<Home> {
     _startProcessor();
   }
 
-  Future<void> _downloadDirectory(String dir) async {
+  void _downloadDirectory(String dir, {String? localPath}) {
     for (final map in _remoteFilesMap.entries) {
       for (final file in map.value) {
         if (file.key.startsWith(dir) &&
             file.key != dir &&
             !file.key.endsWith('/')) {
           final relativePath = p.relative(file.key, from: dir);
-          final localFilePath = p.join(_pathFromKey(dir), relativePath);
+          final localFilePath =
+              p.join(localPath ?? _pathFromKey(dir), relativePath);
           final localFileDir = p.dirname(localFilePath);
           if (!Directory(localFileDir).existsSync()) {
             Directory(localFileDir).createSync(recursive: true);
@@ -406,17 +433,17 @@ class _HomeState extends State<Home> {
         final file = item;
         final newKey = p.join(_localDir, p.basename(file.key));
         if (_selectionAction == SelectionAction.copy) {
-          _copyFile(file.key, newKey, refresh: false);
+          await _copyFile(file.key, newKey, refresh: false);
         } else if (_selectionAction == SelectionAction.cut) {
-          _moveFile(file.key, newKey, refresh: false);
+          await _moveFile(file.key, newKey, refresh: false);
         }
       } else if (item is String) {
         final dir = item;
         final newDir = p.join(_localDir, p.basename(dir));
         if (_selectionAction == SelectionAction.copy) {
-          _copyDirectory(dir, newDir, refresh: false);
+          await _copyDirectory(dir, newDir, refresh: false);
         } else if (_selectionAction == SelectionAction.cut) {
-          _moveDirectory(dir, newDir, refresh: false);
+          await _moveDirectory(dir, newDir, refresh: false);
         }
       }
     }
@@ -425,24 +452,36 @@ class _HomeState extends State<Home> {
     _listDirectories();
   }
 
-  Future<void> _saveFile(RemoteFile file, String savePath) async {
+  void _saveFile(RemoteFile file, String savePath) {
     if (File(savePath).existsSync()) {
       File(savePath).deleteSync();
     }
+    // if (!File(_pathFromKey(file.key)).existsSync()) {
+    //   if (p.isAbsolute(_pathFromKey(file.key))) {
+    //     _downloadFile(file);
+    //   }
+    // }
+    // Has to wait for download to finish
     if (File(_pathFromKey(file.key)).existsSync()) {
       if (!File(savePath).parent.existsSync()) {
         File(savePath).parent.createSync(recursive: true);
       }
       File(_pathFromKey(file.key)).copySync(savePath);
     } else {
-      _downloadFile(file);
+      _downloadFile(file, localPath: savePath);
     }
   }
 
-  Future<void> _saveDirectory(String dir, String savePath) async {
+  void _saveDirectory(String dir, String savePath) {
     if (Directory(savePath).existsSync()) {
       Directory(savePath).deleteSync(recursive: true);
     }
+    // if (!Directory(_pathFromKey(dir)).existsSync()) {
+    //   if (p.isAbsolute(_pathFromKey(dir))) {
+    //     _downloadDirectory(dir);
+    //   }
+    // }
+    // Has to wait for download to finish
     if (Directory(_pathFromKey(dir)).existsSync()) {
       for (final entity in Directory(_pathFromKey(dir))
           .listSync(recursive: true, followLinks: false)) {
@@ -457,24 +496,85 @@ class _HomeState extends State<Home> {
         }
       }
     } else {
-      _downloadDirectory(dir);
+      _downloadDirectory(dir, localPath: savePath);
     }
   }
 
-  Future<void> _uploadFile(String key, File file) async {
-    _jobs.add(
-      UploadJob(
-        localFile: file,
-        remoteKey: key,
-        bytes: file.lengthSync(),
-        onStatus: _onJobStatus,
-        md5: await HashUtil.md5Hash(file),
-      ),
-    );
-    _startProcessor();
+  void _uploadFile(String key, File file) {
+    if (!file.existsSync()) {
+      return;
+    }
+    if (_pathFromKey(key) == file.path) {
+      _jobs.add(
+        UploadJob(
+          localFile: file,
+          remoteKey: key,
+          bytes: file.lengthSync(),
+          onStatus: _onJobStatus,
+          md5: HashUtil.md5Hash(file),
+        ),
+      );
+      _startProcessor();
+    } else if (p.isAbsolute(_pathFromKey(key))) {
+      final newKey = () {
+        String base = p.basenameWithoutExtension(key);
+        String ext = p.extension(key);
+        int count = 1;
+        String candidateKey = key;
+        while (_remoteFilesMap['${key.split('/').first}/']
+                ?.any((remoteFile) => remoteFile.key == candidateKey) ==
+            true) {
+          candidateKey = p.join(p.dirname(key), '$base${'($count)'}$ext');
+          count++;
+        }
+        return candidateKey;
+      }();
+      if (!File(_pathFromKey(newKey)).parent.existsSync()) {
+        File(_pathFromKey(newKey)).parent.createSync(recursive: true);
+      }
+      _stopWatchers().then((value) {
+        file.copySync(_pathFromKey(newKey));
+        _listDirectories();
+      });
+    } else {
+      final newKey = () {
+        String base = p.basenameWithoutExtension(key);
+        String ext = p.extension(key);
+        int count = 1;
+        String candidateKey = key;
+        while (_remoteFilesMap[key.split('/').first]
+                ?.any((remoteFile) => remoteFile.key == candidateKey) ==
+            true) {
+          candidateKey = p.join(p.dirname(key), '${base}_${'($count)'}$ext');
+          count++;
+        }
+        return candidateKey;
+      }();
+      _jobs.add(
+        UploadJob(
+          localFile: file,
+          remoteKey: newKey,
+          bytes: file.lengthSync(),
+          onStatus: _onJobStatus,
+          md5: HashUtil.md5Hash(file),
+        ),
+      );
+      _startProcessor();
+    }
   }
 
-  Future<void> _updateCounts() async {
+  void _uploadDirectory(String key, Directory directory) {
+    for (final entity
+        in directory.listSync(recursive: true, followLinks: false)) {
+      if (entity is File) {
+        final relativePath = p.relative(entity.path, from: directory.path);
+        final remoteKey = p.join(key, relativePath).replaceAll('\\', '/');
+        _uploadFile(remoteKey, entity);
+      }
+    }
+  }
+
+  void _updateCounts() {
     setState(() {
       _dirCount = 0;
       _fileCount = 0;
@@ -485,10 +585,22 @@ class _HomeState extends State<Home> {
       final remoteFiles =
           _remoteFilesMap['${_localDir.split('/').first}/'] ?? [];
       _dirCount = remoteFiles
-          .where((file) =>
-              file.key.split('/').last.isEmpty &&
-              '${Directory(file.key).parent.path}/' == _localDir)
+          .where(
+            (file) =>
+                (file.key.split('/').last.isNotEmpty &&
+                    '${File(file.key).parent.parent.path}/' == _localDir) ||
+                (file.key.split('/').last.isEmpty &&
+                    '${File(file.key).parent.path}/' == _localDir),
+          )
+          .map(
+            (file) => '${File(file.key).parent.path}/' != _localDir
+                ? File(file.key).parent.path
+                : p.normalize(File(file.key).path),
+          )
+          .toSet()
+          .toList()
           .length;
+
       _fileCount = remoteFiles
           .where((file) =>
               file.key.split('/').last.isNotEmpty &&
@@ -565,17 +677,10 @@ class _HomeState extends State<Home> {
                           ),
             if (_navIndex == 0)
               _selection.isNotEmpty
-                  ? _selectionAction == SelectionAction.none
-                      ? Text(
-                          "${_selection.whereType<String>().isNotEmpty ? '${_selection.whereType<String>().length} Folders ' : ''}${_selection.whereType<RemoteFile>().isNotEmpty ? '${_selection.whereType<RemoteFile>().length} Files ' : ''}selected",
-                          style: Theme.of(context).textTheme.bodyMedium)
-                      : _selectionAction == SelectionAction.copy
-                          ? Text(
-                              "Copying ${_selection.whereType<String>().isNotEmpty ? '${_selection.whereType<String>().length} Folders ' : ''}${_selection.whereType<RemoteFile>().isNotEmpty ? '${_selection.whereType<RemoteFile>().length} Files ' : ''}",
-                              style: Theme.of(context).textTheme.bodyMedium)
-                          : Text(
-                              "Cutting ${_selection.whereType<String>().isNotEmpty ? '${_selection.whereType<String>().length} Folders ' : ''}${_selection.whereType<RemoteFile>().isNotEmpty ? '${_selection.whereType<RemoteFile>().length} Files ' : ''}",
-                              style: Theme.of(context).textTheme.bodyMedium)
+                  ? Text(
+                      "${_selectionAction == SelectionAction.none ? '' : _selectionAction == SelectionAction.cut ? 'Moving ' : 'Copying '}${_selection.whereType<String>().isNotEmpty ? '${_selection.whereType<String>().length} Folders ' : ''}${_selection.whereType<RemoteFile>().isNotEmpty ? '${_selection.whereType<RemoteFile>().length} Files ' : ''}",
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    )
                   : Text("$_dirCount Folders  $_fileCount Files",
                       style: Theme.of(context).textTheme.bodyMedium),
           ],
@@ -612,7 +717,9 @@ class _HomeState extends State<Home> {
                   ]
                 : _loading
                     ? [
-                        const CircularProgressIndicator(),
+                        const CircularProgressIndicator(
+                          padding: EdgeInsets.all(12),
+                        ),
                       ]
                     : _selection.isNotEmpty
                         ? _selectionAction == SelectionAction.none
@@ -634,46 +741,53 @@ class _HomeState extends State<Home> {
                                   icon: Icon(Icons.close),
                                 ),
                                 IconButton(
-                                  onPressed: () => showModalBottomSheet(
-                                          context: context,
-                                          enableDrag: true,
-                                          showDragHandle: true,
-                                          constraints: const BoxConstraints(
-                                            maxHeight: 800,
-                                            maxWidth: 800,
-                                          ),
-                                          builder: (context) =>
-                                              buildBulkContextMenu(
-                                                context,
-                                                _selection.toList(),
-                                                _localRoot,
-                                                _getLink,
-                                                _downloadFile,
-                                                _downloadDirectory,
-                                                _saveFile,
-                                                _saveDirectory,
-                                                _copyFile,
-                                                _copyDirectory,
-                                                _moveFile,
-                                                _moveDirectory,
-                                                _cut,
-                                                _copy,
-                                                _deleteFile,
-                                                _deleteDirectory,
-                                                () {
-                                                  _selection.clear();
-                                                  setState(() {});
-                                                },
-                                              ))
-                                      .then((value) => _listDirectories()),
+                                  onPressed: () async {
+                                    await _stopWatchers();
+                                    await showModalBottomSheet(
+                                      context: context,
+                                      enableDrag: true,
+                                      showDragHandle: true,
+                                      constraints: const BoxConstraints(
+                                        maxHeight: 800,
+                                        maxWidth: 800,
+                                      ),
+                                      builder: (context) =>
+                                          buildBulkContextMenu(
+                                        context,
+                                        _selection.toList(),
+                                        _localRoot,
+                                        _getLink,
+                                        _downloadFile,
+                                        _downloadDirectory,
+                                        _saveFile,
+                                        _saveDirectory,
+                                        (dir, newDir) => _copyDirectory(
+                                            dir, newDir,
+                                            refresh: false),
+                                        (key, newKey) => _moveFile(key, newKey,
+                                            refresh: false),
+                                        _cut,
+                                        _copy,
+                                        (key) =>
+                                            _deleteFile(key, refresh: false),
+                                        (dir) => _deleteDirectory(dir,
+                                            refresh: false),
+                                        () {
+                                          _selection.clear();
+                                          setState(() {});
+                                        },
+                                      ),
+                                    ).then((value) => _listDirectories());
+                                  },
                                   icon: Icon(Icons.more_vert),
                                 ),
                               ]
                             : [
-                                IconButton(
-                                  onPressed: _paste,
-                                  icon: const Icon(Icons.paste),
-                                ),
+                                if (_localDir != './')
+                                  IconButton(
+                                    onPressed: _paste,
+                                    icon: const Icon(Icons.paste),
+                                  ),
                                 IconButton(
                                   onPressed: () {
                                     _selectionAction = SelectionAction.none;
@@ -911,6 +1025,7 @@ class _HomeState extends State<Home> {
                   foldersFirst: _foldersFirst,
                   sortMode: _sortMode,
                   selection: _selection,
+                  selectionAction: _selectionAction,
                   select: _select,
                   updateAllSelectableItems: _updateAllSelectableItems,
                   onJobStatus: _onJobStatus,
@@ -929,14 +1044,13 @@ class _HomeState extends State<Home> {
                   saveFile: _saveFile,
                   downloadDirectory: _downloadDirectory,
                   saveDirectory: _saveDirectory,
-                  copyFile: _copyFile,
                   moveFile: _moveFile,
                   deleteFile: _deleteFile,
                   cut: _cut,
                   copy: _copy,
-                  copyDirectory: _copyDirectory,
                   moveDirectory: _moveDirectory,
                   deleteDirectory: _deleteDirectory,
+                  stopWatchers: _stopWatchers,
                   listDirectories: _listDirectories,
                   startProcessor: _startProcessor,
                 )
@@ -966,60 +1080,29 @@ class _HomeState extends State<Home> {
                     onPressed: () async {
                       final XFile? file = await openFile();
                       if (file != null) {
-                        if (!Directory(p.join(_localRoot,
-                                _localDir.split('/').sublist(1).join('/')))
-                            .existsSync()) {
-                          Directory(p.join(_localRoot,
-                                  _localDir.split('/').sublist(1).join('/')))
-                              .createSync(recursive: true);
-                        }
-                        if (!File(p.normalize(p.join(
-                                _localRoot,
-                                _localDir.split('/').sublist(1).join('/'),
-                                file.name)))
-                            .existsSync()) {
-                          await file.saveTo(p.normalize(p.join(
-                              _localRoot,
-                              _localDir.split('/').sublist(1).join('/'),
-                              file.name)));
-                        } else {
-                          final newname = await showDialog<String>(
-                            context: context,
-                            builder: (context) {
-                              String newName = '';
-                              return AlertDialog(
-                                title: const Text('File Already Exists'),
-                                content: TextField(
-                                  decoration: const InputDecoration(
-                                    labelText: 'New File Name',
-                                  ),
-                                  onChanged: (value) => newName = value,
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(null),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(newName),
-                                    child: const Text('Rename'),
-                                  ),
-                                ],
-                              );
-                            },
-                          );
-                          if (newname != null && newname.isNotEmpty) {
-                            await file.saveTo(p.normalize(p.join(
-                                _localRoot,
-                                _localDir.split('/').sublist(1).join('/'),
-                                newname)));
-                          }
-                        }
+                        _uploadFile(
+                          p.join(_localDir, p.basename(file.path)),
+                          File(file.path),
+                        );
                       }
                     },
                   ),
+                SizedBox(height: 16),
+                FloatingActionButton(
+                  child: const Icon(Icons.drive_folder_upload_outlined),
+                  onPressed: () async {
+                    final String? directoryPath = await getDirectoryPath();
+                    if (directoryPath != null) {
+                      _uploadDirectory(
+                        p.join(
+                          _localDir,
+                          p.basename(directoryPath),
+                        ),
+                        Directory(directoryPath),
+                      );
+                    }
+                  },
+                ),
                 SizedBox(height: 16),
                 FloatingActionButton(
                   child: const Icon(Icons.create_new_folder_rounded),
@@ -1051,8 +1134,22 @@ class _HomeState extends State<Home> {
                       },
                     );
                     if (dir != null && dir.isNotEmpty) {
-                      await _createDirectory(
-                          p.normalize(p.join(_localDir, dir)));
+                      if (_remoteFilesMap[_localDir]!.any((file) => [
+                                p.join(_localDir, dir),
+                                '${p.join(_localDir, dir)}/'
+                              ].contains(file.key)) ||
+                          _remoteFilesMap.containsKey(p.join(_localDir, dir)) ||
+                          _remoteFilesMap
+                              .containsKey('${p.join(_localDir, dir)}/')) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                'Directory "${p.join(_localDir, dir)}" already exists.'),
+                          ),
+                        );
+                        return;
+                      }
+                      await _createDirectory(p.join(_localDir, dir));
                     }
                   },
                 ),

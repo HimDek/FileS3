@@ -72,7 +72,8 @@ class Watcher {
   final void Function(String, File) uploadFile;
   final void Function(Job job) onJobStatus;
   bool _watching = false;
-  int _scanning = 0;
+  bool _scanning = false;
+  bool _waitingScan = false;
 
   Watcher({
     required this.localDir,
@@ -87,28 +88,29 @@ class Watcher {
   });
 
   Future<void> _scan() async {
-    if (_scanning > 1) {
+    if (_waitingScan) {
       debugPrint(
         "A Scan is already waiting for a scan already in progress for ${localDir.path}. Skipping...",
       );
       return;
     }
 
-    if (_scanning > 0) {
-      _scanning++;
+    if (_scanning) {
+      _waitingScan = true;
       if (kDebugMode) {
         debugPrint(
           "Scan is already in progress for ${localDir.path}. Waiting...",
         );
       }
-      while (_scanning > 1) {
+      while (_scanning) {
         await Future.delayed(const Duration(milliseconds: 1000));
       }
       if (kDebugMode) {
         debugPrint("Scan completed for ${localDir.path}. Resuming...");
       }
+      _waitingScan = false;
     } else {
-      _scanning++;
+      _scanning = true;
     }
 
     if (!await localDir.exists()) {
@@ -176,7 +178,7 @@ class Watcher {
       }
     }
 
-    _scanning--;
+    _scanning = false;
   }
 
   Future<void> start() async {
@@ -200,9 +202,9 @@ class Watcher {
     _subscriptions.add(subscription);
   }
 
-  void stop() {
+  Future<void> stop() async {
     for (var sub in _subscriptions) {
-      sub.cancel();
+      await sub.cancel();
     }
     _subscriptions.clear();
   }

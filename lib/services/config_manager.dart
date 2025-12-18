@@ -149,7 +149,11 @@ class S3ConfigPageState extends State<S3ConfigPage> {
         actions: [
           IconButton(
             onPressed: _loading ? null : () => _saveConfig(context),
-            icon: _loading ? CircularProgressIndicator() : Icon(Icons.save),
+            icon: _loading
+                ? CircularProgressIndicator(
+                    padding: EdgeInsets.all(12),
+                  )
+                : Icon(Icons.save),
           ),
         ],
       ),

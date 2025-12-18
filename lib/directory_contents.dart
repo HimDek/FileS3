@@ -18,6 +18,7 @@ class DirectoryContents extends StatefulWidget {
   final bool foldersFirst;
   final SortMode sortMode;
   final Set<dynamic> selection;
+  final SelectionAction selectionAction;
   final Function(dynamic) select;
   final Function(List<dynamic>) updateAllSelectableItems;
   final void Function(Job job) onJobStatus;
@@ -30,12 +31,11 @@ class DirectoryContents extends StatefulWidget {
   final Function(String, String) saveDirectory;
   final Function(dynamic) cut;
   final Function(dynamic) copy;
-  final Function(String, String) copyFile;
-  final Function(String, String) moveFile;
-  final Function(String) deleteFile;
-  final Function(String, String) copyDirectory;
-  final Function(String, String) moveDirectory;
-  final Function(String) deleteDirectory;
+  final Function(String, String, {bool refresh}) moveFile;
+  final Function(String, {bool refresh}) deleteFile;
+  final Function(String, String, {bool refresh}) moveDirectory;
+  final Function(String, {bool refresh}) deleteDirectory;
+  final Future<void> Function() stopWatchers;
   final Function() listDirectories;
   final Function() startProcessor;
 
@@ -49,6 +49,7 @@ class DirectoryContents extends StatefulWidget {
     required this.foldersFirst,
     required this.sortMode,
     required this.selection,
+    required this.selectionAction,
     required this.select,
     required this.updateAllSelectableItems,
     required this.onJobStatus,
@@ -61,12 +62,11 @@ class DirectoryContents extends StatefulWidget {
     required this.saveDirectory,
     required this.cut,
     required this.copy,
-    required this.copyFile,
     required this.moveFile,
     required this.deleteFile,
-    required this.copyDirectory,
     required this.moveDirectory,
     required this.deleteDirectory,
+    required this.stopWatchers,
     required this.listDirectories,
     required this.startProcessor,
   });
@@ -192,7 +192,8 @@ class DirectoryContentsState extends State<DirectoryContents> {
             selectedColor: Theme.of(context).colorScheme.primary,
             leading: Icon(Icons.folder),
             title: Text('../'),
-            onTap: widget.selection.isNotEmpty
+            onTap: widget.selection.isNotEmpty &&
+                    widget.selectionAction == SelectionAction.none
                 ? null
                 : () {
                     widget.onChangeDirectory(
@@ -222,42 +223,48 @@ class DirectoryContentsState extends State<DirectoryContents> {
               selectedColor: Theme.of(context).colorScheme.primary,
               leading: Icon(Icons.folder),
               title: Text("${Directory(subDir).path.split('/').last}/"),
-              onTap: widget.selection.isNotEmpty
+              onTap: widget.selection.isNotEmpty &&
+                      widget.selectionAction == SelectionAction.none
                   ? () {
                       widget.select("${Directory(subDir).path}/");
                     }
                   : () {
                       widget.onChangeDirectory("${Directory(subDir).path}/");
                     },
-              onLongPress: () {
-                widget.select("${Directory(subDir).path}/");
-              },
+              onLongPress: widget.selectionAction == SelectionAction.none
+                  ? () {
+                      widget.select("${Directory(subDir).path}/");
+                    }
+                  : null,
               trailing: widget.selection.isNotEmpty
                   ? null
                   : IconButton(
-                      onPressed: () {
+                      onPressed: () async {
                         focusedKey = Directory(subDir).path.split('/').last;
                         setState(() {});
+                        await widget.stopWatchers();
                         showModalBottomSheet(
-                            context: context,
-                            enableDrag: true,
-                            showDragHandle: true,
-                            constraints: const BoxConstraints(
-                              maxHeight: 800,
-                              maxWidth: 800,
-                            ),
-                            builder: (context) => buildDirectoryContextMenu(
-                                  context,
-                                  "${Directory(subDir).path}/",
-                                  widget.localRoot,
-                                  widget.downloadDirectory,
-                                  widget.saveDirectory,
-                                  widget.cut,
-                                  widget.copy,
-                                  widget.copyDirectory,
-                                  widget.moveDirectory,
-                                  widget.deleteDirectory,
-                                )).then((value) => widget.listDirectories());
+                          context: context,
+                          enableDrag: true,
+                          showDragHandle: true,
+                          constraints: const BoxConstraints(
+                            maxHeight: 800,
+                            maxWidth: 800,
+                          ),
+                          builder: (context) => buildDirectoryContextMenu(
+                            context,
+                            "${Directory(subDir).path}/",
+                            widget.localRoot,
+                            widget.downloadDirectory,
+                            widget.saveDirectory,
+                            widget.cut,
+                            widget.copy,
+                            (String dir, String newDir) => widget
+                                .moveDirectory(dir, newDir, refresh: false),
+                            (String dir) =>
+                                widget.deleteDirectory(dir, refresh: false),
+                          ),
+                        ).then((value) => widget.listDirectories());
                       },
                       icon: Icon(Icons.more_vert),
                     ),
@@ -320,56 +327,66 @@ class DirectoryContentsState extends State<DirectoryContents> {
                 trailing: widget.selection.isNotEmpty
                     ? null
                     : IconButton(
-                        onPressed: () {
+                        onPressed: () async {
                           focusedKey = file.key.split('/').last;
                           setState(() {});
+                          await widget.stopWatchers();
                           showModalBottomSheet(
-                              context: context,
-                              enableDrag: true,
-                              showDragHandle: true,
-                              constraints: const BoxConstraints(
-                                maxHeight: 800,
-                                maxWidth: 800,
-                              ),
-                              builder: (context) => buildFileContextMenu(
-                                    context,
-                                    file,
-                                    widget.localRoot,
-                                    widget.getLink,
-                                    widget.downloadFile,
-                                    widget.saveFile,
-                                    widget.cut,
-                                    widget.copy,
-                                    widget.copyFile,
-                                    widget.moveFile,
-                                    widget.deleteFile,
-                                  )).then((value) => widget.listDirectories());
+                            context: context,
+                            enableDrag: true,
+                            showDragHandle: true,
+                            constraints: const BoxConstraints(
+                              maxHeight: 800,
+                              maxWidth: 800,
+                            ),
+                            builder: (context) => buildFileContextMenu(
+                              context,
+                              file,
+                              widget.localRoot,
+                              widget.getLink,
+                              widget.downloadFile,
+                              widget.saveFile,
+                              widget.cut,
+                              widget.copy,
+                              (String key, String newKey) =>
+                                  widget.moveFile(key, newKey, refresh: false),
+                              (String key) =>
+                                  widget.deleteFile(key, refresh: false),
+                            ),
+                          ).then((value) => widget.listDirectories());
                         },
                         icon: Icon(Icons.more_vert),
                       ),
-                onTap: widget.selection.isNotEmpty
+                onTap: widget.selection.isNotEmpty &&
+                        widget.selectionAction == SelectionAction.none
                     ? () {
                         widget.select(file);
                       }
-                    : File(p.join(widget.localRoot,
-                                file.key.split('/').sublist(1).join('/')))
-                            .existsSync()
-                        ? () {
-                            focusedKey = file.key.split('/').last;
-                            setState(() {});
-                            OpenFile.open(p.join(widget.localRoot,
-                                file.key.split('/').sublist(1).join('/')));
-                          }
-                        : () {
-                            focusedKey = file.key.split('/').last;
-                            setState(() {});
-                            widget
-                                .getLink(file, Duration(minutes: 60).inSeconds)
-                                .then((value) => launchUrl(Uri.parse(value)));
-                          },
-                onLongPress: () {
-                  widget.select(file);
-                },
+                    : widget.selectionAction != SelectionAction.none
+                        ? null
+                        : File(p.join(widget.localRoot,
+                                    file.key.split('/').sublist(1).join('/')))
+                                .existsSync()
+                            ? () {
+                                focusedKey = file.key.split('/').last;
+                                setState(() {});
+                                OpenFile.open(p.join(widget.localRoot,
+                                    file.key.split('/').sublist(1).join('/')));
+                              }
+                            : () {
+                                focusedKey = file.key.split('/').last;
+                                setState(() {});
+                                widget
+                                    .getLink(
+                                        file, Duration(minutes: 60).inSeconds)
+                                    .then(
+                                        (value) => launchUrl(Uri.parse(value)));
+                              },
+                onLongPress: widget.selectionAction == SelectionAction.none
+                    ? () {
+                        widget.select(file);
+                      }
+                    : null,
               ),
             ),
       ])
@@ -377,7 +394,7 @@ class DirectoryContentsState extends State<DirectoryContents> {
             return item.$2;
           })
           .toList()
-          .followedBy([SizedBox(height: 160)])
+          .followedBy([SizedBox(height: 256)])
           .toList(),
     );
   }
