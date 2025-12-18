@@ -20,6 +20,7 @@ List<(Map<String, dynamic>, Widget)> listFiles(
   void Function(dynamic) select,
   String Function(String) pathFromKey,
   Function(String) setFocus,
+  Function(int) setNavIndex,
   Function() onJobUpdate,
   Function(Job, dynamic) onJobComplete,
   Function(Job) removeJob,
@@ -67,6 +68,7 @@ List<(Map<String, dynamic>, Widget)> listFiles(
                   select("${Directory(file).path}/");
                 }
               : () {
+                  setNavIndex(0);
                   onChangeDirectory("${Directory(file).path}/");
                 },
           onLongPress: selectionAction == SelectionAction.none

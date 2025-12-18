@@ -21,6 +21,7 @@ class DirectoryContents extends StatefulWidget {
   final Function(List<dynamic>) updateAllSelectableItems;
   final String Function(String) pathFromKey;
   final Function(String) setFocus;
+  final Function(int) setNavIndex;
   final void Function(Job job) onJobStatus;
   final Function(Job, dynamic) onJobComplete;
   final Function(String) onChangeDirectory;
@@ -54,6 +55,7 @@ class DirectoryContents extends StatefulWidget {
     required this.updateAllSelectableItems,
     required this.pathFromKey,
     required this.setFocus,
+    required this.setNavIndex,
     required this.onJobStatus,
     required this.onJobComplete,
     required this.onChangeDirectory,
@@ -159,6 +161,7 @@ class DirectoryContentsState extends State<DirectoryContents> {
           widget.select,
           widget.pathFromKey,
           widget.setFocus,
+          widget.setNavIndex,
           () {
             setState(() {});
           },

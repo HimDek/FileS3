@@ -1092,6 +1092,10 @@ class _HomeState extends State<Home> {
                       _focusedKey = key;
                     });
                   },
+                  setNavIndex: (int index) {
+                    _navIndex = index;
+                    setState(() {});
+                  },
                   onJobStatus: _onJobStatus,
                   onJobComplete: _onJobComplete,
                   onChangeDirectory: (String newDir) {
@@ -1151,6 +1155,10 @@ class _HomeState extends State<Home> {
                                       setState(() {
                                         _focusedKey = key;
                                       });
+                                    },
+                                    (int index) {
+                                      _navIndex = index;
+                                      setState(() {});
                                     },
                                     () => setState(() {}),
                                     _onJobComplete,
