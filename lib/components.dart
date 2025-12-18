@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_file/open_file.dart';
+import 'package:s3_drive/services/models/common.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
@@ -80,11 +81,148 @@ String bytesToReadable(int bytes) {
   return '${size.toStringAsFixed(2)} ${suffixes[i]}';
 }
 
+List<(Map<String, dynamic>, Widget)> sort(
+    List<(Map<String, dynamic>, Widget)> items,
+    SortMode sortMode,
+    bool foldersFirst) {
+  List<(Map<String, dynamic>, Widget)> sortedItems = List.from(items);
+  sortedItems.sort((a, b) {
+    var aIsDir = a.$1['file'] == null && a.$1['job'] == null;
+    var bIsDir = b.$1['file'] == null && b.$1['job'] == null;
+
+    if (a.$1['name'] == '..') return -1;
+    if (b.$1['name'] == '..') return 1;
+
+    if (foldersFirst) {
+      if (aIsDir && !bIsDir) return -1;
+      if (!aIsDir && bIsDir) return 1;
+    }
+
+    switch (sortMode) {
+      case SortMode.nameAsc:
+        return a.$1['name'].toLowerCase().compareTo(b.$1['name'].toLowerCase());
+      case SortMode.nameDesc:
+        return b.$1['name'].toLowerCase().compareTo(a.$1['name'].toLowerCase());
+      case SortMode.dateAsc:
+        DateTime aDate = a.$1['file'] != null
+            ? (a.$1['file'] as RemoteFile).lastModified
+            : DateTime.fromMillisecondsSinceEpoch(0);
+        DateTime bDate = b.$1['file'] != null
+            ? (b.$1['file'] as RemoteFile).lastModified
+            : DateTime.fromMillisecondsSinceEpoch(0);
+        return aDate.compareTo(bDate);
+      case SortMode.dateDesc:
+        DateTime aDate = a.$1['file'] != null
+            ? (a.$1['file'] as RemoteFile).lastModified
+            : DateTime.fromMillisecondsSinceEpoch(0);
+        DateTime bDate = b.$1['file'] != null
+            ? (b.$1['file'] as RemoteFile).lastModified
+            : DateTime.fromMillisecondsSinceEpoch(0);
+        return bDate.compareTo(aDate);
+      case SortMode.sizeAsc:
+        return a.$1['size'].compareTo(b.$1['size']);
+      case SortMode.sizeDesc:
+        return b.$1['size'].compareTo(a.$1['size']);
+      case SortMode.typeAsc:
+        String aExt = a.$1['name'].contains('.')
+            ? a.$1['name'].split('.').last.toLowerCase()
+            : '';
+        String bExt = b.$1['name'].contains('.')
+            ? b.$1['name'].split('.').last.toLowerCase()
+            : '';
+        return aExt.compareTo(bExt);
+      case SortMode.typeDesc:
+        String aExt = a.$1['name'].contains('.')
+            ? a.$1['name'].split('.').last.toLowerCase()
+            : '';
+        String bExt = b.$1['name'].contains('.')
+            ? b.$1['name'].split('.').last.toLowerCase()
+            : '';
+        return bExt.compareTo(aExt);
+    }
+  });
+  return sortedItems;
+}
+
+class FileSearchDelegate extends SearchDelegate<dynamic> {
+  final List<dynamic> items;
+  final Function(BuildContext, String, List<dynamic>) providedBuildResults;
+
+  FileSearchDelegate({
+    required this.items,
+    required this.providedBuildResults,
+    super.searchFieldLabel = 'Search',
+    super.searchFieldStyle,
+    super.searchFieldDecorationTheme,
+    super.keyboardType,
+    super.textInputAction = TextInputAction.search,
+    super.autocorrect = true,
+    super.enableSuggestions = true,
+  });
+
+  @override
+  List<Widget> buildActions(BuildContext context) {
+    return [
+      if (query.isNotEmpty)
+        IconButton(
+          icon: const Icon(Icons.clear),
+          onPressed: () => query = '',
+        ),
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () => close(context, ''),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    close(context, _filter(query));
+    return providedBuildResults(context, query, _filter(query));
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    final suggestions = _filter(query);
+    return ListView.builder(
+      itemCount: suggestions.length,
+      itemBuilder: (context, index) {
+        final item = suggestions
+            .map((e) => e is RemoteFile ? e.key : e.toString())
+            .toList()[index];
+        return ListTile(
+          title: Text(item),
+          onTap: () {
+            query = item;
+            showResults(context);
+          },
+        );
+      },
+    );
+  }
+
+  List<dynamic> _filter(String q) {
+    if (q.isEmpty) return items;
+    final lower = q.toLowerCase();
+    return items
+        .where((e) => (e is RemoteFile ? e.key : e.toString())
+            .toLowerCase()
+            .contains(lower))
+        .map(
+            (e) => e is RemoteFile && e.key.split('/').last.isEmpty ? e.key : e)
+        .toList();
+  }
+}
+
 abstract class ContextActionHandler {
-  final String localRoot;
+  final String Function(String) pathFromKey;
 
   ContextActionHandler({
-    required this.localRoot,
+    required this.pathFromKey,
   });
 
   void Function()? download();
@@ -102,7 +240,7 @@ class FileContextActionHandler extends ContextActionHandler {
   final Function(String) deleteFile;
 
   FileContextActionHandler({
-    required super.localRoot,
+    required super.pathFromKey,
     required this.file,
     required this.getLink,
     required this.downloadFile,
@@ -112,15 +250,13 @@ class FileContextActionHandler extends ContextActionHandler {
   });
 
   bool rootExists() {
-    return localRoot.isNotEmpty;
+    return p.isAbsolute(pathFromKey(file.key));
   }
 
   dynamic Function() open() {
-    return File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
-            .existsSync()
+    return File(pathFromKey(file.key)).existsSync()
         ? () {
-            OpenFile.open(
-                p.join(localRoot, file.key.split('/').sublist(1).join('/')));
+            OpenFile.open(pathFromKey(file.key));
           }
         : () async {
             launchUrl(Uri.parse(await getLink(file, null)));
@@ -129,9 +265,7 @@ class FileContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return localRoot.isEmpty ||
-            File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
-                .existsSync()
+    return !rootExists() || File(pathFromKey(file.key)).existsSync()
         ? null
         : () {
             downloadFile(file);
@@ -142,21 +276,16 @@ class FileContextActionHandler extends ContextActionHandler {
   String Function()? saveAs(String? path) {
     return path != null
         ? () {
-            saveFile(
-              file,
-              p.join(localRoot, file.key.split('/').sublist(1).join('/')),
-            );
+            saveFile(file, pathFromKey(file.key));
             return 'Saving to $path';
           }
         : null;
   }
 
   XFile Function()? getXFile() {
-    return File(p.join(localRoot, file.key.split('/').sublist(1).join('/')))
-            .existsSync()
+    return File(pathFromKey(file.key)).existsSync()
         ? () {
-            return XFile(
-                p.join(localRoot, file.key.split('/').sublist(1).join('/')));
+            return XFile(pathFromKey(file.key));
           }
         : null;
   }
@@ -232,7 +361,6 @@ class FileContextOption {
       );
 
   static FileContextOption saveAs(
-    RemoteFile file,
     FileContextActionHandler handler,
     BuildContext context,
   ) =>
@@ -242,7 +370,7 @@ class FileContextOption {
         action: () async {
           final String Function()? handle = handler.saveAs(
             (await getSaveLocation(
-              suggestedName: file.key.split('/').last,
+              suggestedName: handler.file.key.split('/').last,
               canCreateDirectories: true,
             ))
                 ?.path,
@@ -322,7 +450,6 @@ class FileContextOption {
   }
 
   static FileContextOption rename(
-    RemoteFile file,
     FileContextActionHandler handler,
     BuildContext context,
   ) =>
@@ -330,10 +457,11 @@ class FileContextOption {
         title: 'Rename',
         icon: Icons.edit,
         action: () async {
-          final newName = await renameDialog(context, file.key.split('/').last);
+          final newName =
+              await renameDialog(context, handler.file.key.split('/').last);
           if (newName != null &&
               newName.isNotEmpty &&
-              newName != file.key.split('/').last) {
+              newName != handler.file.key.split('/').last) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(await handler.rename(newName)()),
@@ -344,7 +472,6 @@ class FileContextOption {
       );
 
   static FileContextOption delete(
-    RemoteFile file,
     FileContextActionHandler handler,
     BuildContext context,
   ) =>
@@ -359,7 +486,7 @@ class FileContextOption {
               builder: (context) => AlertDialog(
                 title: const Text('Delete File'),
                 content: Text(
-                  'Are you sure you want to delete ${file.key.split('/').last} from your device and S3? This action cannot be undone.',
+                  'Are you sure you want to delete ${handler.file.key.split('/').last} from your device and S3? This action cannot be undone.',
                 ),
                 actions: [
                   TextButton(
@@ -385,24 +512,22 @@ class FileContextOption {
       );
 
   static List<FileContextOption> allOptions(
-    String localRoot,
-    RemoteFile file,
+    BuildContext context,
+    FileContextActionHandler handler,
     Function(RemoteFile) cutKey,
     Function(RemoteFile) copyKey,
     Function(String) deleteFile,
-    FileContextActionHandler handler,
-    BuildContext context,
   ) {
     return [
       open(handler),
       download(handler),
-      saveAs(file, handler, context),
+      saveAs(handler, context),
       share(handler),
       copyLink(handler, context),
       cut(handler, cutKey),
       copy(handler, copyKey),
-      rename(file, handler, context),
-      delete(file, handler, context),
+      rename(handler, context),
+      delete(handler, context),
     ];
   }
 }
@@ -451,8 +576,8 @@ class FilesContextOption {
       );
 
   static FilesContextOption saveAllTo(
-    List<FileContextActionHandler> handlers,
     BuildContext context,
+    List<FileContextActionHandler> handlers,
   ) =>
       FilesContextOption(
         title: 'Save To...',
@@ -513,8 +638,8 @@ class FilesContextOption {
       );
 
   static FilesContextOption copyAllLinks(
-    List<FileContextActionHandler> handlers,
     BuildContext context,
+    List<FileContextActionHandler> handlers,
   ) =>
       FilesContextOption(
         title: 'Copy Links',
@@ -557,8 +682,8 @@ class FilesContextOption {
       );
 
   static FilesContextOption deleteAll(
-    List<FileContextActionHandler> handlers,
     BuildContext context,
+    List<FileContextActionHandler> handlers,
     Function() clearSelection,
   ) =>
       FilesContextOption(
@@ -599,23 +724,21 @@ class FilesContextOption {
       );
 
   static List<FilesContextOption> allOptions(
-    String localRoot,
-    List<RemoteFile> files,
+    BuildContext context,
+    List<FileContextActionHandler> handlers,
     Function(RemoteFile?) cutKey,
     Function(RemoteFile?) copyKey,
     Function(String) deleteFile,
-    List<FileContextActionHandler> handlers,
-    BuildContext context,
     Function() clearSelection,
   ) {
     return [
       downloadAll(handlers),
-      saveAllTo(handlers, context),
+      saveAllTo(context, handlers),
       shareAll(handlers),
-      copyAllLinks(handlers, context),
+      copyAllLinks(context, handlers),
       cut(cutKey),
       copy(copyKey),
-      deleteAll(handlers, context, clearSelection),
+      deleteAll(context, handlers, clearSelection),
     ];
   }
 }
@@ -627,19 +750,21 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   final Function(String, String) moveDirectory;
   final Function(String) deleteDirectory;
 
+  bool rootExists() {
+    return p.isAbsolute(pathFromKey(key));
+  }
+
   void Function()? open() {
-    return Directory(p.join(localRoot, key.split('/').sublist(1).join('/')))
-            .existsSync()
+    return Directory(pathFromKey(key)).existsSync()
         ? () {
-            OpenFile.open(
-                p.join(localRoot, key.split('/').sublist(1).join('/')));
+            OpenFile.open(pathFromKey(key));
           }
         : null;
   }
 
   @override
   void Function()? download() {
-    return localRoot.isEmpty
+    return !rootExists()
         ? null
         : () {
             downloadDirectory(key);
@@ -651,10 +776,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     return path == null
         ? null
         : () {
-            saveDirectory(
-              key,
-              p.join(localRoot, key.split('/').sublist(1).join('/')),
-            );
+            saveDirectory(key, pathFromKey(key));
             return 'Saving to $path';
           };
   }
@@ -681,7 +803,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   }
 
   DirectoryContextActionHandler({
-    required super.localRoot,
+    required super.pathFromKey,
     required this.key,
     required this.downloadDirectory,
     required this.saveDirectory,
@@ -752,43 +874,41 @@ class DirectoryContextOption {
       );
 
   static DirectoryContextOption cut(
-    String key,
+    DirectoryContextActionHandler handler,
     Function(String) cutKey,
   ) =>
       DirectoryContextOption(
         title: 'Move To...',
         icon: Icons.cut,
         action: () {
-          cutKey(key);
+          cutKey(handler.key);
         },
       );
 
   static DirectoryContextOption copy(
-    String key,
+    DirectoryContextActionHandler handler,
     Function(String) copyKey,
   ) =>
       DirectoryContextOption(
         title: 'Copy To...',
         icon: Icons.folder_copy,
         action: () {
-          copyKey(key);
+          copyKey(handler.key);
         },
       );
 
   static DirectoryContextOption rename(
-    String localRoot,
-    String key,
-    DirectoryContextActionHandler handler,
     BuildContext context,
+    DirectoryContextActionHandler handler,
   ) =>
       DirectoryContextOption(
         title: 'Rename',
         icon: Icons.edit,
         action: () async {
-          final newName = await renameDialog(context, p.basename(key));
+          final newName = await renameDialog(context, p.basename(handler.key));
           if (newName != null &&
               newName.isNotEmpty &&
-              newName != p.basename(key)) {
+              newName != p.basename(handler.key)) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(await handler.rename(newName)()),
@@ -799,10 +919,8 @@ class DirectoryContextOption {
       );
 
   static DirectoryContextOption delete(
-    String localRoot,
-    String key,
-    DirectoryContextActionHandler handler,
     BuildContext context,
+    DirectoryContextActionHandler handler,
   ) =>
       DirectoryContextOption(
         title: 'Delete',
@@ -814,7 +932,7 @@ class DirectoryContextOption {
             builder: (context) => AlertDialog(
               title: const Text('Delete Directory'),
               content: Text(
-                'Are you sure you want to delete ${p.basename(key)} from your device and S3? This action cannot be undone.',
+                'Are you sure you want to delete ${p.basename(handler.key)} from your device and S3? This action cannot be undone.',
               ),
               actions: [
                 TextButton(
@@ -839,21 +957,19 @@ class DirectoryContextOption {
       );
 
   static List<DirectoryContextOption> allOptions(
-    String localRoot,
-    String key,
+    BuildContext context,
+    DirectoryContextActionHandler handler,
     Function(String) cutKey,
     Function(String) copyKey,
-    DirectoryContextActionHandler handler,
-    BuildContext context,
   ) {
     return [
       open(handler),
       download(handler),
       saveTo(handler, context),
-      cut(localRoot, cutKey),
-      copy(localRoot, copyKey),
-      rename(localRoot, key, handler, context),
-      delete(localRoot, key, handler, context),
+      cut(handler, cutKey),
+      copy(handler, copyKey),
+      rename(context, handler),
+      delete(context, handler),
     ];
   }
 }
@@ -980,12 +1096,10 @@ class DirectoriesContextOption {
       );
 
   static List<DirectoriesContextOption> allOptions(
-    String localRoot,
-    List<String> keys,
+    BuildContext context,
+    List<DirectoryContextActionHandler> handlers,
     Function(String?) cutKey,
     Function(String?) copyKey,
-    List<DirectoryContextActionHandler> handlers,
-    BuildContext context,
     Function() clearSelection,
   ) {
     return [
@@ -1167,7 +1281,7 @@ class BulkContextOption {
 Widget buildFileContextMenu(
   BuildContext context,
   RemoteFile item,
-  String localRoot,
+  String Function(String) pathFromKey,
   Future<String> Function(RemoteFile, int?) getLink,
   Function(RemoteFile) downloadFile,
   Function(RemoteFile, String) saveFile,
@@ -1177,8 +1291,8 @@ Widget buildFileContextMenu(
   Function(String) deleteFile,
 ) {
   FileContextActionHandler handler = FileContextActionHandler(
-    localRoot: localRoot,
     file: item,
+    pathFromKey: pathFromKey,
     getLink: getLink,
     downloadFile: downloadFile,
     saveFile: saveFile,
@@ -1187,13 +1301,11 @@ Widget buildFileContextMenu(
   );
   return ListView(
       children: FileContextOption.allOptions(
-    localRoot,
-    item,
+    context,
+    handler,
     cut,
     copy,
     deleteFile,
-    handler,
-    context,
   )
           .map(
             (option) => ListTile(
@@ -1214,7 +1326,7 @@ Widget buildFileContextMenu(
 Widget buildFilesContextMenu(
   BuildContext context,
   List<RemoteFile> items,
-  String localRoot,
+  String Function(String) pathFromKey,
   Future<String> Function(RemoteFile, int?) getLink,
   Function(RemoteFile) downloadFile,
   Function(RemoteFile, String) saveFile,
@@ -1227,7 +1339,7 @@ Widget buildFilesContextMenu(
   List<FileContextActionHandler> handlers = items
       .map(
         (item) => FileContextActionHandler(
-          localRoot: localRoot,
+          pathFromKey: pathFromKey,
           file: item,
           getLink: getLink,
           downloadFile: downloadFile,
@@ -1239,13 +1351,11 @@ Widget buildFilesContextMenu(
       .toList();
   return ListView(
       children: FilesContextOption.allOptions(
-    localRoot,
-    items,
+    context,
+    handlers,
     cut,
     copy,
     deleteFile,
-    handlers,
-    context,
     clearSelection,
   )
           .map(
@@ -1267,7 +1377,7 @@ Widget buildFilesContextMenu(
 Widget buildDirectoryContextMenu(
   BuildContext context,
   String key,
-  String localRoot,
+  String Function(String) pathFromKey,
   Function(String) downloadDirectory,
   Function(String, String) saveDirectory,
   Function(String) cut,
@@ -1276,7 +1386,7 @@ Widget buildDirectoryContextMenu(
   Function(String) deleteDirectory,
 ) {
   DirectoryContextActionHandler handler = DirectoryContextActionHandler(
-    localRoot: localRoot,
+    pathFromKey: pathFromKey,
     key: key,
     downloadDirectory: downloadDirectory,
     saveDirectory: saveDirectory,
@@ -1285,12 +1395,10 @@ Widget buildDirectoryContextMenu(
   );
   return ListView(
       children: DirectoryContextOption.allOptions(
-    localRoot,
-    key,
+    context,
+    handler,
     cut,
     copy,
-    handler,
-    context,
   )
           .map(
             (option) => ListTile(
@@ -1311,7 +1419,7 @@ Widget buildDirectoryContextMenu(
 Widget buildDirectoriesContextMenu(
   BuildContext context,
   List<String> keys,
-  String localRoot,
+  String Function(String) pathFromKey,
   Function(String) downloadDirectory,
   Function(String, String) saveDirectory,
   Function(String?) cut,
@@ -1323,7 +1431,7 @@ Widget buildDirectoriesContextMenu(
   List<DirectoryContextActionHandler> handlers = keys
       .map(
         (key) => DirectoryContextActionHandler(
-          localRoot: localRoot,
+          pathFromKey: pathFromKey,
           key: key,
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
@@ -1334,12 +1442,10 @@ Widget buildDirectoriesContextMenu(
       .toList();
   return ListView(
       children: DirectoriesContextOption.allOptions(
-    localRoot,
-    keys,
+    context,
+    handlers,
     cut,
     copy,
-    handlers,
-    context,
     clearSelection,
   )
           .map(
@@ -1361,7 +1467,7 @@ Widget buildDirectoriesContextMenu(
 Widget buildBulkContextMenu(
   BuildContext context,
   List<dynamic> items,
-  String localRoot,
+  String Function(String) pathFromKey,
   Future<String> Function(RemoteFile, int?) getLink,
   Function(RemoteFile) downloadFile,
   Function(String) downloadDirectory,
@@ -1379,7 +1485,7 @@ Widget buildBulkContextMenu(
     return buildFilesContextMenu(
       context,
       items.cast<RemoteFile>(),
-      localRoot,
+      pathFromKey,
       getLink,
       downloadFile,
       saveFile,
@@ -1393,7 +1499,7 @@ Widget buildBulkContextMenu(
     return buildDirectoriesContextMenu(
       context,
       items.cast<String>(),
-      localRoot,
+      pathFromKey,
       downloadDirectory,
       saveDirectory,
       cut,
@@ -1406,8 +1512,8 @@ Widget buildBulkContextMenu(
     List<ContextActionHandler> handlers = items.map((item) {
       if (item is RemoteFile) {
         return FileContextActionHandler(
-          localRoot: localRoot,
           file: item,
+          pathFromKey: pathFromKey,
           getLink: getLink,
           downloadFile: downloadFile,
           saveFile: saveFile,
@@ -1416,8 +1522,8 @@ Widget buildBulkContextMenu(
         );
       } else if (item is String) {
         return DirectoryContextActionHandler(
-          localRoot: localRoot,
           key: item,
+          pathFromKey: pathFromKey,
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
           moveDirectory: moveDirectory,

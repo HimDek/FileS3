@@ -1,26 +1,26 @@
 import 'dart:io';
-import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
-import 'package:s3_drive/services/models/common.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:s3_drive/components.dart';
-import 'package:s3_drive/job_view.dart';
+import 'package:s3_drive/list_files.dart';
 import 'package:s3_drive/services/job.dart';
+import 'package:s3_drive/services/models/common.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 
 class DirectoryContents extends StatefulWidget {
   final String directory;
-  final String localRoot;
   final Processor processor;
   final List<Job> jobs;
   final Map<String, List<RemoteFile>> remoteFilesMap;
   final bool foldersFirst;
   final SortMode sortMode;
+  final String? focusedKey;
   final Set<dynamic> selection;
   final SelectionAction selectionAction;
   final Function(dynamic) select;
   final Function(List<dynamic>) updateAllSelectableItems;
+  final String Function(String) pathFromKey;
+  final Function(String) setFocus;
   final void Function(Job job) onJobStatus;
   final Function(Job, dynamic) onJobComplete;
   final Function(String) onChangeDirectory;
@@ -42,16 +42,18 @@ class DirectoryContents extends StatefulWidget {
   const DirectoryContents({
     super.key,
     required this.directory,
-    required this.localRoot,
     required this.processor,
     required this.jobs,
     required this.remoteFilesMap,
     required this.foldersFirst,
     required this.sortMode,
+    required this.focusedKey,
     required this.selection,
     required this.selectionAction,
     required this.select,
     required this.updateAllSelectableItems,
+    required this.pathFromKey,
+    required this.setFocus,
     required this.onJobStatus,
     required this.onJobComplete,
     required this.onChangeDirectory,
@@ -76,73 +78,6 @@ class DirectoryContents extends StatefulWidget {
 }
 
 class DirectoryContentsState extends State<DirectoryContents> {
-  String? focusedKey;
-
-  List<(Map<String, dynamic>, Widget)> sort(
-      List<(Map<String, dynamic>, Widget)> items) {
-    List<(Map<String, dynamic>, Widget)> sortedItems = List.from(items);
-    sortedItems.sort((a, b) {
-      var aIsDir = a.$1['file'] == null && a.$1['job'] == null;
-      var bIsDir = b.$1['file'] == null && b.$1['job'] == null;
-
-      if (a.$1['name'] == '..') return -1;
-      if (b.$1['name'] == '..') return 1;
-
-      if (widget.foldersFirst) {
-        if (aIsDir && !bIsDir) return -1;
-        if (!aIsDir && bIsDir) return 1;
-      }
-
-      switch (widget.sortMode) {
-        case SortMode.nameAsc:
-          return a.$1['name']
-              .toLowerCase()
-              .compareTo(b.$1['name'].toLowerCase());
-        case SortMode.nameDesc:
-          return b.$1['name']
-              .toLowerCase()
-              .compareTo(a.$1['name'].toLowerCase());
-        case SortMode.dateAsc:
-          DateTime aDate = a.$1['file'] != null
-              ? (a.$1['file'] as RemoteFile).lastModified
-              : DateTime.fromMillisecondsSinceEpoch(0);
-          DateTime bDate = b.$1['file'] != null
-              ? (b.$1['file'] as RemoteFile).lastModified
-              : DateTime.fromMillisecondsSinceEpoch(0);
-          return aDate.compareTo(bDate);
-        case SortMode.dateDesc:
-          DateTime aDate = a.$1['file'] != null
-              ? (a.$1['file'] as RemoteFile).lastModified
-              : DateTime.fromMillisecondsSinceEpoch(0);
-          DateTime bDate = b.$1['file'] != null
-              ? (b.$1['file'] as RemoteFile).lastModified
-              : DateTime.fromMillisecondsSinceEpoch(0);
-          return bDate.compareTo(aDate);
-        case SortMode.sizeAsc:
-          return a.$1['size'].compareTo(b.$1['size']);
-        case SortMode.sizeDesc:
-          return b.$1['size'].compareTo(a.$1['size']);
-        case SortMode.typeAsc:
-          String aExt = a.$1['name'].contains('.')
-              ? a.$1['name'].split('.').last.toLowerCase()
-              : '';
-          String bExt = b.$1['name'].contains('.')
-              ? b.$1['name'].split('.').last.toLowerCase()
-              : '';
-          return aExt.compareTo(bExt);
-        case SortMode.typeDesc:
-          String aExt = a.$1['name'].contains('.')
-              ? a.$1['name'].split('.').last.toLowerCase()
-              : '';
-          String bExt = b.$1['name'].contains('.')
-              ? b.$1['name'].split('.').last.toLowerCase()
-              : '';
-          return bExt.compareTo(aExt);
-      }
-    });
-    return sortedItems;
-  }
-
   @override
   Widget build(BuildContext context) {
     String dir = '${widget.directory.split('/').first}/';
@@ -170,7 +105,7 @@ class DirectoryContentsState extends State<DirectoryContents> {
               job.remoteKey.startsWith(widget.directory) &&
               '${File(job.remoteKey).parent.path}/' == widget.directory,
         )
-        .map((job) => job.remoteKey.split('/').last)
+        .map((job) => job.remoteKey)
         .toList();
 
     widget.updateAllSelectableItems([
@@ -178,7 +113,7 @@ class DirectoryContentsState extends State<DirectoryContents> {
       ...widget.remoteFilesMap[dir]!.where((file) =>
           file.key.split('/').last.isNotEmpty &&
           '${File(file.key).parent.path}/' == widget.directory &&
-          !jobs.contains(file.key.split('/').last)),
+          !jobs.contains(file.key)),
     ]);
 
     return ListView(
@@ -186,7 +121,7 @@ class DirectoryContentsState extends State<DirectoryContents> {
         (
           {'name': '..', 'size': 0, 'file': null},
           ListTile(
-            selected: focusedKey == '..' && widget.selection.isEmpty,
+            selected: widget.focusedKey == '..' && widget.selection.isEmpty,
             selectedTileColor:
                 Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
             selectedColor: Theme.of(context).colorScheme.primary,
@@ -202,194 +137,52 @@ class DirectoryContentsState extends State<DirectoryContents> {
                   },
           ),
         ),
-        for (String subDir in subDirectories)
-          (
-            {
-              'name': Directory(subDir).path.split('/').last,
-              'size': 0,
-              'file': null,
-            },
-            ListTile(
-              selected: (focusedKey == Directory(subDir).path.split('/').last &&
-                      widget.selection.isEmpty) ||
-                  widget.selection.any((selected) {
-                    if (selected is String) {
-                      return selected == "${Directory(subDir).path}/";
-                    }
-                    return false;
-                  }),
-              selectedTileColor:
-                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-              selectedColor: Theme.of(context).colorScheme.primary,
-              leading: Icon(Icons.folder),
-              title: Text("${Directory(subDir).path.split('/').last}/"),
-              onTap: widget.selection.isNotEmpty &&
-                      widget.selectionAction == SelectionAction.none
-                  ? () {
-                      widget.select("${Directory(subDir).path}/");
-                    }
-                  : () {
-                      widget.onChangeDirectory("${Directory(subDir).path}/");
-                    },
-              onLongPress: widget.selectionAction == SelectionAction.none
-                  ? () {
-                      widget.select("${Directory(subDir).path}/");
-                    }
-                  : null,
-              trailing: widget.selection.isNotEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () async {
-                        focusedKey = Directory(subDir).path.split('/').last;
-                        setState(() {});
-                        await widget.stopWatchers();
-                        showModalBottomSheet(
-                          context: context,
-                          enableDrag: true,
-                          showDragHandle: true,
-                          constraints: const BoxConstraints(
-                            maxHeight: 800,
-                            maxWidth: 800,
-                          ),
-                          builder: (context) => buildDirectoryContextMenu(
-                            context,
-                            "${Directory(subDir).path}/",
-                            widget.localRoot,
-                            widget.downloadDirectory,
-                            widget.saveDirectory,
-                            widget.cut,
-                            widget.copy,
-                            (String dir, String newDir) => widget
-                                .moveDirectory(dir, newDir, refresh: false),
-                            (String dir) =>
-                                widget.deleteDirectory(dir, refresh: false),
-                          ),
-                        ).then((value) => widget.listDirectories());
-                      },
-                      icon: Icon(Icons.more_vert),
-                    ),
+        ...listFiles(
+          context,
+          [
+            ...subDirectories,
+            ...widget.jobs.where(
+              (job) =>
+                  job.remoteKey.startsWith(widget.directory) &&
+                  '${File(job.remoteKey).parent.path}/' == widget.directory,
             ),
-          ),
-        for (final job in widget.jobs.where(
-          (job) =>
-              job.remoteKey.startsWith(widget.directory) &&
-              '${File(job.remoteKey).parent.path}/' == widget.directory,
-        ))
-          (
-            {
-              'name': job.remoteKey.split('/').last,
-              'size': job.bytes,
-              'file': job.localFile,
-              'job': job,
-            },
-            JobView(
-              job: job,
-              processor: widget.processor,
-              onUpdate: () {
-                setState(() {});
-              },
-              onJobComplete: widget.onJobComplete,
-              remove: () {
-                setState(() {
-                  widget.jobs.remove(job);
-                });
-              },
-            ),
-          ),
-        for (RemoteFile file in widget.remoteFilesMap[dir] ?? [])
-          if (file.key.split('/').last.isNotEmpty &&
-              '${File(file.key).parent.path}/' == widget.directory &&
-              !jobs.contains(file.key.split('/').last))
-            (
-              {
-                'name': file.key.split('/').last,
-                'size': file.size,
-                'file': file,
-              },
-              ListTile(
-                selected: (focusedKey == file.key.split('/').last &&
-                        widget.selection.isEmpty) ||
-                    widget.selection.any((selected) {
-                      if (selected is RemoteFile) {
-                        return selected.key == file.key;
-                      }
-                      return false;
-                    }),
-                selectedTileColor: Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.1),
-                selectedColor: Theme.of(context).colorScheme.primary,
-                leading: Icon(Icons.insert_drive_file),
-                title: Text(file.key.split('/').last),
-                subtitle: Text(
-                    '${bytesToReadable(file.size)}\t\t\t\t${file.lastModified.toLocal().toString().split('.').first}'),
-                trailing: widget.selection.isNotEmpty
-                    ? null
-                    : IconButton(
-                        onPressed: () async {
-                          focusedKey = file.key.split('/').last;
-                          setState(() {});
-                          await widget.stopWatchers();
-                          showModalBottomSheet(
-                            context: context,
-                            enableDrag: true,
-                            showDragHandle: true,
-                            constraints: const BoxConstraints(
-                              maxHeight: 800,
-                              maxWidth: 800,
-                            ),
-                            builder: (context) => buildFileContextMenu(
-                              context,
-                              file,
-                              widget.localRoot,
-                              widget.getLink,
-                              widget.downloadFile,
-                              widget.saveFile,
-                              widget.cut,
-                              widget.copy,
-                              (String key, String newKey) =>
-                                  widget.moveFile(key, newKey, refresh: false),
-                              (String key) =>
-                                  widget.deleteFile(key, refresh: false),
-                            ),
-                          ).then((value) => widget.listDirectories());
-                        },
-                        icon: Icon(Icons.more_vert),
-                      ),
-                onTap: widget.selection.isNotEmpty &&
-                        widget.selectionAction == SelectionAction.none
-                    ? () {
-                        widget.select(file);
-                      }
-                    : widget.selectionAction != SelectionAction.none
-                        ? null
-                        : File(p.join(widget.localRoot,
-                                    file.key.split('/').sublist(1).join('/')))
-                                .existsSync()
-                            ? () {
-                                focusedKey = file.key.split('/').last;
-                                setState(() {});
-                                OpenFile.open(p.join(widget.localRoot,
-                                    file.key.split('/').sublist(1).join('/')));
-                              }
-                            : () {
-                                focusedKey = file.key.split('/').last;
-                                setState(() {});
-                                widget
-                                    .getLink(
-                                        file, Duration(minutes: 60).inSeconds)
-                                    .then(
-                                        (value) => launchUrl(Uri.parse(value)));
-                              },
-                onLongPress: widget.selectionAction == SelectionAction.none
-                    ? () {
-                        widget.select(file);
-                      }
-                    : null,
-              ),
-            ),
-      ])
+            ...(widget.remoteFilesMap[dir] ?? []).where((file) =>
+                (file.key.split('/').last.isNotEmpty &&
+                    '${File(file.key).parent.path}/' == widget.directory &&
+                    !jobs.contains(file.key)))
+          ],
+          false,
+          widget.processor,
+          widget.focusedKey,
+          widget.selection,
+          widget.selectionAction,
+          widget.select,
+          widget.pathFromKey,
+          widget.setFocus,
+          () {
+            setState(() {});
+          },
+          widget.onJobComplete,
+          (job) {
+            widget.jobs.remove(job);
+            setState(() {});
+          },
+          widget.onChangeDirectory,
+          widget.getLink,
+          widget.downloadFile,
+          widget.downloadDirectory,
+          widget.saveFile,
+          widget.saveDirectory,
+          widget.cut,
+          widget.copy,
+          widget.moveFile,
+          widget.moveDirectory,
+          widget.deleteFile,
+          widget.deleteDirectory,
+          widget.listDirectories,
+          widget.stopWatchers,
+        ),
+      ], widget.sortMode, widget.foldersFirst)
           .map((item) {
             return item.$2;
           })
