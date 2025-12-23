@@ -1,21 +1,20 @@
-import 'package:percent_indicator/percent_indicator.dart';
 import 'package:flutter/material.dart';
+import 'package:percent_indicator/percent_indicator.dart';
+import 'package:path/path.dart' as p;
 import 'services/job.dart';
 
 class JobView extends StatefulWidget {
   final Job job;
   final Processor processor;
-  final Function onUpdate;
-  final Function(Job, dynamic)? onJobComplete;
-  final Function()? remove;
+  final String? relativeTo;
+  final Function()? onUpdate;
 
   const JobView({
     super.key,
     required this.job,
     required this.processor,
-    required this.onUpdate,
-    this.onJobComplete,
-    this.remove,
+    this.relativeTo,
+    this.onUpdate,
   });
 
   @override
@@ -23,12 +22,6 @@ class JobView extends StatefulWidget {
 }
 
 class JobViewState extends State<JobView> {
-  @override
-  void setState(VoidCallback fn) {
-    super.setState(fn);
-    widget.onUpdate();
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListTile(
@@ -47,12 +40,13 @@ class JobViewState extends State<JobView> {
               ? Icon(Icons.done)
               : IconButton(
                   onPressed: () {
-                    widget.processor
-                        .processJob(widget.job, widget.onJobComplete!);
+                    widget.processor.processJob(widget.job);
                   },
                   icon: Icon(Icons.start),
                 ),
-      title: Text(widget.job.remoteKey),
+      title: p.isWithin(widget.job.remoteKey, widget.relativeTo ?? '')
+          ? Text(p.relative(widget.job.remoteKey, from: widget.relativeTo))
+          : Text(widget.job.remoteKey),
       subtitle: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
@@ -61,9 +55,12 @@ class JobViewState extends State<JobView> {
           Text(widget.job.localFile.path, maxLines: 1),
         ],
       ),
-      trailing: widget.job.completed && widget.remove != null
+      trailing: widget.job.dismissible()
           ? IconButton(
-              onPressed: widget.remove,
+              onPressed: () {
+                widget.job.dismiss();
+                if (widget.onUpdate != null) widget.onUpdate!();
+              },
               icon: Icon(Icons.close),
             )
           : null,

@@ -9,196 +9,219 @@ import 'package:s3_drive/services/models/common.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-List<(Map<String, dynamic>, Widget)> listFiles(
+// class ListFiles extends StatelessWidget {
+//   final BuildContext context;
+//   final List<dynamic> files;
+//   final SortMode sortMode;
+//   final bool foldersFirst;
+//   final Function(RemoteFile) showContextMenu;
+//   final bool showFullPath;
+//   final Processor processor;
+//   final String? focusedKey;
+//   final Set<RemoteFile> selection;
+//   final SelectionAction selectionAction;
+//   final void Function(RemoteFile) select;
+//   final String Function(String) pathFromKey;
+//   final Function(String) setFocus;
+//   final Function(int) setNavIndex;
+//   final Function() onJobUpdate;
+//   final Function(Job, dynamic) onJobComplete;
+//   final Function(Job) removeJob;
+//   final Function(String) onChangeDirectory;
+//   final String Function(RemoteFile, int?) getLink;
+//   final Function() stopWatchers;
+
+//   const ListFiles({
+//     super.key,
+//     required this.context,
+//     required this.files,
+//     required this.sortMode,
+//     required this.foldersFirst,
+//     required this.showContextMenu,
+//     required this.showFullPath,
+//     required this.processor,
+//     required this.focusedKey,
+//     required this.selection,
+//     required this.selectionAction,
+//     required this.select,
+//     required this.pathFromKey,
+//     required this.setFocus,
+//     required this.setNavIndex,
+//     required this.onJobUpdate,
+//     required this.onJobComplete,
+//     required this.removeJob,
+//     required this.onChangeDirectory,
+//     required this.getLink,
+//     required this.stopWatchers,
+//   });
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Column(
+//       children: listFiles(
+//         this.context,
+//         files,
+//         sortMode,
+//         foldersFirst,
+//         showContextMenu,
+//         showFullPath,
+//         processor,
+//         focusedKey,
+//         selection,
+//         selectionAction,
+//         select,
+//         pathFromKey,
+//         setFocus,
+//         setNavIndex,
+//         onJobUpdate,
+//         onJobComplete,
+//         removeJob,
+//         onChangeDirectory,
+//         getLink,
+//         stopWatchers,
+//       ),
+//     );
+//   }
+// }
+
+List<Widget> listFiles(
   BuildContext context,
-  List<dynamic> files,
-  bool showFullPath,
   Processor processor,
+  List<dynamic> files,
+  SortMode sortMode,
+  bool foldersFirst,
+  String relativeto,
   String? focusedKey,
-  Set<dynamic> selection,
+  Set<RemoteFile> selection,
   SelectionAction selectionAction,
-  void Function(dynamic) select,
-  String Function(String) pathFromKey,
+  Function() onUpdate,
   Function(String) setFocus,
-  Function(int) setNavIndex,
-  Function() onJobUpdate,
-  Function(Job, dynamic) onJobComplete,
-  Function(Job) removeJob,
   Function(String) onChangeDirectory,
-  Future<String> Function(RemoteFile, int?) getLink,
-  Function(RemoteFile) downloadFile,
-  Function(String) downloadDirectory,
-  Function(RemoteFile, String) saveFile,
-  Function(String, String) saveDirectory,
-  Function(dynamic) cut,
-  Function(dynamic) copy,
-  Function(String, String, {bool refresh}) moveFile,
-  Function(String, String, {bool refresh}) moveDirectory,
-  Function(String, {bool refresh}) deleteFile,
-  Function(String, {bool refresh}) deleteDirectory,
-  Function() listDirectories,
-  Function() stopWatchers,
+  Function(RemoteFile) select,
+  Function(RemoteFile) showContextMenu,
+  String Function(RemoteFile, int?) getLink,
+  String Function(String) pathFromKey,
 ) {
-  Iterable<String> dirs = files.whereType<String>();
   Iterable<Job> jobs = files.whereType<Job>();
   Iterable<RemoteFile> remoteFiles = files.whereType<RemoteFile>();
-  return [
-    for (String file in dirs)
-      (
-        {
-          'name': Directory(file).path,
-          'size': 0,
-          'file': null,
-        },
-        ListTile(
-          selected: (focusedKey == Directory(file).path && selection.isEmpty) ||
-              selection.any((selected) {
-                if (selected is String) {
-                  return selected == "${Directory(file).path}/";
-                }
-                return false;
-              }),
-          selectedTileColor:
-              Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-          selectedColor: Theme.of(context).colorScheme.primary,
-          leading: Icon(Icons.folder),
-          title: Text("${p.basename(Directory(file).path)}/"),
-          onTap: selection.isNotEmpty && selectionAction == SelectionAction.none
-              ? () {
-                  select("${Directory(file).path}/");
-                }
-              : () {
-                  setNavIndex(0);
-                  onChangeDirectory("${Directory(file).path}/");
-                },
-          onLongPress: selectionAction == SelectionAction.none
-              ? () {
-                  select("${Directory(file).path}/");
-                }
-              : null,
-          trailing: selection.isNotEmpty
-              ? null
-              : IconButton(
-                  onPressed: () async {
-                    setFocus(Directory(file).path);
-                    await stopWatchers();
-                    showModalBottomSheet(
-                      context: context,
-                      enableDrag: true,
-                      showDragHandle: true,
-                      constraints: const BoxConstraints(
-                        maxHeight: 800,
-                        maxWidth: 800,
-                      ),
-                      builder: (context) => buildDirectoryContextMenu(
-                        context,
-                        "${Directory(file).path}/",
-                        pathFromKey,
-                        downloadDirectory,
-                        saveDirectory,
-                        cut,
-                        copy,
-                        (String dir, String newDir) =>
-                            moveDirectory(dir, newDir, refresh: false),
-                        (String dir) => deleteDirectory(dir, refresh: false),
-                      ),
-                    ).then((value) => listDirectories());
-                  },
-                  icon: Icon(Icons.more_vert),
-                ),
-        ),
+
+  List<FileProps> list = sort([
+    for (RemoteFile file in remoteFiles.where((file) => file.key.endsWith('/')))
+      FileProps(
+        key: file.key,
+        size: file.size,
+        file: file,
       ),
     for (Job job in jobs)
-      (
-        {
-          'name': job.remoteKey,
-          'size': job.bytes,
-          'file': job.localFile,
-          'job': job,
-        },
-        JobView(
-          job: job,
-          processor: processor,
-          onUpdate: onJobUpdate,
-          onJobComplete: onJobComplete,
-          remove: () => removeJob(job),
-        ),
+      FileProps(
+        key: job.remoteKey,
+        size: job.bytes,
+        job: job,
       ),
     for (RemoteFile file in remoteFiles)
-      (
-        {
-          'name': file.key,
-          'size': file.size,
-          'file': file,
-        },
-        ListTile(
-          selected: (focusedKey == file.key && selection.isEmpty) ||
-              selection.any((selected) {
-                if (selected is RemoteFile) {
-                  return selected.key == file.key;
-                }
-                return false;
-              }),
-          selectedTileColor:
-              Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-          selectedColor: Theme.of(context).colorScheme.primary,
-          leading: Icon(Icons.insert_drive_file),
-          title: Text(showFullPath ? file.key : file.key.split('/').last),
-          subtitle: Text(
-              '${bytesToReadable(file.size)}\t\t\t\t${file.lastModified.toLocal().toString().split('.').first}'),
-          trailing: selection.isNotEmpty
-              ? null
-              : IconButton(
-                  onPressed: () async {
-                    setFocus(file.key);
-                    await stopWatchers();
-                    showModalBottomSheet(
-                      context: context,
-                      enableDrag: true,
-                      showDragHandle: true,
-                      constraints: const BoxConstraints(
-                        maxHeight: 800,
-                        maxWidth: 800,
-                      ),
-                      builder: (context) => buildFileContextMenu(
-                        context,
-                        file,
-                        pathFromKey,
-                        getLink,
-                        downloadFile,
-                        saveFile,
-                        cut,
-                        copy,
-                        (String key, String newKey) =>
-                            moveFile(key, newKey, refresh: false),
-                        (String key) => deleteFile(key, refresh: false),
-                      ),
-                    ).then((value) => listDirectories());
-                  },
-                  icon: Icon(Icons.more_vert),
-                ),
-          onTap: selection.isNotEmpty && selectionAction == SelectionAction.none
-              ? () {
-                  select(file);
-                }
-              : selectionAction != SelectionAction.none
-                  ? null
-                  : File(pathFromKey(file.key)).existsSync()
-                      ? () {
-                          setFocus(file.key);
-                          OpenFile.open(pathFromKey(file.key));
-                        }
-                      : () {
-                          setFocus(file.key);
-                          getLink(file, Duration(minutes: 60).inSeconds)
-                              .then((value) => launchUrl(Uri.parse(value)));
-                        },
-          onLongPress: selectionAction == SelectionAction.none
-              ? () {
-                  select(file);
-                }
-              : null,
+      if (!file.key.endsWith('/'))
+        FileProps(
+          key: file.key,
+          size: file.size,
+          file: file,
         ),
-      ),
-  ];
+  ], sortMode, foldersFirst);
+
+  return list
+      .map(
+        (item) => item.job != null
+            ? JobView(
+                job: item.job!,
+                processor: processor,
+                relativeTo: relativeto,
+                onUpdate: onUpdate,
+              )
+            : item.key.endsWith('/')
+                ? ListTile(
+                    selected: (focusedKey == item.key && selection.isEmpty) ||
+                        selection.any((selected) {
+                          return selected.key == item.key;
+                        }),
+                    selectedTileColor: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.1),
+                    selectedColor: Theme.of(context).colorScheme.primary,
+                    leading: Icon(Icons.folder),
+                    title: Text(p.isWithin(relativeto, item.key)
+                        ? "${p.relative(item.key, from: relativeto)}/"
+                        : "${item.key}/"),
+                    subtitle: Text(
+                        '${bytesToReadable(item.size)}\t\t\t\t${item.file!.lastModified.toLocal().toString().split('.').first}'),
+                    onTap: selection.isNotEmpty &&
+                            selectionAction == SelectionAction.none
+                        ? () {
+                            select(item.file!);
+                          }
+                        : () {
+                            onChangeDirectory("${item.key}/");
+                          },
+                    onLongPress: selectionAction == SelectionAction.none
+                        ? () {
+                            select(item.file!);
+                          }
+                        : null,
+                    trailing: selection.isNotEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () async {
+                              showContextMenu(item.file!);
+                            },
+                            icon: Icon(Icons.more_vert),
+                          ),
+                  )
+                : ListTile(
+                    selected: (focusedKey == item.key && selection.isEmpty) ||
+                        selection.any((selected) {
+                          return selected.key == item.key;
+                        }),
+                    selectedTileColor: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.1),
+                    selectedColor: Theme.of(context).colorScheme.primary,
+                    leading: Icon(Icons.insert_drive_file),
+                    title: Text(p.isWithin(relativeto, item.key)
+                        ? p.relative(item.key, from: relativeto)
+                        : item.file!.key),
+                    subtitle: Text(
+                        '${bytesToReadable(item.size)}\t\t\t\t${item.file!.lastModified.toLocal().toString().split('.').first}'),
+                    trailing: selection.isNotEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () async {
+                              showContextMenu(item.file!);
+                            },
+                            icon: Icon(Icons.more_vert),
+                          ),
+                    onTap: selection.isNotEmpty &&
+                            selectionAction == SelectionAction.none
+                        ? () {
+                            select(item.file!);
+                          }
+                        : selectionAction != SelectionAction.none
+                            ? null
+                            : File(pathFromKey(item.key)).existsSync()
+                                ? () {
+                                    setFocus(item.key);
+                                    OpenFile.open(pathFromKey(item.key));
+                                  }
+                                : () {
+                                    setFocus(item.key);
+                                    launchUrl(Uri.parse(getLink(item.file!,
+                                        Duration(minutes: 60).inSeconds)));
+                                  },
+                    onLongPress: selectionAction == SelectionAction.none
+                        ? () {
+                            select(item.file!);
+                          }
+                        : null,
+                  ),
+      )
+      .toList();
 }

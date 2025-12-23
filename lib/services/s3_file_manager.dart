@@ -215,6 +215,75 @@ class S3FileManager {
     return response.headers;
   }
 
+  String getUrl(String key, {int? validForSeconds}) {
+    key = '$_prefix$key';
+    final uri = Uri(
+      scheme: 'https',
+      host: '$_bucket.s3.$_region.amazonaws.com',
+      path: '/${key.split('/').map(awsEncode).join('/')}',
+    );
+
+    final now = DateTime.now().toUtc();
+    final amzDate = _formatAmzDate(now);
+    final shortDate = _formatDate(now);
+
+    final credentialScope = '$shortDate/$_region/s3/aws4_request';
+
+    final queryParams = <String, String>{
+      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+      'X-Amz-Credential': '$_accessKey/$credentialScope',
+      'X-Amz-Date': amzDate,
+      'X-Amz-Expires': (validForSeconds ?? 3600).toString(),
+      'X-Amz-SignedHeaders': 'host',
+      'X-Amz-Content-Sha256': 'UNSIGNED-PAYLOAD',
+    };
+
+    /// Canonical query string (sorted)
+    final encodedParams = queryParams.entries.map((e) {
+      return MapEntry(encode(e.key), encode(e.value));
+    }).toList();
+
+    encodedParams.sort((a, b) => a.key.compareTo(b.key));
+
+    final canonicalQuery =
+        encodedParams.map((e) => '${e.key}=${e.value}').join('&');
+
+    /// Canonical request
+    final canonicalRequest = [
+      'GET',
+      uri.path,
+      canonicalQuery,
+      'host:${uri.host}\n',
+      'host',
+      'UNSIGNED-PAYLOAD',
+    ].join('\n');
+
+    final stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      sha256.convert(utf8.encode(canonicalRequest)).toString(),
+    ].join('\n');
+
+    final signingKey = _getSigningKey(
+      _secretKey,
+      shortDate,
+      _region,
+      's3',
+    );
+
+    final signature = Hmac(
+      sha256,
+      signingKey,
+    ).convert(utf8.encode(stringToSign)).toString();
+
+    final presignedUri = uri.replace(
+      query: '$canonicalQuery&X-Amz-Signature=$signature',
+    );
+
+    return presignedUri.toString();
+  }
+
   Map<String, String> _buildSignedHeaders({
     required String key,
     required String method,
@@ -337,6 +406,12 @@ class S3FileManager {
   //       return 'application/octet-stream';
   //   }
   // }
+
+  String encode(String input) {
+    return Uri.encodeComponent(input)
+        .replaceAll('+', '%20')
+        .replaceAll('%7E', '~');
+  }
 
   String awsEncode(String input) {
     return input.codeUnits.map((unit) {

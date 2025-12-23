@@ -5,15 +5,13 @@ import 'services/job.dart';
 class ActiveJobs extends StatefulWidget {
   final List<Job> jobs;
   final Processor processor;
-  final Function onUpdate;
-  final Function(Job, dynamic) onJobComplete;
+  final Function() onUpdate;
 
   const ActiveJobs({
     super.key,
     required this.jobs,
     required this.processor,
     required this.onUpdate,
-    required this.onJobComplete,
   });
 
   @override
@@ -22,12 +20,6 @@ class ActiveJobs extends StatefulWidget {
 
 class ActiveJobsState extends State<ActiveJobs> {
   @override
-  void setState(VoidCallback fn) {
-    super.setState(fn);
-    widget.onUpdate();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       child: ListBody(
@@ -35,10 +27,7 @@ class ActiveJobsState extends State<ActiveJobs> {
           return JobView(
             job: job,
             processor: widget.processor,
-            onUpdate: () {
-              setState(() {});
-            },
-            onJobComplete: widget.onJobComplete,
+            onUpdate: widget.onUpdate,
           );
         }).toList(),
       ),

@@ -9,7 +9,7 @@ import 'hash_util.dart';
 typedef ProgressCallback = void Function(int bytesTransferred, int totalBytes);
 typedef StatusCallback = void Function(String status);
 
-enum TransferTask { upload, download, getUrl }
+enum TransferTask { upload, download }
 
 class S3TransferTask {
   final String accessKey;
@@ -64,11 +64,6 @@ class S3TransferTask {
         response = await _upload();
       } else if (task == TransferTask.download) {
         response = await _download();
-      } else if (task == TransferTask.getUrl) {
-        response = await _getUrl(
-          validForSeconds: validForSeconds,
-        );
-        onStatus?.call('Pre-signed URL generated');
       }
     } catch (e) {
       if (_isCancelled) {
@@ -222,70 +217,6 @@ class S3TransferTask {
     return null;
   }
 
-  Future<String> _getUrl({
-    int validForSeconds = 3600,
-  }) async {
-    final now = DateTime.now().toUtc();
-    final amzDate = _formatAmzDate(now);
-    final shortDate = _formatDate(now);
-
-    final credentialScope = '$shortDate/$region/s3/aws4_request';
-
-    final queryParams = <String, String>{
-      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
-      'X-Amz-Credential': '$accessKey/$credentialScope',
-      'X-Amz-Date': amzDate,
-      'X-Amz-Expires': validForSeconds.toString(),
-      'X-Amz-SignedHeaders': 'host',
-      'X-Amz-Content-Sha256': 'UNSIGNED-PAYLOAD',
-    };
-
-    /// Canonical query string (sorted)
-    final encodedParams = queryParams.entries.map((e) {
-      return MapEntry(_encode(e.key), _encode(e.value));
-    }).toList();
-
-    encodedParams.sort((a, b) => a.key.compareTo(b.key));
-
-    final canonicalQuery =
-        encodedParams.map((e) => '${e.key}=${e.value}').join('&');
-
-    /// Canonical request
-    final canonicalRequest = [
-      'GET',
-      _uri.path,
-      canonicalQuery,
-      'host:${_uri.host}\n',
-      'host',
-      'UNSIGNED-PAYLOAD',
-    ].join('\n');
-
-    final stringToSign = [
-      'AWS4-HMAC-SHA256',
-      amzDate,
-      credentialScope,
-      sha256.convert(utf8.encode(canonicalRequest)).toString(),
-    ].join('\n');
-
-    final signingKey = _getSigningKey(
-      secretKey,
-      shortDate,
-      region,
-      's3',
-    );
-
-    final signature = Hmac(
-      sha256,
-      signingKey,
-    ).convert(utf8.encode(stringToSign)).toString();
-
-    final presignedUri = _uri.replace(
-      query: '$canonicalQuery&X-Amz-Signature=$signature',
-    );
-
-    return presignedUri.toString();
-  }
-
   Map<String, String> _buildSignedHeaders({
     required String method,
     required String amzDate,
@@ -381,12 +312,6 @@ class S3TransferTask {
     final kRegion = _sign(kDate, region);
     final kService = _sign(kRegion, service);
     return _sign(kService, 'aws4_request');
-  }
-
-  String _encode(String input) {
-    return Uri.encodeComponent(input)
-        .replaceAll('+', '%20')
-        .replaceAll('%7E', '~');
   }
 
   String _formatAmzDate(DateTime time) =>

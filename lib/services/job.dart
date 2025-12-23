@@ -17,6 +17,10 @@ class Job {
   bool completed = false;
   bool running = false;
   String statusMsg = '';
+
+  static final List<Job> jobs = [];
+  static final List<Job> completedJobs = [];
+
   final void Function(Job job)? onStatus;
 
   Job({
@@ -26,6 +30,35 @@ class Job {
     required this.onStatus,
     required this.md5,
   });
+
+  void onCompleted(dynamic result) {
+    jobs.remove(this);
+    completedJobs.add(this);
+  }
+
+  void add() {
+    if (!jobs.contains(this)) jobs.add(this);
+  }
+
+  void remove() {
+    if (!completed && !running && jobs.contains(this)) jobs.remove(this);
+  }
+
+  bool dismissible() {
+    return completed && !running && completedJobs.contains(this);
+  }
+
+  void dismiss() {
+    completedJobs.remove(this);
+  }
+
+  static void clearCompleted() {
+    completedJobs.clear();
+  }
+
+  static void clear() {
+    jobs.clear();
+  }
 }
 
 class UploadJob extends Job {
@@ -48,23 +81,10 @@ class DownloadJob extends Job {
   });
 }
 
-class GetLinkJob extends Job {
-  final int validForSeconds;
-  GetLinkJob({
-    required super.localFile,
-    required super.remoteKey,
-    required super.bytes,
-    required super.onStatus,
-    required super.md5,
-    this.validForSeconds = 3600,
-  });
-}
-
 class Watcher {
   final Directory localDir;
   final String remoteDir;
   final BackupMode mode;
-  final List<Job> jobs;
   final List<RemoteFile> remoteFiles;
   final List<StreamSubscription<FileSystemEvent>> _subscriptions = [];
   final Future<void> Function() remoteRefresh;
@@ -79,7 +99,6 @@ class Watcher {
     required this.localDir,
     required this.remoteDir,
     required this.mode,
-    required this.jobs,
     required this.remoteFiles,
     required this.remoteRefresh,
     required this.downloadFile,
@@ -133,14 +152,12 @@ class Watcher {
     );
     final result = await analyzer.analyze();
 
-    for (final job in List.from(
-      jobs.where((job) => !job.completed && !job.running),
-    )) {
-      jobs.remove(job);
+    for (final job in Job.jobs.where((job) => !job.completed && !job.running)) {
+      job.remove();
     }
 
     for (final file in [...result.newFile, ...result.modifiedLocally]) {
-      if (jobs.any((job) {
+      if (Job.jobs.any((job) {
         return job.localFile.path == file.path && !job.completed;
       })) {
         return;
@@ -157,7 +174,7 @@ class Watcher {
     }
 
     for (final file in result.modifiedRemotely) {
-      if (jobs.any((job) {
+      if (Job.jobs.any((job) {
         return job.remoteKey == file.key;
       })) {
         return;
@@ -168,7 +185,7 @@ class Watcher {
     }
 
     for (final file in result.remoteOnly) {
-      if (jobs.any((job) {
+      if (Job.jobs.any((job) {
         return job.remoteKey == file.key;
       })) {
         return;
@@ -212,31 +229,26 @@ class Watcher {
 
 class Processor {
   final S3Config cfg;
-  final List<Job> jobs;
   final Function(Job, dynamic) onJobComplete;
 
   Processor({
     required this.cfg,
-    required this.jobs,
     required this.onJobComplete,
   });
 
   Future<void> start() async {
-    int running = jobs.where((job) {
+    int running = Job.jobs.where((job) {
       return job.running;
     }).length;
     final int maxrun = 10;
 
     while (running < maxrun) {
-      if (jobs.any((job) {
+      if (Job.jobs.any((job) {
         return !job.completed && !job.running;
       })) {
-        processJob(
-          jobs.firstWhere((job) {
-            return !job.completed && !job.running;
-          }),
-          onJobComplete,
-        );
+        processJob(Job.jobs.firstWhere((job) {
+          return !job.completed && !job.running;
+        }));
       } else {
         break;
       }
@@ -247,7 +259,7 @@ class Processor {
 
   Future<void> stop(Job job) async {}
 
-  Future<void> processJob(Job job, Function(Job, dynamic) onCompleted) async {
+  Future<void> processJob(Job job) async {
     try {
       if (job.runtimeType == UploadJob) {
         job.running = true;
@@ -276,7 +288,8 @@ class Processor {
         job.running = false;
         job.completed = true;
         job.onStatus?.call(job);
-        onCompleted(job, result);
+        job.onCompleted(result);
+        onJobComplete(job, result);
       }
       if (job.runtimeType == DownloadJob) {
         job.running = true;
@@ -312,34 +325,8 @@ class Processor {
         job.running = false;
         job.completed = true;
         job.onStatus?.call(job);
-        onCompleted(job, null);
-      }
-      if (job.runtimeType == GetLinkJob) {
-        job.running = true;
-        // final ifModifiedSince = await job.localFile.exists()
-        //     ? job.localFile.lastModifiedSync()
-        //     : null;
-        final dir = Directory(p.dirname(job.localFile.path));
-        if (!await dir.exists()) {
-          await dir.create(recursive: true);
-        }
-        job.statusMsg = await S3TransferTask(
-          accessKey: cfg.accessKey,
-          secretKey: cfg.secretKey,
-          region: cfg.region,
-          bucket: cfg.bucket,
-          key: (cfg.prefix[cfg.prefix.length - 1] != '/'
-                  ? '${cfg.prefix}/'
-                  : cfg.prefix) +
-              job.remoteKey,
-          localFile: job.localFile,
-          task: TransferTask.getUrl,
-          md5: job.md5,
-          validForSeconds: (job as GetLinkJob).validForSeconds,
-        ).start();
-        job.bytesCompleted = job.bytes;
-        job.running = false;
-        job.completed = true;
+        job.onCompleted(null);
+        onJobComplete(job, null);
       }
     } catch (e) {
       job.running = false;

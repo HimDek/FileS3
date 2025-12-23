@@ -17,11 +17,11 @@ class FileSyncComparator {
   }) async {
     if (!await localFile.exists()) return FileSyncStatus.remoteOnly;
     if (remote == null) return FileSyncStatus.newFile;
-    final localHash = await HashUtil.md5Hash(localFile);
+    final localHash = HashUtil.md5Hash(localFile);
     return localHash == remote.etag
         ? FileSyncStatus.uploaded
         : remote.lastModified.isAfter(localFile.lastModifiedSync())
-        ? FileSyncStatus.modifiedRemotely
-        : FileSyncStatus.modifiedLocally;
+            ? FileSyncStatus.modifiedRemotely
+            : FileSyncStatus.modifiedLocally;
   }
 }
