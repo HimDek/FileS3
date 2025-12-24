@@ -67,7 +67,6 @@ class _HomeState extends State<Home> {
   int _navIndex = 0;
   String _localDir = './';
   String _localRoot = '';
-  Processor? _processor;
   bool _loading = true;
   http.Client httpClient = http.Client();
 
@@ -96,22 +95,22 @@ class _HomeState extends State<Home> {
     _allSelectableItems.addAll(items.whereType<RemoteFile>());
   }
 
-  void _onJobStatus(Job job) {
+  Future<void> _onJobStatus(Job job, dynamic result) async {
+    if (job is UploadJob && job.completed && !job.running) {
+      _remoteFilesMap['${job.remoteKey.split('/').first}/'] = [
+        ...(_remoteFilesMap['${job.remoteKey.split('/').first}/'] ?? [])
+            .where((file) {
+          return file.key != job.remoteKey;
+        }),
+        result,
+      ];
+      await _refreshWatchers();
+    }
     setState(() {});
   }
 
-  void _onJobComplete(Job job, dynamic result) async {
-    await _refreshWatchers();
-    _startProcessor();
-    setState(() {});
-  }
-
-  void _startProcessor() async {
-    _processor ??= Processor(
-      cfg: await ConfigManager.loadS3Config(context),
-      onJobComplete: _onJobComplete,
-    );
-    _processor!.start();
+  void _setConfig() async {
+    Job.cfg = Job.cfg ?? await ConfigManager.loadS3Config(context);
   }
 
   Future<void> _stopWatchers() async {
@@ -120,8 +119,33 @@ class _HomeState extends State<Home> {
     }
   }
 
-  void _startWatchers() {
-    for (final watcher in _watchers) {
+  void _addWatcher(String dir) {
+    final localDir = IniManager.config.get('directories', dir);
+    final modeValue = int.parse(IniManager.config.get('modes', dir) ?? '1');
+
+    _backupModes.add(BackupMode.fromValue(modeValue));
+    if (localDir != null &&
+        localDir.isNotEmpty &&
+        Directory(localDir).existsSync()) {
+      _localDirs.add(localDir);
+    } else {
+      _localDirs.add('');
+    }
+
+    if (localDir != null &&
+        localDir.isNotEmpty &&
+        Directory(localDir).existsSync()) {
+      Watcher watcher = Watcher(
+        localDir: Directory(localDir),
+        remoteDir: dir,
+        mode: BackupMode.fromValue(modeValue),
+        remoteFiles: _remoteFilesMap[dir] ?? [],
+        remoteRefresh: () => _refreshRemote(dir),
+        downloadFile: _downloadFile,
+        uploadFile: _uploadFile,
+      );
+
+      _watchers.add(watcher);
       watcher.start();
     }
   }
@@ -133,40 +157,29 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _refreshWatchers() async {
-    await _stopWatchers();
+    setState(() {
+      _loading = true;
+    });
+
+    _stopWatchers();
     _watchers.clear();
+    _localDirs.clear();
+    _backupModes.clear();
 
     for (final dir in _dirs) {
-      final localDir = IniManager.config.get('directories', dir);
-      final modeValue = int.parse(IniManager.config.get('modes', dir) ?? '1');
-
-      await _refreshRemote(dir);
-
-      if (localDir != null &&
-          localDir.isNotEmpty &&
-          Directory(localDir).existsSync()) {
-        _watchers.add(
-          Watcher(
-            localDir: Directory(localDir),
-            remoteDir: dir,
-            mode: BackupMode.fromValue(modeValue),
-            remoteFiles: _remoteFilesMap[dir] ?? [],
-            remoteRefresh: () => _refreshRemote(dir),
-            downloadFile: _downloadFile,
-            uploadFile: _uploadFile,
-            onJobStatus: _onJobStatus,
-          ),
-        );
-      }
+      _addWatcher(dir);
     }
 
-    _startWatchers();
+    setState(() {
+      _loading = false;
+    });
   }
 
   Future<void> _listDirectories() async {
     setState(() {
       _loading = true;
     });
+
     _dirs = await _s3Manager.listDirectories();
 
     await _stopWatchers();
@@ -177,40 +190,12 @@ class _HomeState extends State<Home> {
     _backupModes.clear();
 
     for (final dir in _dirs) {
-      final localDir = IniManager.config.get('directories', dir);
-      final modeValue = int.parse(IniManager.config.get('modes', dir) ?? '1');
-
-      _backupModes.add(BackupMode.fromValue(modeValue));
-      if (localDir != null &&
-          localDir.isNotEmpty &&
-          Directory(localDir).existsSync()) {
-        _localDirs.add(localDir);
-      } else {
-        _localDirs.add('');
-      }
-
       await _refreshRemote(dir);
-
-      if (localDir != null &&
-          localDir.isNotEmpty &&
-          Directory(localDir).existsSync()) {
-        _watchers.add(
-          Watcher(
-            localDir: Directory(localDir),
-            remoteDir: dir,
-            mode: BackupMode.fromValue(modeValue),
-            remoteFiles: _remoteFilesMap[dir] ?? [],
-            remoteRefresh: () => _refreshRemote(dir),
-            downloadFile: _downloadFile,
-            uploadFile: _uploadFile,
-            onJobStatus: _onJobStatus,
-          ),
-        );
-      }
+      _addWatcher(dir);
+      setState(() {
+        _loading = true;
+      });
     }
-
-    _startWatchers();
-    _startProcessor();
 
     setState(() {
       _loading = false;
@@ -226,7 +211,10 @@ class _HomeState extends State<Home> {
       _loading = true;
     });
     await _s3Manager.createDirectory(dir);
-    _listDirectories();
+    _addWatcher(dir);
+    setState(() {
+      _loading = false;
+    });
   }
 
   Future<void> _copyFile(String key, String newKey,
@@ -241,8 +229,24 @@ class _HomeState extends State<Home> {
       }
       File(_pathFromKey(key)).copySync(_pathFromKey(newKey));
     }
+
+    RemoteFile oldFile = (_remoteFilesMap['${key.split('/').first}/']
+        ?.firstWhere((file) => file.key == key))!;
+    RemoteFile newFile = RemoteFile(
+      key: newKey,
+      size: oldFile.size,
+      etag: oldFile.etag,
+      lastModified: oldFile.lastModified,
+    );
+
+    _remoteFilesMap['${newKey.split('/').first}/'] = [
+      ...(_remoteFilesMap['${newKey.split('/').first}/'] ?? []).where((file) {
+        return file.key != newKey;
+      }),
+      newFile,
+    ];
     if (refresh) {
-      _listDirectories();
+      _refreshWatchers();
     }
   }
 
@@ -263,7 +267,7 @@ class _HomeState extends State<Home> {
       }
     }
     if (refresh) {
-      _listDirectories();
+      _refreshWatchers();
     }
   }
 
@@ -275,8 +279,13 @@ class _HomeState extends State<Home> {
     if (File(_pathFromKey(key)).existsSync()) {
       File(_pathFromKey(key)).deleteSync();
     }
+    _remoteFilesMap['${key.split('/').first}/'] = [
+      ...(_remoteFilesMap['${key.split('/').first}/'] ?? []).where((file) {
+        return file.key != key;
+      }),
+    ];
     if (refresh) {
-      _listDirectories();
+      _refreshWatchers();
     }
   }
 
@@ -290,6 +299,12 @@ class _HomeState extends State<Home> {
             file.key != dir &&
             !file.key.endsWith('/')) {
           await _s3Manager.deleteFile(file.key);
+          _remoteFilesMap['${file.key.split('/').first}/'] = [
+            ...(_remoteFilesMap['${file.key.split('/').first}/'] ?? [])
+                .where((f) {
+              return f.key != file.key;
+            }),
+          ];
         }
       }
       for (final file in map.value) {
@@ -297,12 +312,26 @@ class _HomeState extends State<Home> {
             file.key != dir &&
             file.key.endsWith('/')) {
           await _s3Manager.deleteFile(file.key);
+          _remoteFilesMap['${file.key.split('/').first}/'] = [
+            ...(_remoteFilesMap['${file.key.split('/').first}/'] ?? [])
+                .where((f) {
+              return f.key != file.key;
+            }),
+          ];
         }
       }
     }
     await _s3Manager.deleteFile(dir);
+    _remoteFilesMap['${dir.split('/').first}/'] = [
+      ...(_remoteFilesMap['${dir.split('/').first}/'] ?? []).where((file) {
+        return file.key != dir;
+      }),
+    ];
+    if (_dirs.contains(dir)) {
+      _dirs.remove(dir);
+    }
     if (refresh) {
-      _listDirectories();
+      _refreshWatchers();
     }
   }
 
@@ -315,7 +344,7 @@ class _HomeState extends State<Home> {
       Directory(_pathFromKey(dir)).deleteSync(recursive: true);
     }
     if (refresh) {
-      _listDirectories();
+      _refreshWatchers();
     }
   }
 
@@ -327,7 +356,7 @@ class _HomeState extends State<Home> {
     await _copyFile(key, newKey, refresh: false);
     await _deleteFile(key, refresh: false);
     if (refresh) {
-      _listDirectories();
+      _refreshWatchers();
     }
   }
 
@@ -339,7 +368,7 @@ class _HomeState extends State<Home> {
     await _copyDirectory(dir, newDir, refresh: false);
     await _deleteDirectory(dir, refresh: false);
     if (refresh) {
-      _listDirectories();
+      _refreshWatchers();
     }
   }
 
@@ -351,7 +380,6 @@ class _HomeState extends State<Home> {
       md5: file.etag,
       onStatus: _onJobStatus,
     ).add();
-    _startProcessor();
   }
 
   void _downloadDirectory(RemoteFile dir, {String? localPath}) {
@@ -379,7 +407,6 @@ class _HomeState extends State<Home> {
         }
       }
     }
-    _startProcessor();
   }
 
   void _cut(RemoteFile? item) {
@@ -421,7 +448,7 @@ class _HomeState extends State<Home> {
     }
     _selection.clear();
     _selectionAction = SelectionAction.none;
-    _listDirectories();
+    _refreshWatchers();
   }
 
   void _saveFile(RemoteFile file, String savePath) {
@@ -485,7 +512,6 @@ class _HomeState extends State<Home> {
         onStatus: _onJobStatus,
         md5: HashUtil.md5Hash(file),
       ).add();
-      _startProcessor();
     } else if (p.isAbsolute(_pathFromKey(key))) {
       final newKey = () {
         String base = p.basenameWithoutExtension(key);
@@ -505,7 +531,7 @@ class _HomeState extends State<Home> {
       }
       _stopWatchers().then((value) {
         file.copySync(_pathFromKey(newKey));
-        _listDirectories();
+        _refreshWatchers();
       });
     } else {
       final newKey = () {
@@ -528,7 +554,6 @@ class _HomeState extends State<Home> {
         onStatus: _onJobStatus,
         md5: HashUtil.md5Hash(file),
       ).add();
-      _startProcessor();
     }
   }
 
@@ -588,12 +613,12 @@ class _HomeState extends State<Home> {
               _downloadDirectory,
               _saveFile,
               _saveDirectory,
-              (dir, newDir) => _copyDirectory(dir, newDir, refresh: false),
-              (key, newKey) => _moveFile(key, newKey, refresh: false),
+              (dir, newDir) => _copyDirectory(dir, newDir, refresh: true),
+              (key, newKey) => _moveFile(key, newKey, refresh: true),
               _cut,
               _copy,
-              (key) => _deleteFile(key, refresh: false),
-              (dir) => _deleteDirectory(dir, refresh: false),
+              (key) => _deleteFile(key, refresh: true),
+              (dir) => _deleteDirectory(dir, refresh: true),
               () {
                 _selection.clear();
                 setState(() {});
@@ -609,8 +634,8 @@ class _HomeState extends State<Home> {
                   _cut,
                   _copy,
                   (String dir, String newDir) =>
-                      _moveDirectory(dir, newDir, refresh: false),
-                  (String dir) => _deleteDirectory(dir, refresh: false),
+                      _moveDirectory(dir, newDir, refresh: true),
+                  (String dir) => _deleteDirectory(dir, refresh: true),
                 )
               : buildFileContextMenu(
                   context,
@@ -622,10 +647,10 @@ class _HomeState extends State<Home> {
                   _cut,
                   _copy,
                   (String key, String newKey) =>
-                      _moveFile(key, newKey, refresh: false),
-                  (String key) => _deleteFile(key, refresh: false),
+                      _moveFile(key, newKey, refresh: true),
+                  (String key) => _deleteFile(key, refresh: true),
                 ),
-    ).then((value) => _listDirectories());
+    );
   }
 
   Future<void> _showSearch() async {
@@ -675,6 +700,12 @@ class _HomeState extends State<Home> {
       _s3Manager = manager;
       _listDirectories();
     });
+  }
+
+  @override
+  void setState(void Function() fn) {
+    _setConfig();
+    super.setState(fn);
   }
 
   @override
@@ -771,14 +802,14 @@ class _HomeState extends State<Home> {
                       Job.jobs.any((job) => job.running)
                           ? IconButton(
                               onPressed: () {
-                                _processor!.stopall();
+                                Job.stopall();
                                 setState(() {});
                               },
                               icon: Icon(Icons.stop),
                             )
                           : IconButton(
                               onPressed: () {
-                                _processor!.start();
+                                Job.startall();
                                 setState(() {});
                               },
                               icon: Icon(Icons.start),
@@ -1035,7 +1066,7 @@ class _HomeState extends State<Home> {
                                     onDelete: _deleteS3Directory,
                                     remoteFiles: _remoteFilesMap[dir] ?? [],
                                   ),
-                                ).then((value) => _listDirectories());
+                                );
                               },
                         icon: const Icon(Icons.more_vert),
                       ),
@@ -1080,7 +1111,6 @@ class _HomeState extends State<Home> {
                     ),
                     ...listFiles(
                       context,
-                      _processor!,
                       [
                         ...(_remoteFilesMap['${_localDir.split('/').first}/'] ??
                                 [])
@@ -1133,7 +1163,6 @@ class _HomeState extends State<Home> {
               : _navIndex == 1
                   ? CompletedJobs(
                       completedJobs: Job.completedJobs,
-                      processor: _processor!,
                       onUpdate: () {
                         setState(() {});
                       },
@@ -1141,7 +1170,6 @@ class _HomeState extends State<Home> {
                   : _navIndex == 2
                       ? ActiveJobs(
                           jobs: Job.jobs,
-                          processor: _processor!,
                           onUpdate: () {
                             setState(() {});
                           },
@@ -1149,7 +1177,6 @@ class _HomeState extends State<Home> {
                       : ListView(
                           children: listFiles(
                             context,
-                            _processor!,
                             _searchResults,
                             _sortMode,
                             _foldersFirst,

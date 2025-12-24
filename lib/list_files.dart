@@ -86,7 +86,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 List<Widget> listFiles(
   BuildContext context,
-  Processor processor,
   List<dynamic> files,
   SortMode sortMode,
   bool foldersFirst,
@@ -132,7 +131,6 @@ List<Widget> listFiles(
         (item) => item.job != null
             ? JobView(
                 job: item.job!,
-                processor: processor,
                 relativeTo: relativeto,
                 onUpdate: onUpdate,
               )
@@ -159,7 +157,7 @@ List<Widget> listFiles(
                             select(item.file!);
                           }
                         : () {
-                            onChangeDirectory("${item.key}/");
+                            onChangeDirectory(item.key);
                           },
                     onLongPress: selectionAction == SelectionAction.none
                         ? () {

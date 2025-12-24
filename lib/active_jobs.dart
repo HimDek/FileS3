@@ -4,13 +4,11 @@ import 'services/job.dart';
 
 class ActiveJobs extends StatefulWidget {
   final List<Job> jobs;
-  final Processor processor;
   final Function() onUpdate;
 
   const ActiveJobs({
     super.key,
     required this.jobs,
-    required this.processor,
     required this.onUpdate,
   });
 
@@ -26,7 +24,6 @@ class ActiveJobsState extends State<ActiveJobs> {
         children: widget.jobs.map((job) {
           return JobView(
             job: job,
-            processor: widget.processor,
             onUpdate: widget.onUpdate,
           );
         }).toList(),

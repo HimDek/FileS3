@@ -8,20 +8,22 @@ import 'sync_analyzer.dart';
 import 's3_transfer_task.dart';
 import 'config_manager.dart';
 
-class Job {
+abstract class Job {
   final File localFile;
   final String remoteKey;
   final String md5;
   final int bytes;
+  S3TransferTask? task;
   int bytesCompleted = 0;
   bool completed = false;
   bool running = false;
   String statusMsg = '';
 
+  static S3Config? cfg;
   static final List<Job> jobs = [];
   static final List<Job> completedJobs = [];
 
-  final void Function(Job job)? onStatus;
+  final void Function(Job job, dynamic result)? onStatus;
 
   Job({
     required this.localFile,
@@ -31,17 +33,118 @@ class Job {
     required this.md5,
   });
 
-  void onCompleted(dynamic result) {
-    jobs.remove(this);
-    completedJobs.add(this);
-  }
-
   void add() {
     if (!jobs.contains(this)) jobs.add(this);
+    if (jobs.any((job) => !job.running)) startall();
+  }
+
+  bool startable() {
+    return !running && !completed && cfg != null;
+  }
+
+  Future<void> start() async {
+    if (!startable()) return;
+    try {
+      if (runtimeType == UploadJob) {
+        running = true;
+        task = S3TransferTask(
+          accessKey: cfg!.accessKey,
+          secretKey: cfg!.secretKey,
+          region: cfg!.region,
+          bucket: cfg!.bucket,
+          key: (cfg!.prefix[cfg!.prefix.length - 1] != '/'
+                  ? '${cfg!.prefix}/'
+                  : cfg!.prefix) +
+              remoteKey,
+          localFile: localFile,
+          task: TransferTask.upload,
+          md5: md5,
+          onProgress: (sent, total) {
+            bytesCompleted = sent;
+            onStatus?.call(this, null);
+          },
+          onStatus: (status) {
+            statusMsg = status;
+            onStatus?.call(this, null);
+          },
+        );
+        final result = await task!.start();
+        bytesCompleted = bytes;
+        running = false;
+        completed = true;
+        jobs.remove(this);
+        completedJobs.add(this);
+        final resultFile = RemoteFile(
+          key: remoteKey,
+          size: bytes,
+          etag: result['etag'] != null && result['etag']!.isNotEmpty
+              ? result['etag']!.substring(1, result['etag']!.length - 1)
+              : '',
+          lastModified: localFile.lastModifiedSync(),
+        );
+        onStatus?.call(this, resultFile);
+      }
+      if (runtimeType == DownloadJob) {
+        running = true;
+        // final ifModifiedSince = await localFile.exists()
+        //     ? localFile.lastModifiedSync()
+        //     : null;
+        final dir = Directory(p.dirname(this.localFile.path));
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+        task = S3TransferTask(
+          accessKey: cfg!.accessKey,
+          secretKey: cfg!.secretKey,
+          region: cfg!.region,
+          bucket: cfg!.bucket,
+          key: (cfg!.prefix[cfg!.prefix.length - 1] != '/'
+                  ? '${cfg!.prefix}/'
+                  : cfg!.prefix) +
+              remoteKey,
+          localFile: localFile,
+          task: TransferTask.download,
+          md5: md5,
+          onProgress: (received, total) {
+            bytesCompleted = received;
+            onStatus?.call(this, null);
+          },
+          onStatus: (status) {
+            statusMsg = status;
+            onStatus?.call(this, null);
+          },
+        );
+        task!.start();
+        bytesCompleted = bytes;
+        running = false;
+        completed = true;
+        jobs.remove(this);
+        completedJobs.add(this);
+        onStatus?.call(this, null);
+      }
+    } catch (e) {
+      running = false;
+      bytesCompleted = 0;
+      completed = false;
+      statusMsg = "Error: ${e.toString()}";
+      onStatus?.call(this, null);
+    }
+  }
+
+  bool stoppable() {
+    return task != null && running && !completed;
+  }
+
+  void stop(Job job) {
+    if (stoppable()) task!.cancel();
+  }
+
+  bool removable() {
+    return !completed && !running && jobs.contains(this);
   }
 
   void remove() {
-    if (!completed && !running && jobs.contains(this)) jobs.remove(this);
+    if (removable()) jobs.remove(this);
   }
 
   bool dismissible() {
@@ -50,6 +153,34 @@ class Job {
 
   void dismiss() {
     completedJobs.remove(this);
+  }
+
+  static Future<void> startall() async {
+    int running = Job.jobs.where((job) {
+      return job.running;
+    }).length;
+    final int maxrun = 10;
+
+    while (running < maxrun) {
+      if (Job.jobs.any((job) {
+        return !job.completed && !job.running;
+      })) {
+        jobs.firstWhere((job) {
+          return !job.completed && !job.running;
+        }).start();
+      } else {
+        break;
+      }
+    }
+
+    await Future.delayed(const Duration(milliseconds: 1000));
+    startall();
+  }
+
+  static void stopall() {
+    for (var job in jobs) {
+      job.stop(job);
+    }
   }
 
   static void clearCompleted() {
@@ -90,7 +221,6 @@ class Watcher {
   final Future<void> Function() remoteRefresh;
   final void Function(RemoteFile) downloadFile;
   final void Function(String, File) uploadFile;
-  final void Function(Job job) onJobStatus;
   bool _watching = false;
   bool _scanning = false;
   bool _waitingScan = false;
@@ -103,7 +233,6 @@ class Watcher {
     required this.remoteRefresh,
     required this.downloadFile,
     required this.uploadFile,
-    required this.onJobStatus,
   });
 
   Future<void> _scan() async {
@@ -224,116 +353,5 @@ class Watcher {
       await sub.cancel();
     }
     _subscriptions.clear();
-  }
-}
-
-class Processor {
-  final S3Config cfg;
-  final Function(Job, dynamic) onJobComplete;
-
-  Processor({
-    required this.cfg,
-    required this.onJobComplete,
-  });
-
-  Future<void> start() async {
-    int running = Job.jobs.where((job) {
-      return job.running;
-    }).length;
-    final int maxrun = 10;
-
-    while (running < maxrun) {
-      if (Job.jobs.any((job) {
-        return !job.completed && !job.running;
-      })) {
-        processJob(Job.jobs.firstWhere((job) {
-          return !job.completed && !job.running;
-        }));
-      } else {
-        break;
-      }
-    }
-  }
-
-  Future<void> stopall() async {}
-
-  Future<void> stop(Job job) async {}
-
-  Future<void> processJob(Job job) async {
-    try {
-      if (job.runtimeType == UploadJob) {
-        job.running = true;
-        final result = await S3TransferTask(
-          accessKey: cfg.accessKey,
-          secretKey: cfg.secretKey,
-          region: cfg.region,
-          bucket: cfg.bucket,
-          key: (cfg.prefix[cfg.prefix.length - 1] != '/'
-                  ? '${cfg.prefix}/'
-                  : cfg.prefix) +
-              job.remoteKey,
-          localFile: job.localFile,
-          task: TransferTask.upload,
-          md5: job.md5,
-          onProgress: (sent, total) {
-            job.bytesCompleted = sent;
-            job.onStatus?.call(job);
-          },
-          onStatus: (status) {
-            job.statusMsg = status;
-            job.onStatus?.call(job);
-          },
-        ).start();
-        job.bytesCompleted = job.bytes;
-        job.running = false;
-        job.completed = true;
-        job.onStatus?.call(job);
-        job.onCompleted(result);
-        onJobComplete(job, result);
-      }
-      if (job.runtimeType == DownloadJob) {
-        job.running = true;
-        // final ifModifiedSince = await job.localFile.exists()
-        //     ? job.localFile.lastModifiedSync()
-        //     : null;
-        final dir = Directory(p.dirname(job.localFile.path));
-        if (!await dir.exists()) {
-          await dir.create(recursive: true);
-        }
-        await S3TransferTask(
-          accessKey: cfg.accessKey,
-          secretKey: cfg.secretKey,
-          region: cfg.region,
-          bucket: cfg.bucket,
-          key: (cfg.prefix[cfg.prefix.length - 1] != '/'
-                  ? '${cfg.prefix}/'
-                  : cfg.prefix) +
-              job.remoteKey,
-          localFile: job.localFile,
-          task: TransferTask.download,
-          md5: job.md5,
-          onProgress: (received, total) {
-            job.bytesCompleted = received;
-            job.onStatus?.call(job);
-          },
-          onStatus: (status) {
-            job.statusMsg = status;
-            job.onStatus?.call(job);
-          },
-        ).start();
-        job.bytesCompleted = job.bytes;
-        job.running = false;
-        job.completed = true;
-        job.onStatus?.call(job);
-        job.onCompleted(null);
-        onJobComplete(job, null);
-      }
-    } catch (e) {
-      job.running = false;
-      job.bytesCompleted = 0;
-      job.completed = false;
-      job.statusMsg = "Error: ${e.toString()}";
-      job.onStatus?.call(job);
-    }
   }
 }

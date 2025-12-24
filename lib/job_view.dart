@@ -5,14 +5,12 @@ import 'services/job.dart';
 
 class JobView extends StatefulWidget {
   final Job job;
-  final Processor processor;
   final String? relativeTo;
   final Function()? onUpdate;
 
   const JobView({
     super.key,
     required this.job,
-    required this.processor,
     this.relativeTo,
     this.onUpdate,
   });
@@ -40,7 +38,7 @@ class JobViewState extends State<JobView> {
               ? Icon(Icons.done)
               : IconButton(
                   onPressed: () {
-                    widget.processor.processJob(widget.job);
+                    widget.job.start();
                   },
                   icon: Icon(Icons.start),
                 ),
