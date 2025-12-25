@@ -40,10 +40,14 @@ class S3FileManager {
     _region = cfg.region;
   }
 
-  static Future<S3FileManager> create(
-      BuildContext context, http.Client client) async {
-    final cfg = await ConfigManager.loadS3Config(context);
-    return S3FileManager._(cfg, client);
+  static Future<S3FileManager?> create(
+      BuildContext? context, http.Client client) async {
+    final cfg = await ConfigManager.loadS3Config(context: context);
+    if (cfg != null) {
+      return S3FileManager._(cfg, client);
+    } else {
+      return null;
+    }
   }
 
   Future<List<String>> listDirectories({String dir = ''}) async {

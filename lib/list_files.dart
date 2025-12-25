@@ -99,7 +99,6 @@ List<Widget> listFiles(
   Function(RemoteFile) select,
   Function(RemoteFile) showContextMenu,
   String Function(RemoteFile, int?) getLink,
-  String Function(String) pathFromKey,
 ) {
   Iterable<Job> jobs = files.whereType<Job>();
   Iterable<RemoteFile> remoteFiles = files.whereType<RemoteFile>();
@@ -204,10 +203,10 @@ List<Widget> listFiles(
                           }
                         : selectionAction != SelectionAction.none
                             ? null
-                            : File(pathFromKey(item.key)).existsSync()
+                            : File(Main.pathFromKey(item.key)).existsSync()
                                 ? () {
                                     setFocus(item.key);
-                                    OpenFile.open(pathFromKey(item.key));
+                                    OpenFile.open(Main.pathFromKey(item.key));
                                   }
                                 : () {
                                     setFocus(item.key);

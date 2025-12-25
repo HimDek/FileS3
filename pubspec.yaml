@@ -30,20 +30,24 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  ini:
   http:
   path:
   yaml:
   crypto:
   open_file:
+  share_plus:
   aws_s3_api:
+  collection:
+  workmanager:
+  url_launcher:
   file_selector:
   cupertino_icons:
-  flutter_secure_storage:
-  ini:
   percent_indicator:
-  share_plus:
-  collection:
-  url_launcher:
+  shared_preferences:
+  permission_handler:
+  flutter_secure_storage:
+  flutter_foreground_task:
 
 dev_dependencies:
   flutter_test:

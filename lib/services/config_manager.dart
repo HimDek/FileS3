@@ -23,8 +23,8 @@ class S3Config {
 class ConfigManager {
   static const _storage = FlutterSecureStorage();
 
-  static Future<S3Config> loadS3Config(
-    BuildContext context, {
+  static Future<S3Config?> loadS3Config({
+    BuildContext? context,
     bool push = true,
   }) async {
     final accessKey = await _storage.read(key: 'aws_access_key') ?? '';
@@ -40,10 +40,13 @@ class ConfigManager {
             region.isEmpty ||
             bucket.isEmpty) &&
         push) {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (context) => S3ConfigPage()));
-      return await loadS3Config(context);
+      if (context != null) {
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (context) => S3ConfigPage()));
+        return await loadS3Config(context: context);
+      }
+      return null;
     }
 
     return S3Config(
@@ -88,9 +91,10 @@ class S3ConfigPageState extends State<S3ConfigPage> {
       _loading = true;
     });
     try {
-      final config = await ConfigManager.loadS3Config(context, push: false);
+      final config =
+          await ConfigManager.loadS3Config(context: context, push: false);
       setState(() {
-        _accessKey = config.accessKey;
+        _accessKey = config!.accessKey;
         _secretKey = config.secretKey;
         _region = config.region;
         _bucket = config.bucket;

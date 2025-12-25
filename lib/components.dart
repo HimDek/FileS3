@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_file/open_file.dart';
+import 'package:s3_drive/services/job.dart';
 import 'package:s3_drive/services/models/common.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_selector/file_selector.dart';
@@ -210,11 +211,7 @@ class FileSearchDelegate extends SearchDelegate<dynamic> {
 }
 
 abstract class ContextActionHandler {
-  final String Function(String) pathFromKey;
-
-  ContextActionHandler({
-    required this.pathFromKey,
-  });
+  ContextActionHandler();
 
   void Function()? download();
   String Function()? saveAs(String? path);
@@ -225,29 +222,26 @@ abstract class ContextActionHandler {
 class FileContextActionHandler extends ContextActionHandler {
   final RemoteFile file;
   final String Function(RemoteFile, int?) getLink;
-  final Function(RemoteFile) downloadFile;
   final Function(RemoteFile, String) saveFile;
   final Function(String, String) moveFile;
   final Function(String) deleteFile;
 
   FileContextActionHandler({
-    required super.pathFromKey,
     required this.file,
     required this.getLink,
-    required this.downloadFile,
     required this.saveFile,
     required this.moveFile,
     required this.deleteFile,
   });
 
   bool rootExists() {
-    return p.isAbsolute(pathFromKey(file.key));
+    return p.isAbsolute(Main.pathFromKey(file.key));
   }
 
   dynamic Function() open() {
-    return File(pathFromKey(file.key)).existsSync()
+    return File(Main.pathFromKey(file.key)).existsSync()
         ? () {
-            OpenFile.open(pathFromKey(file.key));
+            OpenFile.open(Main.pathFromKey(file.key));
           }
         : () {
             launchUrl(Uri.parse(getLink(file, null)));
@@ -256,10 +250,10 @@ class FileContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return !rootExists() || File(pathFromKey(file.key)).existsSync()
+    return !rootExists() || File(Main.pathFromKey(file.key)).existsSync()
         ? null
         : () {
-            downloadFile(file);
+            Main.downloadFile(file);
           };
   }
 
@@ -267,16 +261,16 @@ class FileContextActionHandler extends ContextActionHandler {
   String Function()? saveAs(String? path) {
     return path != null
         ? () {
-            saveFile(file, pathFromKey(file.key));
+            saveFile(file, Main.pathFromKey(file.key));
             return 'Saving to $path';
           }
         : null;
   }
 
   XFile Function()? getXFile() {
-    return File(pathFromKey(file.key)).existsSync()
+    return File(Main.pathFromKey(file.key)).existsSync()
         ? () {
-            return XFile(pathFromKey(file.key));
+            return XFile(Main.pathFromKey(file.key));
           }
         : null;
   }
@@ -742,13 +736,13 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   final Function(String) deleteDirectory;
 
   bool rootExists() {
-    return p.isAbsolute(pathFromKey(file.key));
+    return p.isAbsolute(Main.pathFromKey(file.key));
   }
 
   void Function()? open() {
-    return Directory(pathFromKey(file.key)).existsSync()
+    return Directory(Main.pathFromKey(file.key)).existsSync()
         ? () {
-            OpenFile.open(pathFromKey(file.key));
+            OpenFile.open(Main.pathFromKey(file.key));
           }
         : null;
   }
@@ -767,7 +761,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     return path == null
         ? null
         : () {
-            saveDirectory(file, pathFromKey(file.key));
+            saveDirectory(file, Main.pathFromKey(file.key));
             return 'Saving to $path';
           };
   }
@@ -794,7 +788,6 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   }
 
   DirectoryContextActionHandler({
-    required super.pathFromKey,
     required this.file,
     required this.downloadDirectory,
     required this.saveDirectory,
@@ -1275,9 +1268,7 @@ class BulkContextOption {
 Widget buildFileContextMenu(
   BuildContext context,
   RemoteFile item,
-  String Function(String) pathFromKey,
   String Function(RemoteFile, int?) getLink,
-  Function(RemoteFile) downloadFile,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile) cut,
   Function(RemoteFile) copy,
@@ -1286,9 +1277,7 @@ Widget buildFileContextMenu(
 ) {
   FileContextActionHandler handler = FileContextActionHandler(
     file: item,
-    pathFromKey: pathFromKey,
     getLink: getLink,
-    downloadFile: downloadFile,
     saveFile: saveFile,
     moveFile: moveFile,
     deleteFile: deleteFile,
@@ -1320,9 +1309,7 @@ Widget buildFileContextMenu(
 Widget buildFilesContextMenu(
   BuildContext context,
   List<RemoteFile> items,
-  String Function(String) pathFromKey,
   String Function(RemoteFile, int?) getLink,
-  Function(RemoteFile) downloadFile,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
@@ -1333,10 +1320,8 @@ Widget buildFilesContextMenu(
   List<FileContextActionHandler> handlers = items
       .map(
         (item) => FileContextActionHandler(
-          pathFromKey: pathFromKey,
           file: item,
           getLink: getLink,
-          downloadFile: downloadFile,
           saveFile: saveFile,
           moveFile: moveFile,
           deleteFile: deleteFile,
@@ -1371,7 +1356,6 @@ Widget buildFilesContextMenu(
 Widget buildDirectoryContextMenu(
   BuildContext context,
   RemoteFile file,
-  String Function(String) pathFromKey,
   Function(RemoteFile) downloadDirectory,
   Function(RemoteFile, String) saveDirectory,
   Function(RemoteFile) cut,
@@ -1380,7 +1364,6 @@ Widget buildDirectoryContextMenu(
   Function(String) deleteDirectory,
 ) {
   DirectoryContextActionHandler handler = DirectoryContextActionHandler(
-    pathFromKey: pathFromKey,
     file: file,
     downloadDirectory: downloadDirectory,
     saveDirectory: saveDirectory,
@@ -1413,7 +1396,6 @@ Widget buildDirectoryContextMenu(
 Widget buildDirectoriesContextMenu(
   BuildContext context,
   List<RemoteFile> dirs,
-  String Function(String) pathFromKey,
   Function(RemoteFile) downloadDirectory,
   Function(RemoteFile, String) saveDirectory,
   Function(RemoteFile?) cut,
@@ -1425,7 +1407,6 @@ Widget buildDirectoriesContextMenu(
   List<DirectoryContextActionHandler> handlers = dirs
       .map(
         (dir) => DirectoryContextActionHandler(
-          pathFromKey: pathFromKey,
           file: dir,
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
@@ -1461,9 +1442,7 @@ Widget buildDirectoriesContextMenu(
 Widget buildBulkContextMenu(
   BuildContext context,
   List<RemoteFile> items,
-  String Function(String) pathFromKey,
   String Function(RemoteFile, int?) getLink,
-  Function(RemoteFile) downloadFile,
   Function(RemoteFile) downloadDirectory,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile, String) saveDirectory,
@@ -1479,9 +1458,7 @@ Widget buildBulkContextMenu(
     return buildFilesContextMenu(
       context,
       items.cast<RemoteFile>(),
-      pathFromKey,
       getLink,
-      downloadFile,
       saveFile,
       cut,
       copy,
@@ -1493,7 +1470,6 @@ Widget buildBulkContextMenu(
     return buildDirectoriesContextMenu(
       context,
       items,
-      pathFromKey,
       downloadDirectory,
       saveDirectory,
       cut,
@@ -1507,9 +1483,7 @@ Widget buildBulkContextMenu(
       if (!item.key.endsWith('/')) {
         return FileContextActionHandler(
           file: item,
-          pathFromKey: pathFromKey,
           getLink: getLink,
-          downloadFile: downloadFile,
           saveFile: saveFile,
           moveFile: moveFile,
           deleteFile: deleteFile,
@@ -1517,7 +1491,6 @@ Widget buildBulkContextMenu(
       } else {
         return DirectoryContextActionHandler(
           file: item,
-          pathFromKey: pathFromKey,
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
           moveDirectory: moveDirectory,

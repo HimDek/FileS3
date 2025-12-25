@@ -1,4 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+    Internet permissions do not affect the `permission_handler` plugin, but are required if your app needs access to
+    the internet.
+    -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Permissions options for the `storage` group -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <!-- Read storage permission for Android 12 and lower -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+
+    <!-- Permissions options for the `manage external storage` group -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+
+
     <application
         android:label="s3_drive"
         android:name="${applicationName}"
@@ -30,6 +46,10 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <service
+            android:name="be.tramckrijte.workmanager.WorkmanagerService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

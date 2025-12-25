@@ -24,14 +24,14 @@ class SyncAnalyzer {
 
   SyncAnalyzer({required this.localRoot, required this.remoteFiles});
 
-  Future<SyncAnalysisResult> analyze() async {
+  SyncAnalysisResult analyze() {
     final newFile = <File>[];
     final modifiedLocally = <File>[];
     final modifiedRemotely = <RemoteFile>[];
     final already = <File>[];
     final localMap = <String, File>{};
 
-    await for (var ent in localRoot.list(recursive: true)) {
+    for (var ent in localRoot.listSync(recursive: true)) {
       if (ent is File) {
         final rel =
             p.relative(ent.path, from: localRoot.path).replaceAll('\\', '/');
@@ -46,7 +46,7 @@ class SyncAnalyzer {
     for (var e in localMap.entries) {
       final file = e.value;
       final remote = remoteMap[e.key];
-      final status = await FileSyncComparator.compare(
+      final status = FileSyncComparator.compare(
         localFile: file,
         remote: remote,
       );
