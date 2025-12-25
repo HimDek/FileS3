@@ -8,12 +8,7 @@ class JobView extends StatefulWidget {
   final String? relativeTo;
   final Function()? onUpdate;
 
-  const JobView({
-    super.key,
-    required this.job,
-    this.relativeTo,
-    this.onUpdate,
-  });
+  const JobView({super.key, required this.job, this.relativeTo, this.onUpdate});
 
   @override
   JobViewState createState() => JobViewState();
@@ -35,23 +30,31 @@ class JobViewState extends State<JobView> {
               progressColor: Theme.of(context).primaryColor,
             )
           : widget.job.completed
-              ? Icon(Icons.done)
-              : IconButton(
-                  onPressed: () {
-                    widget.job.start();
-                  },
-                  icon: Icon(Icons.start),
-                ),
-      title: p.isWithin(widget.job.remoteKey, widget.relativeTo ?? '')
-          ? Text(p.relative(widget.job.remoteKey, from: widget.relativeTo))
-          : Text(widget.job.remoteKey),
-      subtitle: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Text(widget.job.statusMsg, maxLines: 1),
-          SizedBox(width: 16),
-          Text(widget.job.localFile.path, maxLines: 1),
-        ],
+          ? widget.job.runtimeType == UploadJob
+                ? Icon(Icons.done_all)
+                : Icon(Icons.download_done)
+          : IconButton(
+              onPressed: () {
+                widget.job.start();
+              },
+              icon: Icon(Icons.start),
+            ),
+      title: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: p.isWithin(widget.job.remoteKey, widget.relativeTo ?? '')
+            ? Text(p.relative(widget.job.remoteKey, from: widget.relativeTo))
+            : Text(widget.job.remoteKey),
+      ),
+      subtitle: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            Text(widget.job.statusMsg, maxLines: 1),
+            SizedBox(width: 16),
+            Text(widget.job.localFile.path, maxLines: 1),
+          ],
+        ),
       ),
       trailing: widget.job.dismissible()
           ? IconButton(

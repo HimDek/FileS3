@@ -6,11 +6,7 @@ class ActiveJobs extends StatefulWidget {
   final List<Job> jobs;
   final Function() onUpdate;
 
-  const ActiveJobs({
-    super.key,
-    required this.jobs,
-    required this.onUpdate,
-  });
+  const ActiveJobs({super.key, required this.jobs, required this.onUpdate});
 
   @override
   ActiveJobsState createState() => ActiveJobsState();
@@ -19,15 +15,10 @@ class ActiveJobs extends StatefulWidget {
 class ActiveJobsState extends State<ActiveJobs> {
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: ListBody(
-        children: widget.jobs.map((job) {
-          return JobView(
-            job: job,
-            onUpdate: widget.onUpdate,
-          );
-        }).toList(),
-      ),
+    return Column(
+      children: widget.jobs.map((job) {
+        return JobView(job: job, onUpdate: widget.onUpdate);
+      }).toList(),
     );
   }
 }

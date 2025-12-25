@@ -18,20 +18,26 @@ Future<int?> Function(BuildContext) expiryDialog = (BuildContext context) =>
         return StatefulBuilder(
           builder: (c, set) => AlertDialog(
             title: const Text('Select Validity Duration'),
-            content: Row(children: [
-              DropdownButton<int>(
-                value: d,
-                items: List.generate(
-                    31, (i) => DropdownMenuItem(value: i, child: Text('$i d'))),
-                onChanged: (v) => set(() => d = v!),
-              ),
-              DropdownButton<int>(
-                value: h,
-                items: List.generate(
-                    24, (i) => DropdownMenuItem(value: i, child: Text('$i h'))),
-                onChanged: (v) => set(() => h = v!),
-              ),
-            ]),
+            content: Row(
+              children: [
+                DropdownButton<int>(
+                  value: d,
+                  items: List.generate(
+                    31,
+                    (i) => DropdownMenuItem(value: i, child: Text('$i d')),
+                  ),
+                  onChanged: (v) => set(() => d = v!),
+                ),
+                DropdownButton<int>(
+                  value: h,
+                  items: List.generate(
+                    24,
+                    (i) => DropdownMenuItem(value: i, child: Text('$i h')),
+                  ),
+                  onChanged: (v) => set(() => h = v!),
+                ),
+              ],
+            ),
             actions: [
               ElevatedButton(
                 onPressed: d * 86400 + h * 3600 == 0
@@ -47,29 +53,28 @@ Future<int?> Function(BuildContext) expiryDialog = (BuildContext context) =>
 
 Future<String?> Function(BuildContext, String) renameDialog =
     (BuildContext context, String currentName) => showDialog<String>(
-          context: context,
-          builder: (_) {
-            TextEditingController controller =
-                TextEditingController(text: currentName);
-            return StatefulBuilder(
-              builder: (c, set) => AlertDialog(
-                title: const Text('Rename File'),
-                content: TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: 'New Name',
-                  ),
-                ),
-                actions: [
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(c, controller.text.trim()),
-                    child: const Text('OK'),
-                  ),
-                ],
-              ),
-            );
-          },
+      context: context,
+      builder: (_) {
+        TextEditingController controller = TextEditingController(
+          text: currentName,
         );
+        return StatefulBuilder(
+          builder: (c, set) => AlertDialog(
+            title: const Text('Rename File'),
+            content: TextField(
+              controller: controller,
+              decoration: const InputDecoration(labelText: 'New Name'),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(c, controller.text.trim()),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
 
 String bytesToReadable(int bytes) {
   const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -83,7 +88,10 @@ String bytesToReadable(int bytes) {
 }
 
 List<FileProps> sort(
-    List<FileProps> items, SortMode sortMode, bool foldersFirst) {
+  List<FileProps> items,
+  SortMode sortMode,
+  bool foldersFirst,
+) {
   List<FileProps> sortedItems = List.from(items);
   sortedItems.sort((a, b) {
     var aIsDir = a.key.endsWith('/');
@@ -120,93 +128,50 @@ List<FileProps> sort(
       case SortMode.sizeDesc:
         return b.size.compareTo(a.size);
       case SortMode.typeAsc:
-        String aExt =
-            a.key.contains('.') ? a.key.split('.').last.toLowerCase() : '';
-        String bExt =
-            b.key.contains('.') ? b.key.split('.').last.toLowerCase() : '';
+        String aExt = a.key.contains('.')
+            ? a.key.split('.').last.toLowerCase()
+            : '';
+        String bExt = b.key.contains('.')
+            ? b.key.split('.').last.toLowerCase()
+            : '';
         return aExt.compareTo(bExt);
       case SortMode.typeDesc:
-        String aExt =
-            a.key.contains('.') ? a.key.split('.').last.toLowerCase() : '';
-        String bExt =
-            b.key.contains('.') ? b.key.split('.').last.toLowerCase() : '';
+        String aExt = a.key.contains('.')
+            ? a.key.split('.').last.toLowerCase()
+            : '';
+        String bExt = b.key.contains('.')
+            ? b.key.split('.').last.toLowerCase()
+            : '';
         return bExt.compareTo(aExt);
     }
   });
   return sortedItems;
 }
 
-class FileSearchDelegate extends SearchDelegate<dynamic> {
-  final List<dynamic> items;
-  final Function(BuildContext, String, List<dynamic>) providedBuildResults;
+class SnapHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double height;
 
-  FileSearchDelegate({
-    required this.items,
-    required this.providedBuildResults,
-    super.searchFieldLabel = 'Search',
-    super.searchFieldStyle,
-    super.searchFieldDecorationTheme,
-    super.keyboardType,
-    super.textInputAction = TextInputAction.search,
-    super.autocorrect = true,
-    super.enableSuggestions = true,
-  });
+  SnapHeaderDelegate({required this.child, required this.height});
 
   @override
-  List<Widget> buildActions(BuildContext context) {
-    return [
-      if (query.isNotEmpty)
-        IconButton(
-          icon: const Icon(Icons.clear),
-          onPressed: () => query = '',
-        ),
-    ];
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Material(elevation: overlapsContent ? 4 : 0, child: child);
   }
 
   @override
-  Widget buildLeading(BuildContext context) {
-    return IconButton(
-      icon: const Icon(Icons.arrow_back),
-      onPressed: () => close(context, ''),
-    );
-  }
-
-  @override
-  Widget buildResults(BuildContext context) {
-    close(context, _filter(query));
-    return providedBuildResults(context, query, _filter(query));
-  }
-
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    final suggestions = _filter(query);
-    return ListView.builder(
-      itemCount: suggestions.length,
-      itemBuilder: (context, index) {
-        final item = suggestions
-            .map((e) => e is RemoteFile ? e.key : e.toString())
-            .toList()[index];
-        return ListTile(
-          title: Text(item),
-          onTap: () {
-            query = item;
-            showResults(context);
-          },
-        );
-      },
-    );
-  }
-
-  List<dynamic> _filter(String q) {
-    if (q.isEmpty) return items;
-    final lower = q.toLowerCase();
-    return items
-        .where((e) => (e is RemoteFile ? e.key : e.toString())
-            .toLowerCase()
-            .contains(lower))
-        .map(
-            (e) => e is RemoteFile && e.key.split('/').last.isEmpty ? e.key : e)
-        .toList();
+  bool shouldRebuild(covariant SnapHeaderDelegate oldDelegate) {
+    return oldDelegate.child != child || oldDelegate.height != height;
   }
 }
 
@@ -314,33 +279,29 @@ class FileContextOption {
     this.action,
   });
 
-  static FileContextOption open(
-    FileContextActionHandler handler,
-  ) =>
+  static FileContextOption open(FileContextActionHandler handler) =>
       FileContextOption(
         title: 'Open',
         icon: Icons.open_in_new,
         action: handler.open(),
       );
 
-  static FileContextOption download(
-    FileContextActionHandler handler,
-  ) =>
+  static FileContextOption download(FileContextActionHandler handler) =>
       FileContextOption(
         title: handler.download() == null
             ? handler.rootExists()
-                ? 'Downloaded'
-                : 'Cannot Download'
+                  ? 'Downloaded'
+                  : 'Cannot Download'
             : 'Download',
         subtitle: handler.download() == null
             ? handler.rootExists()
-                ? null
-                : 'Set backup directory to enable downloads'
+                  ? null
+                  : 'Set backup directory to enable downloads'
             : null,
         icon: handler.download() == null
             ? handler.rootExists()
-                ? Icons.file_download_done_rounded
-                : Icons.file_download_off
+                  ? Icons.file_download_done_rounded
+                  : Icons.file_download_off
             : Icons.file_download_outlined,
         action: handler.download(),
       );
@@ -348,31 +309,25 @@ class FileContextOption {
   static FileContextOption saveAs(
     FileContextActionHandler handler,
     BuildContext context,
-  ) =>
-      FileContextOption(
-        title: 'Save As...',
-        icon: Icons.save_as,
-        action: () async {
-          final String Function()? handle = handler.saveAs(
-            (await getSaveLocation(
-              suggestedName: handler.file.key.split('/').last,
-              canCreateDirectories: true,
-            ))
-                ?.path,
-          );
-          if (handle != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(handle()),
-              ),
-            );
-          }
-        },
+  ) => FileContextOption(
+    title: 'Save As...',
+    icon: Icons.save_as,
+    action: () async {
+      final String Function()? handle = handler.saveAs(
+        (await getSaveLocation(
+          suggestedName: handler.file.key.split('/').last,
+          canCreateDirectories: true,
+        ))?.path,
       );
+      if (handle != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(handle())));
+      }
+    },
+  );
 
-  static FileContextOption share(
-    FileContextActionHandler handler,
-  ) =>
+  static FileContextOption share(FileContextActionHandler handler) =>
       FileContextOption(
         title: handler.getXFile() == null ? 'Cannot Share' : 'Share',
         icon: Icons.share,
@@ -384,11 +339,7 @@ class FileContextOption {
           return handle != null
               ? () {
                   SharePlus.instance.share(
-                    ShareParams(
-                      files: <XFile>[
-                        handle(),
-                      ],
-                    ),
+                    ShareParams(files: <XFile>[handle()]),
                   );
                 }
               : null;
@@ -398,22 +349,25 @@ class FileContextOption {
   static FileContextOption copyLink(
     FileContextActionHandler handler,
     BuildContext context,
-  ) =>
-      FileContextOption(
-        title: 'Copy Link',
-        icon: Icons.link,
-        action: () async {
-          Clipboard.setData(ClipboardData(
-              text:
-                  await handler.getLinkToCopy(await expiryDialog(context))()));
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('File link copied to clipboard')),
-          );
-        },
+  ) => FileContextOption(
+    title: 'Copy Link',
+    icon: Icons.link,
+    action: () async {
+      Clipboard.setData(
+        ClipboardData(
+          text: await handler.getLinkToCopy(await expiryDialog(context))(),
+        ),
       );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('File link copied to clipboard')),
+      );
+    },
+  );
 
   static FileContextOption cut(
-      FileContextActionHandler handler, Function(RemoteFile) cutKey) {
+    FileContextActionHandler handler,
+    Function(RemoteFile) cutKey,
+  ) {
     return FileContextOption(
       title: 'Move To...',
       icon: Icons.cut,
@@ -424,7 +378,9 @@ class FileContextOption {
   }
 
   static FileContextOption copy(
-      FileContextActionHandler handler, Function(RemoteFile) copyKey) {
+    FileContextActionHandler handler,
+    Function(RemoteFile) copyKey,
+  ) {
     return FileContextOption(
       title: 'Copy To...',
       icon: Icons.file_copy_rounded,
@@ -437,64 +393,60 @@ class FileContextOption {
   static FileContextOption rename(
     FileContextActionHandler handler,
     BuildContext context,
-  ) =>
-      FileContextOption(
-        title: 'Rename',
-        icon: Icons.edit,
-        action: () async {
-          final newName =
-              await renameDialog(context, handler.file.key.split('/').last);
-          if (newName != null &&
-              newName.isNotEmpty &&
-              newName != handler.file.key.split('/').last) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(await handler.rename(newName)()),
-              ),
-            );
-          }
-        },
+  ) => FileContextOption(
+    title: 'Rename',
+    icon: Icons.edit,
+    action: () async {
+      final newName = await renameDialog(
+        context,
+        handler.file.key.split('/').last,
       );
+      if (newName != null &&
+          newName.isNotEmpty &&
+          newName != handler.file.key.split('/').last) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(await handler.rename(newName)())),
+        );
+      }
+    },
+  );
 
   static FileContextOption delete(
     FileContextActionHandler handler,
     BuildContext context,
-  ) =>
-      FileContextOption(
-        title: 'Delete',
-        icon: Icons.delete,
-        subtitle: 'Delete from device as well as S3',
-        action: () async {
-          final handle = handler.delete(
-            await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Delete File'),
-                content: Text(
-                  'Are you sure you want to delete ${handler.file.key.split('/').last} from your device and S3? This action cannot be undone.',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Delete'),
-                  ),
-                ],
-              ),
+  ) => FileContextOption(
+    title: 'Delete',
+    icon: Icons.delete,
+    subtitle: 'Delete from device as well as S3',
+    action: () async {
+      final handle = handler.delete(
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete File'),
+            content: Text(
+              'Are you sure you want to delete ${handler.file.key.split('/').last} from your device and S3? This action cannot be undone.',
             ),
-          );
-          if (handle != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(await handle()),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
               ),
-            );
-          }
-        },
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ),
       );
+      if (handle != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(await handle())));
+      }
+    },
+  );
 
   static List<FileContextOption> allOptions(
     BuildContext context,
@@ -532,70 +484,64 @@ class FilesContextOption {
 
   static FilesContextOption downloadAll(
     List<FileContextActionHandler> handlers,
-  ) =>
-      FilesContextOption(
-        title: handlers.every((handler) => handler.download() == null)
-            ? handlers.every((handler) => handler.rootExists())
-                ? 'Downloaded'
-                : 'Cannot Download'
-            : 'Download',
-        subtitle: handlers.every((handler) => handler.download() == null)
-            ? handlers.every((handler) => handler.rootExists())
-                ? null
-                : 'Set backup directory to enable downloads'
-            : 'Only missing files will be downloaded',
-        icon: handlers.every((handler) => handler.download() == null)
-            ? handlers.every((handler) => handler.rootExists())
-                ? Icons.file_download_done_rounded
-                : Icons.file_download_off
-            : Icons.file_download_outlined,
-        action: handlers.every((handler) => handler.download() != null)
-            ? () {
-                for (final handler in handlers) {
-                  if (handler.download() != null) {
-                    handler.download()!();
-                  }
-                }
+  ) => FilesContextOption(
+    title: handlers.every((handler) => handler.download() == null)
+        ? handlers.every((handler) => handler.rootExists())
+              ? 'Downloaded'
+              : 'Cannot Download'
+        : 'Download',
+    subtitle: handlers.every((handler) => handler.download() == null)
+        ? handlers.every((handler) => handler.rootExists())
+              ? null
+              : 'Set backup directory to enable downloads'
+        : 'Only missing files will be downloaded',
+    icon: handlers.every((handler) => handler.download() == null)
+        ? handlers.every((handler) => handler.rootExists())
+              ? Icons.file_download_done_rounded
+              : Icons.file_download_off
+        : Icons.file_download_outlined,
+    action: handlers.every((handler) => handler.download() != null)
+        ? () {
+            for (final handler in handlers) {
+              if (handler.download() != null) {
+                handler.download()!();
               }
-            : null,
-      );
+            }
+          }
+        : null,
+  );
 
   static FilesContextOption saveAllTo(
     BuildContext context,
     List<FileContextActionHandler> handlers,
-  ) =>
-      FilesContextOption(
-        title: 'Save To...',
-        icon: Icons.save_as,
-        action: () async {
-          final directory = await getDirectoryPath(canCreateDirectories: true);
-          bool saved = false;
-          for (final handler in handlers) {
-            FileSaveLocation savePath = await Future.value(
-              directory == null
-                  ? null
-                  : FileSaveLocation(
-                      p.join(directory, handler.file.key.split('/').last),
-                    ),
-            );
-            if (handler.saveAs(savePath.path) != null) {
-              handler.saveAs(savePath.path)!();
-              saved = true;
-            }
-          }
-          if (saved) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Saving files to $directory'),
-              ),
-            );
-          }
-        },
-      );
+  ) => FilesContextOption(
+    title: 'Save To...',
+    icon: Icons.save_as,
+    action: () async {
+      final directory = await getDirectoryPath(canCreateDirectories: true);
+      bool saved = false;
+      for (final handler in handlers) {
+        FileSaveLocation savePath = await Future.value(
+          directory == null
+              ? null
+              : FileSaveLocation(
+                  p.join(directory, handler.file.key.split('/').last),
+                ),
+        );
+        if (handler.saveAs(savePath.path) != null) {
+          handler.saveAs(savePath.path)!();
+          saved = true;
+        }
+      }
+      if (saved) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Saving files to $directory')));
+      }
+    },
+  );
 
-  static FilesContextOption shareAll(
-    List<FileContextActionHandler> handlers,
-  ) =>
+  static FilesContextOption shareAll(List<FileContextActionHandler> handlers) =>
       FilesContextOption(
         title: handlers.any((handler) => handler.getXFile() != null)
             ? 'Share'
@@ -604,17 +550,15 @@ class FilesContextOption {
         subtitle: handlers.every((handler) => handler.getXFile() != null)
             ? null
             : handlers.any((handler) => handler.getXFile() != null)
-                ? 'Only downloaded files will be shared'
-                : 'No downloaded files to share',
+            ? 'Only downloaded files will be shared'
+            : 'No downloaded files to share',
         action: handlers.any((handler) => handler.getXFile() != null)
             ? () {
                 SharePlus.instance.share(
                   ShareParams(
                     files: handlers
                         .where((handler) => handler.getXFile() != null)
-                        .map(
-                          (handler) => handler.getXFile()!(),
-                        )
+                        .map((handler) => handler.getXFile()!())
                         .toList(),
                   ),
                 );
@@ -625,28 +569,25 @@ class FilesContextOption {
   static FilesContextOption copyAllLinks(
     BuildContext context,
     List<FileContextActionHandler> handlers,
-  ) =>
-      FilesContextOption(
-        title: 'Copy Links',
-        icon: Icons.link,
-        action: () async {
-          String allLinks = '';
-          int? seconds = await expiryDialog(context);
-          for (final handler in handlers) {
-            allLinks += '${await handler.getLinkToCopy(seconds)()}\n\n';
-          }
-          if (allLinks.isNotEmpty) {
-            Clipboard.setData(ClipboardData(text: allLinks));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('File links copied to clipboard')),
-            );
-          }
-        },
-      );
+  ) => FilesContextOption(
+    title: 'Copy Links',
+    icon: Icons.link,
+    action: () async {
+      String allLinks = '';
+      int? seconds = await expiryDialog(context);
+      for (final handler in handlers) {
+        allLinks += '${await handler.getLinkToCopy(seconds)()}\n\n';
+      }
+      if (allLinks.isNotEmpty) {
+        Clipboard.setData(ClipboardData(text: allLinks));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File links copied to clipboard')),
+        );
+      }
+    },
+  );
 
-  static FilesContextOption cut(
-    Function(RemoteFile?) cutKey,
-  ) =>
+  static FilesContextOption cut(Function(RemoteFile?) cutKey) =>
       FilesContextOption(
         title: 'Move To...',
         icon: Icons.cut,
@@ -655,9 +596,7 @@ class FilesContextOption {
         },
       );
 
-  static FilesContextOption copy(
-    Function(RemoteFile?) copyKey,
-  ) =>
+  static FilesContextOption copy(Function(RemoteFile?) copyKey) =>
       FilesContextOption(
         title: 'Copy To...',
         icon: Icons.file_copy_rounded,
@@ -670,43 +609,43 @@ class FilesContextOption {
     BuildContext context,
     List<FileContextActionHandler> handlers,
     Function() clearSelection,
-  ) =>
-      FilesContextOption(
-        title: 'Delete Selection',
-        icon: Icons.delete_sweep,
-        subtitle: 'Delete from device as well as S3',
-        action: () async {
-          final yes = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Delete Selected Files'),
-              content: const Text(
-                'Are you sure you want to delete selected files from your device and S3? This action cannot be undone.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Delete'),
-                ),
-              ],
+  ) => FilesContextOption(
+    title: 'Delete Selection',
+    icon: Icons.delete_sweep,
+    subtitle: 'Delete from device as well as S3',
+    action: () async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Selected Files'),
+          content: const Text(
+            'Are you sure you want to delete selected files from your device and S3? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
             ),
-          );
-          if (yes ?? false) {
-            for (final handler in handlers) {
-              handler.delete(true)!.call();
-            }
-            clearSelection();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('Selected files deleted from device and S3')),
-            );
-          }
-        },
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
       );
+      if (yes ?? false) {
+        for (final handler in handlers) {
+          handler.delete(true)!.call();
+        }
+        clearSelection();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Selected files deleted from device and S3'),
+          ),
+        );
+      }
+    },
+  );
 
   static List<FilesContextOption> allOptions(
     BuildContext context,
@@ -809,137 +748,126 @@ class DirectoryContextOption {
     this.action,
   });
 
-  static DirectoryContextOption open(
-    DirectoryContextActionHandler handler,
-  ) =>
+  static DirectoryContextOption open(DirectoryContextActionHandler handler) =>
       DirectoryContextOption(
         title: handler.open() == null ? 'Cannot Open' : 'Open',
-        subtitle:
-            handler.open() == null ? 'Directory does not exist locally' : null,
-        icon:
-            handler.open() == null ? Icons.open_in_new_off : Icons.open_in_new,
+        subtitle: handler.open() == null
+            ? 'Directory does not exist locally'
+            : null,
+        icon: handler.open() == null
+            ? Icons.open_in_new_off
+            : Icons.open_in_new,
         action: handler.open(),
       );
 
   static DirectoryContextOption download(
     DirectoryContextActionHandler handler,
-  ) =>
-      DirectoryContextOption(
-        title: handler.download() == null ? 'Cannot Download' : 'Download',
-        subtitle: handler.download() == null
-            ? 'Set backup directory to enable downloads'
-            : 'Only missing files will be downloaded',
-        icon: handler.download() == null
-            ? Icons.file_download_off
-            : Icons.file_download_outlined,
-        action: handler.download(),
-      );
+  ) => DirectoryContextOption(
+    title: handler.download() == null ? 'Cannot Download' : 'Download',
+    subtitle: handler.download() == null
+        ? 'Set backup directory to enable downloads'
+        : 'Only missing files will be downloaded',
+    icon: handler.download() == null
+        ? Icons.file_download_off
+        : Icons.file_download_outlined,
+    action: handler.download(),
+  );
 
   static DirectoryContextOption saveTo(
     DirectoryContextActionHandler handler,
     BuildContext context,
-  ) =>
-      DirectoryContextOption(
-        title: 'Save To...',
-        icon: Icons.save_as,
-        action: () async {
-          final directory = await getDirectoryPath(canCreateDirectories: true);
-          final handle = handler.saveAs(directory == null
-              ? null
-              : p.join(directory, p.basename(handler.file.key)));
-          if (handle != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(handle()),
-              ),
-            );
-          }
-        },
+  ) => DirectoryContextOption(
+    title: 'Save To...',
+    icon: Icons.save_as,
+    action: () async {
+      final directory = await getDirectoryPath(canCreateDirectories: true);
+      final handle = handler.saveAs(
+        directory == null
+            ? null
+            : p.join(directory, p.basename(handler.file.key)),
       );
+      if (handle != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(handle())));
+      }
+    },
+  );
 
   static DirectoryContextOption cut(
     DirectoryContextActionHandler handler,
     Function(RemoteFile) cutKey,
-  ) =>
-      DirectoryContextOption(
-        title: 'Move To...',
-        icon: Icons.cut,
-        action: () {
-          cutKey(handler.file);
-        },
-      );
+  ) => DirectoryContextOption(
+    title: 'Move To...',
+    icon: Icons.cut,
+    action: () {
+      cutKey(handler.file);
+    },
+  );
 
   static DirectoryContextOption copy(
     DirectoryContextActionHandler handler,
     Function(RemoteFile) copyKey,
-  ) =>
-      DirectoryContextOption(
-        title: 'Copy To...',
-        icon: Icons.folder_copy,
-        action: () {
-          copyKey(handler.file);
-        },
-      );
+  ) => DirectoryContextOption(
+    title: 'Copy To...',
+    icon: Icons.folder_copy,
+    action: () {
+      copyKey(handler.file);
+    },
+  );
 
   static DirectoryContextOption rename(
     BuildContext context,
     DirectoryContextActionHandler handler,
-  ) =>
-      DirectoryContextOption(
-        title: 'Rename',
-        icon: Icons.edit,
-        action: () async {
-          final newName =
-              await renameDialog(context, p.basename(handler.file.key));
-          if (newName != null &&
-              newName.isNotEmpty &&
-              newName != p.basename(handler.file.key)) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(await handler.rename(newName)()),
-              ),
-            );
-          }
-        },
-      );
+  ) => DirectoryContextOption(
+    title: 'Rename',
+    icon: Icons.edit,
+    action: () async {
+      final newName = await renameDialog(context, p.basename(handler.file.key));
+      if (newName != null &&
+          newName.isNotEmpty &&
+          newName != p.basename(handler.file.key)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(await handler.rename(newName)())),
+        );
+      }
+    },
+  );
 
   static DirectoryContextOption delete(
     BuildContext context,
     DirectoryContextActionHandler handler,
-  ) =>
-      DirectoryContextOption(
-        title: 'Delete',
-        icon: Icons.folder_delete,
-        subtitle: 'Delete from device as well as S3',
-        action: () async {
-          final yes = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Delete Directory'),
-              content: Text(
-                'Are you sure you want to delete ${p.basename(handler.file.key)} from your device and S3? This action cannot be undone.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Delete'),
-                ),
-              ],
+  ) => DirectoryContextOption(
+    title: 'Delete',
+    icon: Icons.folder_delete,
+    subtitle: 'Delete from device as well as S3',
+    action: () async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Directory'),
+          content: Text(
+            'Are you sure you want to delete ${p.basename(handler.file.key)} from your device and S3? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
             ),
-          );
-          if (yes ?? false) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(await handler.delete(true)!()),
-              ),
-            );
-          }
-        },
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
       );
+      if (yes ?? false) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(await handler.delete(true)!())));
+      }
+    },
+  );
 
   static List<DirectoryContextOption> allOptions(
     BuildContext context,
@@ -967,58 +895,52 @@ class DirectoriesContextOption {
 
   static DirectoriesContextOption downloadAll(
     List<DirectoryContextActionHandler> handlers,
-  ) =>
-      DirectoriesContextOption(
-        title: handlers.any((handler) => handler.download() == null)
-            ? 'Cannot Download'
-            : 'Download',
-        subtitle: handlers.any((handler) => handler.download() == null)
-            ? 'Set backup directory to enable downloads'
-            : 'Only missing files will be downloaded',
-        icon: handlers.any((handler) => handler.download() == null)
-            ? Icons.file_download_off
-            : Icons.file_download_outlined,
-        action: handlers.any((handler) => handler.download() != null)
-            ? (BuildContext context) {
-                for (final handler in handlers) {
-                  if (handler.download() != null) {
-                    handler.download();
-                  }
-                }
+  ) => DirectoriesContextOption(
+    title: handlers.any((handler) => handler.download() == null)
+        ? 'Cannot Download'
+        : 'Download',
+    subtitle: handlers.any((handler) => handler.download() == null)
+        ? 'Set backup directory to enable downloads'
+        : 'Only missing files will be downloaded',
+    icon: handlers.any((handler) => handler.download() == null)
+        ? Icons.file_download_off
+        : Icons.file_download_outlined,
+    action: handlers.any((handler) => handler.download() != null)
+        ? (BuildContext context) {
+            for (final handler in handlers) {
+              if (handler.download() != null) {
+                handler.download();
               }
-            : null,
-      );
+            }
+          }
+        : null,
+  );
 
   static DirectoriesContextOption saveAllTo(
     List<DirectoryContextActionHandler> handlers,
     BuildContext context,
-  ) =>
-      DirectoriesContextOption(
-        title: 'Save To...',
-        icon: Icons.save_as,
-        action: (BuildContext context) async {
-          final directory = await getDirectoryPath(canCreateDirectories: true);
-          bool saved = false;
-          for (final handler in handlers) {
-            final handle = handler.saveAs(directory);
-            if (handle != null) {
-              handle();
-              saved = true;
-            }
-          }
-          if (saved) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Saving directories to $directory'),
-              ),
-            );
-          }
-        },
-      );
+  ) => DirectoriesContextOption(
+    title: 'Save To...',
+    icon: Icons.save_as,
+    action: (BuildContext context) async {
+      final directory = await getDirectoryPath(canCreateDirectories: true);
+      bool saved = false;
+      for (final handler in handlers) {
+        final handle = handler.saveAs(directory);
+        if (handle != null) {
+          handle();
+          saved = true;
+        }
+      }
+      if (saved) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saving directories to $directory')),
+        );
+      }
+    },
+  );
 
-  static DirectoriesContextOption cut(
-    Function(RemoteFile?) cutKey,
-  ) =>
+  static DirectoriesContextOption cut(Function(RemoteFile?) cutKey) =>
       DirectoriesContextOption(
         title: 'Move To...',
         icon: Icons.cut,
@@ -1027,9 +949,7 @@ class DirectoriesContextOption {
         },
       );
 
-  static DirectoriesContextOption copy(
-    Function(RemoteFile?) copyKey,
-  ) =>
+  static DirectoriesContextOption copy(Function(RemoteFile?) copyKey) =>
       DirectoriesContextOption(
         title: 'Copy To...',
         icon: Icons.folder_copy,
@@ -1042,43 +962,42 @@ class DirectoriesContextOption {
     List<DirectoryContextActionHandler> handlers,
     BuildContext context,
     Function() clearSelection,
-  ) =>
-      DirectoriesContextOption(
-        title: 'Delete Selection',
-        icon: Icons.delete_sweep,
-        action: (BuildContext context) async {
-          final yes = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Delete Selected Directories'),
-              content: const Text(
-                'Are you sure you want to delete the selected directories from your device and S3? This action cannot be undone.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Delete'),
-                ),
-              ],
+  ) => DirectoriesContextOption(
+    title: 'Delete Selection',
+    icon: Icons.delete_sweep,
+    action: (BuildContext context) async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Selected Directories'),
+          content: const Text(
+            'Are you sure you want to delete the selected directories from your device and S3? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
             ),
-          );
-          if (yes ?? false) {
-            for (final handler in handlers) {
-              handler.delete(true)!.call();
-            }
-            clearSelection();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content:
-                      Text('Selected directories deleted from device and S3')),
-            );
-          }
-        },
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
       );
+      if (yes ?? false) {
+        for (final handler in handlers) {
+          handler.delete(true)!.call();
+        }
+        clearSelection();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Selected directories deleted from device and S3'),
+          ),
+        );
+      }
+    },
+  );
 
   static List<DirectoriesContextOption> allOptions(
     BuildContext context,
@@ -1110,9 +1029,7 @@ class BulkContextOption {
   final String? subtitle;
   final dynamic Function(BuildContext context)? action;
 
-  static BulkContextOption downloadAll(
-    List<ContextActionHandler> handlers,
-  ) =>
+  static BulkContextOption downloadAll(List<ContextActionHandler> handlers) =>
       BulkContextOption(
         title: handlers.every((handler) => handler.download() == null)
             ? 'Cannot Download'
@@ -1135,51 +1052,46 @@ class BulkContextOption {
   static BulkContextOption saveAllTo(
     List<ContextActionHandler> handlers,
     BuildContext context,
-  ) =>
-      BulkContextOption(
-        title: 'Save To...',
-        icon: Icons.save_as,
-        action: (BuildContext context) async {
-          final directory = await getDirectoryPath(canCreateDirectories: true);
-          bool saved = false;
-          for (final handler in handlers) {
-            late String Function()? handle;
-            if (handler is FileContextActionHandler) {
-              handle = handler.saveAs(
-                directory == null
-                    ? null
-                    : p.join(directory, handler.file.key.split('/').last),
-              );
-            } else {
-              handle = handler.saveAs(
-                directory == null
-                    ? null
-                    : p.join(
-                        directory,
-                        p.basename((handler as DirectoryContextActionHandler)
-                            .file
-                            .key),
-                      ),
-              );
-            }
-            if (handle != null) {
-              handle();
-              saved = true;
-            }
-          }
-          if (saved) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Saving items to $directory'),
-              ),
-            );
-          }
-        },
-      );
+  ) => BulkContextOption(
+    title: 'Save To...',
+    icon: Icons.save_as,
+    action: (BuildContext context) async {
+      final directory = await getDirectoryPath(canCreateDirectories: true);
+      bool saved = false;
+      for (final handler in handlers) {
+        late String Function()? handle;
+        if (handler is FileContextActionHandler) {
+          handle = handler.saveAs(
+            directory == null
+                ? null
+                : p.join(directory, handler.file.key.split('/').last),
+          );
+        } else {
+          handle = handler.saveAs(
+            directory == null
+                ? null
+                : p.join(
+                    directory,
+                    p.basename(
+                      (handler as DirectoryContextActionHandler).file.key,
+                    ),
+                  ),
+          );
+        }
+        if (handle != null) {
+          handle();
+          saved = true;
+        }
+      }
+      if (saved) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Saving items to $directory')));
+      }
+    },
+  );
 
-  static BulkContextOption cut(
-    Function(RemoteFile?) cutKey,
-  ) =>
+  static BulkContextOption cut(Function(RemoteFile?) cutKey) =>
       BulkContextOption(
         title: 'Move To...',
         icon: Icons.cut,
@@ -1188,9 +1100,7 @@ class BulkContextOption {
         },
       );
 
-  static BulkContextOption copy(
-    Function(RemoteFile?) copyKey,
-  ) =>
+  static BulkContextOption copy(Function(RemoteFile?) copyKey) =>
       BulkContextOption(
         title: 'Copy To...',
         icon: Icons.copy,
@@ -1203,43 +1113,44 @@ class BulkContextOption {
     List<ContextActionHandler> handlers,
     BuildContext context,
     Function() clearSelection,
-  ) =>
-      BulkContextOption(
-        title: 'Delete Selection',
-        icon: Icons.delete_sweep,
-        action: (BuildContext context) async {
-          final yes = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Delete Selected Items'),
-                  content: const Text(
-                    'Are you sure you want to delete the selected items from your device and S3? This action cannot be undone.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      child: const Text('Delete'),
-                    ),
-                  ],
+  ) => BulkContextOption(
+    title: 'Delete Selection',
+    icon: Icons.delete_sweep,
+    action: (BuildContext context) async {
+      final yes =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Delete Selected Items'),
+              content: const Text(
+                'Are you sure you want to delete the selected items from your device and S3? This action cannot be undone.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
                 ),
-              ) ??
-              false;
-          if (yes) {
-            for (final handler in handlers) {
-              handler.delete(true)!.call();
-            }
-            clearSelection();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('Selected items deleted from device and S3')),
-            );
-          }
-        },
-      );
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (yes) {
+        for (final handler in handlers) {
+          handler.delete(true)!.call();
+        }
+        clearSelection();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Selected items deleted from device and S3'),
+          ),
+        );
+      }
+    },
+  );
 
   static List<BulkContextOption> allOptions(
     Function(RemoteFile?) cutKey,
@@ -1283,27 +1194,25 @@ Widget buildFileContextMenu(
     deleteFile: deleteFile,
   );
   return ListView(
-      children: FileContextOption.allOptions(
-    context,
-    handler,
-    cut,
-    copy,
-    deleteFile,
-  )
-          .map(
-            (option) => ListTile(
-              leading: Icon(option.icon),
-              title: Text(option.title),
-              subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
-              onTap: option.action == null
-                  ? null
-                  : () async {
-                      await option.action!();
-                      Navigator.of(context).pop();
-                    },
-            ),
-          )
-          .toList());
+    children:
+        FileContextOption.allOptions(context, handler, cut, copy, deleteFile)
+            .map(
+              (option) => ListTile(
+                leading: Icon(option.icon),
+                title: Text(option.title),
+                subtitle: option.subtitle != null
+                    ? Text(option.subtitle!)
+                    : null,
+                onTap: option.action == null
+                    ? null
+                    : () async {
+                        await option.action!();
+                        Navigator.of(context).pop();
+                      },
+              ),
+            )
+            .toList(),
+  );
 }
 
 Widget buildFilesContextMenu(
@@ -1329,28 +1238,32 @@ Widget buildFilesContextMenu(
       )
       .toList();
   return ListView(
-      children: FilesContextOption.allOptions(
-    context,
-    handlers,
-    cut,
-    copy,
-    deleteFile,
-    clearSelection,
-  )
-          .map(
-            (option) => ListTile(
-              leading: Icon(option.icon),
-              title: Text(option.title),
-              subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
-              onTap: option.action != null
-                  ? () async {
-                      await option.action!();
-                      Navigator.of(context).pop();
-                    }
-                  : null,
-            ),
-          )
-          .toList());
+    children:
+        FilesContextOption.allOptions(
+              context,
+              handlers,
+              cut,
+              copy,
+              deleteFile,
+              clearSelection,
+            )
+            .map(
+              (option) => ListTile(
+                leading: Icon(option.icon),
+                title: Text(option.title),
+                subtitle: option.subtitle != null
+                    ? Text(option.subtitle!)
+                    : null,
+                onTap: option.action != null
+                    ? () async {
+                        await option.action!();
+                        Navigator.of(context).pop();
+                      }
+                    : null,
+              ),
+            )
+            .toList(),
+  );
 }
 
 Widget buildDirectoryContextMenu(
@@ -1371,26 +1284,22 @@ Widget buildDirectoryContextMenu(
     deleteDirectory: deleteDirectory,
   );
   return ListView(
-      children: DirectoryContextOption.allOptions(
-    context,
-    handler,
-    cut,
-    copy,
-  )
-          .map(
-            (option) => ListTile(
-              leading: Icon(option.icon),
-              title: Text(option.title),
-              subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
-              onTap: option.action != null
-                  ? () async {
-                      await option.action!();
-                      Navigator.of(context).pop();
-                    }
-                  : null,
-            ),
-          )
-          .toList());
+    children: DirectoryContextOption.allOptions(context, handler, cut, copy)
+        .map(
+          (option) => ListTile(
+            leading: Icon(option.icon),
+            title: Text(option.title),
+            subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
+            onTap: option.action != null
+                ? () async {
+                    await option.action!();
+                    Navigator.of(context).pop();
+                  }
+                : null,
+          ),
+        )
+        .toList(),
+  );
 }
 
 Widget buildDirectoriesContextMenu(
@@ -1416,27 +1325,31 @@ Widget buildDirectoriesContextMenu(
       )
       .toList();
   return ListView(
-      children: DirectoriesContextOption.allOptions(
-    context,
-    handlers,
-    cut,
-    copy,
-    clearSelection,
-  )
-          .map(
-            (option) => ListTile(
-              leading: Icon(option.icon),
-              title: Text(option.title),
-              subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
-              onTap: option.action != null
-                  ? () async {
-                      await option.action!(context);
-                      Navigator.of(context).pop();
-                    }
-                  : null,
-            ),
-          )
-          .toList());
+    children:
+        DirectoriesContextOption.allOptions(
+              context,
+              handlers,
+              cut,
+              copy,
+              clearSelection,
+            )
+            .map(
+              (option) => ListTile(
+                leading: Icon(option.icon),
+                title: Text(option.title),
+                subtitle: option.subtitle != null
+                    ? Text(option.subtitle!)
+                    : null,
+                onTap: option.action != null
+                    ? () async {
+                        await option.action!(context);
+                        Navigator.of(context).pop();
+                      }
+                    : null,
+              ),
+            )
+            .toList(),
+  );
 }
 
 Widget buildBulkContextMenu(
@@ -1499,27 +1412,30 @@ Widget buildBulkContextMenu(
       }
     }).toList();
     return ListView(
-      children: BulkContextOption.allOptions(
-        cut,
-        copy,
-        handlers,
-        context,
-        clearSelection,
-      )
-          .map(
-            (option) => ListTile(
-              leading: Icon(option.icon),
-              title: Text(option.title),
-              subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
-              onTap: option.action != null
-                  ? () async {
-                      await option.action!(context);
-                      Navigator.of(context).pop();
-                    }
-                  : null,
-            ),
-          )
-          .toList(),
+      children:
+          BulkContextOption.allOptions(
+                cut,
+                copy,
+                handlers,
+                context,
+                clearSelection,
+              )
+              .map(
+                (option) => ListTile(
+                  leading: Icon(option.icon),
+                  title: Text(option.title),
+                  subtitle: option.subtitle != null
+                      ? Text(option.subtitle!)
+                      : null,
+                  onTap: option.action != null
+                      ? () async {
+                          await option.action!(context);
+                          Navigator.of(context).pop();
+                        }
+                      : null,
+                ),
+              )
+              .toList(),
     );
   }
 }

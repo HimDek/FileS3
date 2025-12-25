@@ -19,15 +19,10 @@ class CompletedJobs extends StatefulWidget {
 class CompletedJobsState extends State<CompletedJobs> {
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: ListBody(
-        children: widget.completedJobs.map((job) {
-          return JobView(
-            job: job,
-            onUpdate: widget.onUpdate,
-          );
-        }).toList(),
-      ),
+    return Column(
+      children: widget.completedJobs.map((job) {
+        return JobView(job: job, onUpdate: widget.onUpdate);
+      }).toList(),
     );
   }
 }

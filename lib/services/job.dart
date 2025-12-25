@@ -39,8 +39,9 @@ abstract class Main {
   static Future<void> onJobStatus(Job job, dynamic result) async {
     if (job is UploadJob && job.completed && !job.running) {
       remoteFilesMap['${job.remoteKey.split('/').first}/'] = [
-        ...(remoteFilesMap['${job.remoteKey.split('/').first}/'] ?? [])
-            .where((file) {
+        ...(remoteFilesMap['${job.remoteKey.split('/').first}/'] ?? []).where((
+          file,
+        ) {
           return file.key != job.remoteKey;
         }),
         result,
@@ -91,7 +92,9 @@ abstract class Main {
       if (background) {
         await watcher.scan();
       } else {
+        print('Starting watcher for $localDir');
         watcher.start();
+        print('Watcher started for $localDir');
       }
     }
   }
@@ -162,8 +165,9 @@ abstract class Main {
         String ext = p.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (remoteFilesMap['${key.split('/').first}/']
-                ?.any((remoteFile) => remoteFile.key == candidateKey) ==
+        while (remoteFilesMap['${key.split('/').first}/']?.any(
+              (remoteFile) => remoteFile.key == candidateKey,
+            ) ==
             true) {
           candidateKey = p.join(p.dirname(key), '$base${'($count)'}$ext');
           count++;
@@ -183,8 +187,9 @@ abstract class Main {
         String ext = p.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (remoteFilesMap[key.split('/').first]
-                ?.any((remoteFile) => remoteFile.key == candidateKey) ==
+        while (remoteFilesMap[key.split('/').first]?.any(
+              (remoteFile) => remoteFile.key == candidateKey,
+            ) ==
             true) {
           candidateKey = p.join(p.dirname(key), '${base}${'($count)'}$ext');
           count++;
@@ -201,10 +206,12 @@ abstract class Main {
     }
   }
 
-  static Future<void> init(BuildContext? context,
-      {bool background = false}) async {
+  static Future<void> init(
+    BuildContext? context, {
+    bool background = false,
+  }) async {
     setConfig(context);
-    IniManager.init();
+    await IniManager.init();
     s3Manager = await S3FileManager.create(context, httpClient);
     if (s3Manager == null) {
       // TODO: Show config notification
@@ -227,7 +234,7 @@ abstract class Job {
   String statusMsg = '';
 
   static S3Config? cfg;
-  static int maxrun = 10;
+  static int maxrun = 5;
   static bool scheduled = false;
   static final List<Job> jobs = [];
   static final List<Job> completedJobs = [];
@@ -263,7 +270,8 @@ abstract class Job {
           secretKey: cfg!.secretKey,
           region: cfg!.region,
           bucket: cfg!.bucket,
-          key: (cfg!.prefix[cfg!.prefix.length - 1] != '/'
+          key:
+              (cfg!.prefix[cfg!.prefix.length - 1] != '/'
                   ? '${cfg!.prefix}/'
                   : cfg!.prefix) +
               remoteKey,
@@ -302,15 +310,16 @@ abstract class Job {
         //     ? localFile.lastModifiedSync()
         //     : null;
         final dir = Directory(p.dirname(localFile.path));
-        if (!await dir.exists()) {
-          await dir.create(recursive: true);
+        if (!dir.existsSync()) {
+          dir.createSync(recursive: true);
         }
         task = S3TransferTask(
           accessKey: cfg!.accessKey,
           secretKey: cfg!.secretKey,
           region: cfg!.region,
           bucket: cfg!.bucket,
-          key: (cfg!.prefix[cfg!.prefix.length - 1] != '/'
+          key:
+              (cfg!.prefix[cfg!.prefix.length - 1] != '/'
                   ? '${cfg!.prefix}/'
                   : cfg!.prefix) +
               remoteKey,
@@ -326,7 +335,7 @@ abstract class Job {
             onStatus?.call(this, null);
           },
         );
-        task!.start();
+        await task!.start();
         failed = false;
         running = false;
         completed = true;
@@ -344,6 +353,7 @@ abstract class Job {
       onStatus?.call(this, null);
     }
     onProgressUpdate?.call();
+    startall();
   }
 
   bool stoppable() {
@@ -374,17 +384,12 @@ abstract class Job {
     if (scheduled) return;
     scheduled = true;
 
-    while (Job.jobs.any((job) => !job.completed && !job.running)) {
-      while (Job.jobs.where((job) => job.running).length < maxrun &&
-          Job.jobs.any((job) => !job.completed && !job.running)) {
-        Job job = jobs.firstWhere((job) {
-          return !job.completed && !job.running;
-        });
-        if (job.startable()) {
-          job.start();
-        }
-      }
+    while (Job.jobs.where((job) => job.running).length < maxrun &&
+        Job.jobs.any((job) => !job.completed && !job.running)) {
+      Job job = jobs.firstWhere((job) => !job.completed && !job.running);
+      job.start();
     }
+
     scheduled = false;
   }
 
@@ -501,10 +506,7 @@ class Watcher {
       }
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
         Main.uploadFile(
-          p.join(
-            remoteDir,
-            p.relative(file.path, from: localDir.path),
-          ),
+          p.join(remoteDir, p.relative(file.path, from: localDir.path)),
           file,
         );
       }
@@ -536,16 +538,15 @@ class Watcher {
   }
 
   Future<void> start() async {
-    await scan();
-
     if (watching) {
       if (kDebugMode) {
         debugPrint("Watcher is already running for ${localDir.path}");
       }
       return;
     }
-
     watching = true;
+
+    await scan();
 
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       subscription = localDir.watch(recursive: true).listen((event) {
@@ -555,7 +556,7 @@ class Watcher {
         }
       });
     } else {
-      timer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      timer = Timer.periodic(const Duration(seconds: 60), (timer) {
         scan();
       });
     }

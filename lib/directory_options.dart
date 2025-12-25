@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:s3_drive/services/ini_manager.dart';
+import 'package:s3_drive/services/job.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 'services/models/backup_mode.dart';
 import 'package:path/path.dart' as p;
@@ -37,12 +38,14 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
   void setLocal(String dir) {
     IniManager.config.set('directories', widget.directory, dir);
     IniManager.save();
+    Main.listDirectories();
     getLocal();
   }
 
   void setMode(int newMode) {
     IniManager.config.set('modes', widget.directory, newMode.toString());
     IniManager.save();
+    Main.refreshWatchers();
     getLocal();
   }
 
@@ -128,7 +131,8 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
             title: const Text('Delete uploaded files'),
             subtitle: const Text('Remove uploaded files from local directory'),
             onTap: () async {
-              bool yes = await showDialog<bool>(
+              bool yes =
+                  await showDialog<bool>(
                     context: context,
                     builder: (context) => AlertDialog(
                       title: const Text('Delete Uploaded Files'),
@@ -185,6 +189,7 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Files deleted successfully')),
                 );
+                Main.refreshWatchers();
               }
             },
           ),
@@ -194,7 +199,8 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
           title: Text('Delete'),
           subtitle: Text('Delete ${widget.directory} from S3'),
           onTap: () async {
-            bool yes = await showDialog<bool>(
+            bool yes =
+                await showDialog<bool>(
                   context: context,
                   builder: (context) => AlertDialog(
                     title: const Text('Delete Directory'),

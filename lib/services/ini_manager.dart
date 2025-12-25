@@ -1,5 +1,6 @@
 import "dart:io";
 import "package:ini/ini.dart";
+import "package:path_provider/path_provider.dart";
 
 class IniManager {
   static late File _file;
@@ -18,7 +19,7 @@ class IniManager {
       );
     } else if (Platform.isAndroid) {
       _file = File(
-        '${Platform.environment['HOME']}/Android/data/com.himdek.s3_drive/config.ini',
+        '${(await getApplicationDocumentsDirectory()).path}/config.ini',
       );
     }
 

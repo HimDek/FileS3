@@ -91,8 +91,10 @@ class S3ConfigPageState extends State<S3ConfigPage> {
       _loading = true;
     });
     try {
-      final config =
-          await ConfigManager.loadS3Config(context: context, push: false);
+      final config = await ConfigManager.loadS3Config(
+        context: context,
+        push: false,
+      );
       setState(() {
         _accessKey = config!.accessKey;
         _secretKey = config.secretKey;
@@ -154,9 +156,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
           IconButton(
             onPressed: _loading ? null : () => _saveConfig(context),
             icon: _loading
-                ? CircularProgressIndicator(
-                    padding: EdgeInsets.all(12),
-                  )
+                ? CircularProgressIndicator(padding: EdgeInsets.all(12))
                 : Icon(Icons.save),
           ),
         ],

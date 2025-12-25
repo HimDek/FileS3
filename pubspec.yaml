@@ -41,6 +41,7 @@ dependencies:
   collection:
   workmanager:
   url_launcher:
+  path_provider:  
   file_selector:
   cupertino_icons:
   percent_indicator:
@@ -101,12 +102,3 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
-
-  plugin:
-    platforms:
-      linux:
-        pluginClass: FileSelectorPlugin
-      windows:
-        pluginClass: FileSelectorPlugin
-      macos:
-        pluginClass: FileSelectorPlugin
