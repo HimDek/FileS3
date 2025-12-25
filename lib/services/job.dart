@@ -46,6 +46,9 @@ abstract class Main {
         }),
         result,
       ];
+      if (!dirs.contains('${job.remoteKey.split('/').first}/')) {
+        dirs.add('${job.remoteKey.split('/').first}/');
+      }
       await refreshWatchers();
     }
     if (job is DownloadJob && job.completed && !job.running) {

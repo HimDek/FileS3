@@ -754,7 +754,7 @@ class _HomeState extends State<Home> {
                           Job.clearCompleted();
                           setState(() {});
                         },
-                        icon: Icon(Icons.delete_sweep),
+                        icon: Icon(Icons.clear_all_rounded),
                       ),
                   ]
                 : _navIndex == 2
@@ -1362,8 +1362,9 @@ class _HomeState extends State<Home> {
                 onPressed: () async {
                   final String? directoryPath = await getDirectoryPath();
                   if (directoryPath != null) {
+                    String dir = _localDir == './' ? '' : _localDir;
                     _uploadDirectory(
-                      p.join(_localDir, p.basename(directoryPath)),
+                      p.join(dir, p.basename(directoryPath)),
                       Directory(directoryPath),
                     );
                   }
