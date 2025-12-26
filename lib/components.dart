@@ -87,6 +87,34 @@ String bytesToReadable(int bytes) {
   return '${size.toStringAsFixed(2)} ${suffixes[i]}';
 }
 
+String _monthToString(int month) {
+  return [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ][month - 1];
+}
+
+String timeToReadable(DateTime time) {
+  final localTime = time.toLocal();
+  final diff = DateTime.now().toLocal().difference(localTime);
+  if (diff.inSeconds < 60) {
+    return '${diff.inSeconds}s ago';
+  } else if (diff.inMinutes < 60) {
+    return '${diff.inMinutes}m ago';
+  }
+  return "${localTime.day.toString().padLeft(2, '0')} ${_monthToString(localTime.month)} ${localTime.year} ${(localTime.hour % 12).toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ${localTime.hour >= 12 ? 'PM' : 'AM'}";
+}
+
 List<FileProps> sort(
   Iterable<FileProps> items,
   SortMode sortMode,
@@ -282,7 +310,13 @@ class FileContextOption {
 
   static FileContextOption open(FileContextActionHandler handler) =>
       FileContextOption(
-        title: 'Open',
+        title:
+            File(
+              Main.pathFromKey(handler.file.key) ?? handler.file.key,
+            ).existsSync()
+            ? 'Open'
+            : 'Opens Link',
+        subtitle: Main.pathFromKey(handler.file.key),
         icon: Icons.open_in_new,
         action: handler.open(),
       );
@@ -296,7 +330,7 @@ class FileContextOption {
             : 'Download',
         subtitle: handler.download() == null
             ? handler.rootExists()
-                  ? null
+                  ? Main.pathFromKey(handler.file.key)
                   : 'Set backup directory to enable downloads'
             : null,
         icon: handler.download() == null
@@ -754,7 +788,7 @@ class DirectoryContextOption {
         title: handler.open() == null ? 'Cannot Open' : 'Open',
         subtitle: handler.open() == null
             ? 'Directory does not exist locally'
-            : null,
+            : Main.pathFromKey(handler.file.key),
         icon: handler.open() == null
             ? Icons.open_in_new_off
             : Icons.open_in_new,
@@ -1196,20 +1230,63 @@ Widget buildFileContextMenu(
   );
   return ListView(
     children:
-        FileContextOption.allOptions(context, handler, cut, copy, deleteFile)
-            .map(
-              (option) => ListTile(
-                leading: Icon(option.icon),
-                title: Text(option.title),
-                subtitle: option.subtitle != null
-                    ? Text(option.subtitle!)
-                    : null,
-                onTap: option.action == null
-                    ? null
-                    : () async {
-                        await option.action!();
-                        Navigator.of(context).pop();
-                      },
+        <Widget>[
+              ListTile(
+                visualDensity: VisualDensity.comfortable,
+                leading: Icon(Icons.insert_drive_file_rounded),
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(item.key),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          Text(timeToReadable(item.lastModified)),
+                          const SizedBox(width: 8),
+                          Text(bytesToReadable(item.size)),
+                          const SizedBox(width: 8),
+                          Text(
+                            item.key.split('.').length > 1
+                                ? '.${item.key.split('.').last}'
+                                : '',
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text('MD5: ${item.etag}'),
+                  ],
+                ),
+              ),
+            ]
+            .followedBy(
+              FileContextOption.allOptions(
+                context,
+                handler,
+                cut,
+                copy,
+                deleteFile,
+              ).map(
+                (option) => ListTile(
+                  visualDensity: VisualDensity.comfortable,
+                  leading: Icon(option.icon),
+                  title: Text(option.title),
+                  subtitle: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: option.subtitle != null
+                        ? Text(option.subtitle!)
+                        : null,
+                  ),
+                  onTap: option.action == null
+                      ? null
+                      : () async {
+                          await option.action!();
+                          Navigator.of(context).pop();
+                        },
+                ),
               ),
             )
             .toList(),
@@ -1276,6 +1353,9 @@ Widget buildDirectoryContextMenu(
   Function(RemoteFile) copy,
   Function(String, String) moveDirectory,
   Function(String) deleteDirectory,
+  (int, int) Function(RemoteFile, {bool recursive}) countContent,
+  int Function(RemoteFile) dirSize,
+  String Function(RemoteFile) dirModified,
 ) {
   DirectoryContextActionHandler handler = DirectoryContextActionHandler(
     file: file,
@@ -1285,21 +1365,61 @@ Widget buildDirectoryContextMenu(
     deleteDirectory: deleteDirectory,
   );
   return ListView(
-    children: DirectoryContextOption.allOptions(context, handler, cut, copy)
-        .map(
-          (option) => ListTile(
-            leading: Icon(option.icon),
-            title: Text(option.title),
-            subtitle: option.subtitle != null ? Text(option.subtitle!) : null,
-            onTap: option.action != null
-                ? () async {
-                    await option.action!();
-                    Navigator.of(context).pop();
-                  }
-                : null,
-          ),
-        )
-        .toList(),
+    children:
+        <Widget>[
+              ListTile(
+                visualDensity: VisualDensity.comfortable,
+                leading: Icon(Icons.insert_drive_file_rounded),
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(file.key),
+                ),
+                subtitle: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Text(dirModified(file)),
+                      SizedBox(width: 8),
+                      Text(bytesToReadable(dirSize(file))),
+                      SizedBox(width: 8),
+                      Text(() {
+                        final count = countContent(file, recursive: true);
+                        if (count.$1 == 0) {
+                          return '${count.$2} files';
+                        }
+                        if (count.$2 == 0) {
+                          return '${count.$1} subfolders';
+                        }
+                        return '${count.$2} files in ${count.$1} subfolders';
+                      }()),
+                    ],
+                  ),
+                ),
+              ),
+            ]
+            .followedBy(
+              DirectoryContextOption.allOptions(
+                context,
+                handler,
+                cut,
+                copy,
+              ).map(
+                (option) => ListTile(
+                  leading: Icon(option.icon),
+                  title: Text(option.title),
+                  subtitle: option.subtitle != null
+                      ? Text(option.subtitle!)
+                      : null,
+                  onTap: option.action != null
+                      ? () async {
+                          await option.action!();
+                          Navigator.of(context).pop();
+                        }
+                      : null,
+                ),
+              ),
+            )
+            .toList(),
   );
 }
 

@@ -18,6 +18,10 @@ class JobViewState extends State<JobView> {
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      dense: MediaQuery.of(context).size.width < 600 ? true : false,
+      visualDensity: MediaQuery.of(context).size.width < 600
+          ? VisualDensity.compact
+          : VisualDensity.standard,
       leading: widget.job.running
           ? CircularPercentIndicator(
               radius: 20.0,

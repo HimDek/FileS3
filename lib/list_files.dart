@@ -14,14 +14,15 @@ class ListFiles extends StatelessWidget {
   final SortMode sortMode;
   final bool foldersFirst;
   final String relativeto;
-  final String? focusedKey;
   final Set<RemoteFile> selection;
   final SelectionAction selectionAction;
   final Function() onUpdate;
-  final Function(String) setFocus;
   final Function(String) onChangeDirectory;
   final Function(RemoteFile) select;
   final Function(RemoteFile) showContextMenu;
+  final (int, int) Function(RemoteFile, {bool recursive}) count;
+  final int Function(RemoteFile) dirSize;
+  final String Function(RemoteFile) dirModified;
   final String Function(RemoteFile, int?) getLink;
 
   const ListFiles({
@@ -30,14 +31,15 @@ class ListFiles extends StatelessWidget {
     required this.sortMode,
     required this.foldersFirst,
     required this.relativeto,
-    required this.focusedKey,
     required this.selection,
     required this.selectionAction,
     required this.onUpdate,
-    required this.setFocus,
     required this.onChangeDirectory,
     required this.select,
     required this.showContextMenu,
+    required this.count,
+    required this.dirSize,
+    required this.dirModified,
     required this.getLink,
   });
 
@@ -66,11 +68,13 @@ class ListFiles extends StatelessWidget {
               )
             : item.key.endsWith('/')
             ? ListTile(
-                selected:
-                    (focusedKey == item.key && selection.isEmpty) ||
-                    selection.any((selected) {
-                      return selected.key == item.key;
-                    }),
+                dense: MediaQuery.of(context).size.width < 600 ? true : false,
+                visualDensity: MediaQuery.of(context).size.width < 600
+                    ? VisualDensity.compact
+                    : VisualDensity.standard,
+                selected: selection.any((selected) {
+                  return selected.key == item.key;
+                }),
                 selectedTileColor: Theme.of(
                   context,
                 ).colorScheme.primary.withValues(alpha: 0.1),
@@ -81,8 +85,26 @@ class ListFiles extends StatelessWidget {
                       ? "${p.relative(item.key, from: relativeto)}/"
                       : "${item.key}/",
                 ),
-                subtitle: Text(
-                  '${bytesToReadable(item.size)}\t\t\t\t${item.file!.lastModified.toLocal().toString().split('.').first}',
+                subtitle: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Text(dirModified(item.file!)),
+                      SizedBox(width: 8),
+                      Text(bytesToReadable(dirSize(item.file!))),
+                      SizedBox(width: 8),
+                      Text(() {
+                        final count = this.count(item.file!, recursive: true);
+                        if (count.$1 == 0) {
+                          return '${count.$2} files';
+                        }
+                        if (count.$2 == 0) {
+                          return '${count.$1} subfolders';
+                        }
+                        return '${count.$2} files in ${count.$1} subfolders';
+                      }()),
+                    ],
+                  ),
                 ),
                 onTap:
                     selection.isNotEmpty &&
@@ -99,7 +121,7 @@ class ListFiles extends StatelessWidget {
                       }
                     : null,
                 trailing: selection.isNotEmpty
-                    ? (focusedKey == item.key && selection.isEmpty) ||
+                    ? selection.isEmpty ||
                               selection.any((selected) {
                                 return selected.key == item.key;
                               })
@@ -113,11 +135,13 @@ class ListFiles extends StatelessWidget {
                       ),
               )
             : ListTile(
-                selected:
-                    (focusedKey == item.key && selection.isEmpty) ||
-                    selection.any((selected) {
-                      return selected.key == item.key;
-                    }),
+                dense: MediaQuery.of(context).size.width < 600 ? true : false,
+                visualDensity: MediaQuery.of(context).size.width < 600
+                    ? VisualDensity.compact
+                    : VisualDensity.standard,
+                selected: selection.any((selected) {
+                  return selected.key == item.key;
+                }),
                 selectedTileColor: Theme.of(
                   context,
                 ).colorScheme.primary.withValues(alpha: 0.1),
@@ -131,25 +155,27 @@ class ListFiles extends StatelessWidget {
                         : item.file!.key,
                   ),
                 ),
-                subtitle: Row(
-                  children: [
-                    Text(bytesToReadable(item.size)),
-                    SizedBox(width: 16),
-                    Text(
-                      item.file!.lastModified
-                          .toLocal()
-                          .toString()
-                          .split('.')
-                          .first,
-                    ),
-                  ],
+                subtitle: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Text(timeToReadable(item.file!.lastModified)),
+                      SizedBox(width: 8),
+                      Text(bytesToReadable(item.size)),
+                      const SizedBox(width: 8),
+                      Text(
+                        item.key.split('.').length > 1
+                            ? '.${item.key.split('.').last}'
+                            : '',
+                      ),
+                    ],
+                  ),
                 ),
 
                 trailing: selection.isNotEmpty
-                    ? (focusedKey == item.key && selection.isEmpty) ||
-                              selection.any((selected) {
-                                return selected.key == item.key;
-                              })
+                    ? selection.any((selected) {
+                            return selected.key == item.key;
+                          })
                           ? Icon(Icons.check)
                           : null
                     : IconButton(
@@ -168,11 +194,9 @@ class ListFiles extends StatelessWidget {
                     ? null
                     : File(Main.pathFromKey(item.key) ?? item.key).existsSync()
                     ? () {
-                        setFocus(item.key);
                         OpenFile.open(Main.pathFromKey(item.key) ?? item.key);
                       }
                     : () {
-                        setFocus(item.key);
                         launchUrl(
                           Uri.parse(
                             getLink(

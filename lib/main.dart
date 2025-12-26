@@ -153,7 +153,6 @@ class _HomeState extends State<Home> {
   final TextEditingController _searchController = TextEditingController();
   List<Object> _searchResults = [];
   String _driveDir = '';
-  String? _focusedKey;
   bool _foldersFirst = true;
   SortMode _sortMode = SortMode.nameAsc;
   SelectionAction _selectionAction = SelectionAction.none;
@@ -184,6 +183,74 @@ class _HomeState extends State<Home> {
 
   String _getLink(RemoteFile file, int? seconds) {
     return Main.s3Manager!.getUrl(file.key, validForSeconds: seconds);
+  }
+
+  String _dirModified(RemoteFile dir) {
+    DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
+    for (final map in Main.remoteFilesMap.entries) {
+      for (final file in map.value) {
+        if (p.isWithin(dir.key, file.key) && !file.key.endsWith('/')) {
+          if (file.lastModified.isAfter(latest)) {
+            latest = file.lastModified;
+          }
+        }
+      }
+    }
+    return timeToReadable(latest);
+  }
+
+  (int, int) _count(RemoteFile dir, {bool recursive = false}) {
+    int dirCount = 0;
+    int fileCount = 0;
+    for (final map in Main.remoteFilesMap.entries) {
+      for (final file in map.value) {
+        if (p.isWithin(dir.key, file.key) &&
+            file.key != dir.key &&
+            (recursive || p.dirname(file.key) == p.normalize(dir.key))) {
+          if (file.key.endsWith('/')) {
+            dirCount += 1;
+          } else {
+            fileCount += 1;
+          }
+        }
+      }
+    }
+    return (dirCount, fileCount);
+  }
+
+  void _updateCounts() {
+    setState(() {
+      _dirCount = 0;
+      _fileCount = 0;
+    });
+    if (_driveDir == '') {
+      _dirCount = Main.remoteFilesMap.length;
+    } else {
+      final counts = _count(
+        RemoteFile(
+          key: _driveDir,
+          size: 0,
+          etag: '',
+          lastModified: DateTime.now(),
+        ),
+        recursive: false,
+      );
+      _dirCount = counts.$1;
+      _fileCount = counts.$2;
+    }
+    setState(() {});
+  }
+
+  int _dirSize(RemoteFile dir) {
+    int size = 0;
+    for (final map in Main.remoteFilesMap.entries) {
+      for (final file in map.value) {
+        if (p.isWithin(dir.key, file.key)) {
+          size += file.size;
+        }
+      }
+    }
+    return size;
   }
 
   Future<void> _createDirectory(String dir) async {
@@ -502,35 +569,6 @@ class _HomeState extends State<Home> {
     }
   }
 
-  void _updateCounts() {
-    setState(() {
-      _dirCount = 0;
-      _fileCount = 0;
-    });
-    if (_driveDir == '') {
-      _dirCount = Main.remoteFilesMap.length;
-    } else {
-      final remoteFiles =
-          Main.remoteFilesMap['${_driveDir.split('/').first}/'] ?? [];
-      _dirCount = remoteFiles
-          .where(
-            (file) =>
-                (file.key.endsWith('/') &&
-                p.normalize(p.dirname(file.key)) == p.normalize(_driveDir)),
-          )
-          .length;
-
-      _fileCount = remoteFiles
-          .where(
-            (file) =>
-                !file.key.endsWith('/') &&
-                p.normalize(p.dirname(file.key)) == p.normalize(_driveDir),
-          )
-          .length;
-    }
-    setState(() {});
-  }
-
   Future<void> _search() async {
     setState(() {
       _loading = true;
@@ -568,7 +606,6 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _showContextMenu(RemoteFile? file) async {
-    if (file != null) _focusedKey = (file.key);
     setState(() {});
     await showModalBottomSheet(
       context: context,
@@ -605,6 +642,9 @@ class _HomeState extends State<Home> {
               (String dir, String newDir) =>
                   _moveDirectory(dir, newDir, refresh: true),
               (String dir) => _deleteDirectory(dir, refresh: true),
+              _count,
+              _dirSize,
+              _dirModified,
             )
           : buildFileContextMenu(
               context,
@@ -618,7 +658,6 @@ class _HomeState extends State<Home> {
               (String key) => _deleteFile(key, refresh: true),
             ),
     );
-    _focusedKey = null;
     setState(() {});
   }
 
@@ -874,6 +913,8 @@ class _HomeState extends State<Home> {
                                   SizedBox(height: 0, width: 128),
                                   if (!_loading && !_searching) ...[
                                     ListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
                                       contentPadding: EdgeInsets.only(
                                         left: 16,
                                         right: 16,
@@ -892,6 +933,8 @@ class _HomeState extends State<Home> {
                                   ],
                                   if (_driveDir != '' || _searching) ...[
                                     ListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
                                       contentPadding: EdgeInsets.only(
                                         left: 16,
                                         right: 16,
@@ -916,6 +959,8 @@ class _HomeState extends State<Home> {
                                       },
                                     ),
                                     ListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
                                       contentPadding: EdgeInsets.only(
                                         left: 16,
                                         right: 16,
@@ -940,6 +985,8 @@ class _HomeState extends State<Home> {
                                       },
                                     ),
                                     ListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
                                       contentPadding: EdgeInsets.only(
                                         left: 16,
                                         right: 16,
@@ -964,6 +1011,8 @@ class _HomeState extends State<Home> {
                                       },
                                     ),
                                     ListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
                                       contentPadding: EdgeInsets.only(
                                         left: 16,
                                         right: 16,
@@ -989,6 +1038,8 @@ class _HomeState extends State<Home> {
                                     ),
                                     const PopupMenuDivider(),
                                     CheckboxListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
                                       contentPadding: EdgeInsets.only(
                                         left: 16,
                                         right: 16,
@@ -1010,6 +1061,8 @@ class _HomeState extends State<Home> {
                                     const PopupMenuDivider(),
                                   ],
                                   ListTile(
+                                    dense: true,
+                                    visualDensity: VisualDensity.compact,
                                     contentPadding: EdgeInsets.only(
                                       left: 16,
                                       right: 16,
@@ -1061,6 +1114,7 @@ class _HomeState extends State<Home> {
                                               setState(() {
                                                 _driveDir = '';
                                               });
+                                              _updateCounts();
                                             }
                                           : null,
                                       child: Text(
@@ -1138,16 +1192,10 @@ class _HomeState extends State<Home> {
                   sortMode: _sortMode,
                   foldersFirst: _foldersFirst,
                   relativeto: _driveDir,
-                  focusedKey: _focusedKey,
                   selection: _selection,
                   selectionAction: _selectionAction,
                   onUpdate: () {
                     setState(() {});
-                  },
-                  setFocus: (String key) {
-                    setState(() {
-                      _focusedKey = key;
-                    });
                   },
                   onChangeDirectory: (String newDir) {
                     setState(() {
@@ -1161,6 +1209,9 @@ class _HomeState extends State<Home> {
                     await Main.stopWatchers();
                     _showContextMenu(file);
                   },
+                  count: _count,
+                  dirSize: _dirSize,
+                  dirModified: _dirModified,
                   getLink: _getLink,
                 )
               : _driveDir == '' && _navIndex == 0
@@ -1169,6 +1220,12 @@ class _HomeState extends State<Home> {
                   itemBuilder: (context, index) {
                     final dir = Main.remoteFilesMap.keys.elementAt(index);
                     return ListTile(
+                      dense: MediaQuery.of(context).size.width < 600
+                          ? true
+                          : false,
+                      visualDensity: MediaQuery.of(context).size.width < 600
+                          ? VisualDensity.compact
+                          : VisualDensity.standard,
                       leading: Icon(Icons.folder),
                       title: Text(dir.substring(0, dir.length - 1)),
                       subtitle: Text(
@@ -1232,16 +1289,10 @@ class _HomeState extends State<Home> {
                   sortMode: _sortMode,
                   foldersFirst: _foldersFirst,
                   relativeto: _driveDir,
-                  focusedKey: _focusedKey,
                   selection: _selection,
                   selectionAction: _selectionAction,
                   onUpdate: () {
                     setState(() {});
-                  },
-                  setFocus: (String key) {
-                    setState(() {
-                      _focusedKey = key;
-                    });
                   },
                   onChangeDirectory: (String newDir) {
                     setState(() {
@@ -1255,6 +1306,9 @@ class _HomeState extends State<Home> {
                     await Main.stopWatchers();
                     _showContextMenu(file);
                   },
+                  count: _count,
+                  dirSize: _dirSize,
+                  dirModified: _dirModified,
                   getLink: _getLink,
                 )
               : _navIndex == 1
