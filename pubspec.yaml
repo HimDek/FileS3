@@ -48,6 +48,7 @@ dependencies:
   percent_indicator:
   shared_preferences:
   permission_handler:
+  flutter_launcher_icons: 
   flutter_secure_storage:
   flutter_foreground_task:
 
@@ -103,3 +104,22 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/icon.png"
+
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    background_color: "#ffffff"
+    theme_color: "#ffffff"
+
+  windows:
+    generate: true
+    image_path: "assets/icon/icon.png"
+
+  macos:
+    generate: true
+    image_path: "assets/icon/icon.png"

@@ -2,8 +2,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'models/remote_file.dart';
@@ -41,7 +41,9 @@ class S3FileManager {
   }
 
   static Future<S3FileManager?> create(
-      BuildContext? context, http.Client client) async {
+    BuildContext? context,
+    http.Client client,
+  ) async {
     final cfg = await ConfigManager.loadS3Config(context: context);
     if (cfg != null) {
       return S3FileManager._(cfg, client);
@@ -90,16 +92,17 @@ class S3FileManager {
       contentType: 'application/x-directory',
     );
 
-    final request = http.Request(
-      'PUT',
-      Uri(
-        scheme: 'https',
-        host: '$_bucket.s3.$_region.amazonaws.com',
-        path: '/${key.split('/').map(awsEncode).join('/')}',
-      ),
-    )
-      ..headers.addAll(headers)
-      ..bodyBytes = bytes;
+    final request =
+        http.Request(
+            'PUT',
+            Uri(
+              scheme: 'https',
+              host: '$_bucket.s3.$_region.amazonaws.com',
+              path: '/${key.split('/').map(awsEncode).join('/')}',
+            ),
+          )
+          ..headers.addAll(headers)
+          ..bodyBytes = bytes;
 
     final response = await _client.send(request);
 
@@ -137,9 +140,7 @@ class S3FileManager {
       final isDir = normalized.endsWith('/');
 
       final basePath = isDir
-          ? p.posix.dirname(
-              normalized.substring(0, normalized.length - 1),
-            )
+          ? p.posix.dirname(normalized.substring(0, normalized.length - 1))
           : p.posix.dirname(normalized);
 
       if (basePath == '.' || basePath.isEmpty) continue;
@@ -289,8 +290,9 @@ class S3FileManager {
 
     encodedParams.sort((a, b) => a.key.compareTo(b.key));
 
-    final canonicalQuery =
-        encodedParams.map((e) => '${e.key}=${e.value}').join('&');
+    final canonicalQuery = encodedParams
+        .map((e) => '${e.key}=${e.value}')
+        .join('&');
 
     /// Canonical request
     final canonicalRequest = [
@@ -309,12 +311,7 @@ class S3FileManager {
       sha256.convert(utf8.encode(canonicalRequest)).toString(),
     ].join('\n');
 
-    final signingKey = _getSigningKey(
-      _secretKey,
-      shortDate,
-      _region,
-      's3',
-    );
+    final signingKey = _getSigningKey(_secretKey, shortDate, _region, 's3');
 
     final signature = Hmac(
       sha256,
@@ -365,8 +362,9 @@ class S3FileManager {
         .join();
 
     // 4. Build signedHeadersString from those same sorted keys
-    final signedHeadersString =
-        sortedEntries.map((e) => e.key.toLowerCase()).join(';');
+    final signedHeadersString = sortedEntries
+        .map((e) => e.key.toLowerCase())
+        .join(';');
 
     // 5. Canonical URI (already encoded)
     final encodedPath = '/${key.split('/').map(awsEncode).join('/')}';
@@ -382,8 +380,9 @@ class S3FileManager {
     ].join('\n');
 
     // 7. Hash the canonical request
-    final hashedCanonical =
-        sha256.convert(utf8.encode(canonicalRequest)).toString();
+    final hashedCanonical = sha256
+        .convert(utf8.encode(canonicalRequest))
+        .toString();
 
     // 8. Build string to sign
     final stringToSign = [
@@ -452,9 +451,9 @@ class S3FileManager {
   // }
 
   String encode(String input) {
-    return Uri.encodeComponent(input)
-        .replaceAll('+', '%20')
-        .replaceAll('%7E', '~');
+    return Uri.encodeComponent(
+      input,
+    ).replaceAll('+', '%20').replaceAll('%7E', '~');
   }
 
   String awsEncode(String input) {

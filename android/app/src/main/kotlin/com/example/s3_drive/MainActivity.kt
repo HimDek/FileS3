@@ -1,4 +1,4 @@
-package com.example.s3_drive
+package com.himdek.s3drive
 
 import io.flutter.embedding.android.FlutterActivity
 

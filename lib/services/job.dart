@@ -71,8 +71,8 @@ abstract class Main {
     setHomeState?.call();
   }
 
-  static void setConfig(BuildContext? context) async {
-    Job.cfg = Job.cfg ?? await ConfigManager.loadS3Config(context: context);
+  static void setConfig() async {
+    Job.cfg = Job.cfg ?? await ConfigManager.loadS3Config(context: null);
   }
 
   static Future<void> stopWatchers() async {
@@ -113,10 +113,8 @@ abstract class Main {
   }
 
   static Future<void> refreshRemote(String dir) async {
-    setLoadingState?.call(true);
     final remoteFiles = await s3Manager!.listObjects(dir: dir);
     remoteFilesMap[dir] = remoteFiles;
-    setLoadingState?.call(false);
   }
 
   static Future<void> refreshWatchers() async {
@@ -138,6 +136,7 @@ abstract class Main {
 
     Job.clear();
     watchers.clear();
+    remoteFilesMap.removeWhere((key, value) => !dirs.contains(key));
 
     for (final dir in dirs) {
       await refreshRemote(dir);
@@ -215,13 +214,17 @@ abstract class Main {
     }
   }
 
+  static Future<void> initConfig(BuildContext? context) async {
+    s3Manager = await S3FileManager.create(context, httpClient);
+    setConfig();
+  }
+
   static Future<void> init(
     BuildContext? context, {
     bool background = false,
   }) async {
     await IniManager.init();
-    setConfig(context);
-    s3Manager = await S3FileManager.create(context, httpClient);
+    await initConfig(context);
     if (s3Manager == null) {
       // TODO: Show config notification
       return;

@@ -741,32 +741,42 @@ class _HomeState extends State<Home> {
 
   Future<void> _init() async {
     await IniManager.init();
+    final uiConfig = ConfigManager.loadUiConfig();
+    themeController.update(uiConfig.colorMode);
+    ultraDarkController.update(uiConfig.ultraDark);
 
-    while (await Permission.manageExternalStorage.request().isDenied) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Storage permission is required to use this app.',
-            style: TextStyle(color: Theme.of(context).colorScheme.onError),
+    Permission? permission = Platform.isAndroid || Platform.isIOS
+        ? Permission.manageExternalStorage
+        : null;
+
+    if (permission != null) {
+      while (await permission.request().isDenied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Storage permission is required to use this app.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onError),
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-    }
+        );
+      }
 
-    PermissionStatus status = await Permission.manageExternalStorage.request();
+      PermissionStatus status = await Permission.manageExternalStorage
+          .request();
 
-    if (status.isPermanentlyDenied || status.isRestricted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Storage permission is required to use this app.',
-            style: TextStyle(color: Theme.of(context).colorScheme.onError),
+      if (status.isPermanentlyDenied || status.isRestricted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Storage permission is required to use this app.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onError),
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-      await openAppSettings();
+        );
+        await openAppSettings();
+      }
     }
 
     setState(() {
@@ -809,7 +819,7 @@ class _HomeState extends State<Home> {
 
   @override
   void setState(void Function() fn) {
-    Main.setConfig(context);
+    Main.setConfig();
     super.setState(fn);
   }
 
