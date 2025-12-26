@@ -41,6 +41,7 @@ dependencies:
   collection:
   workmanager:
   url_launcher:
+  dynamic_color:
   path_provider:  
   file_selector:
   cupertino_icons:

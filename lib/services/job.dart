@@ -23,7 +23,7 @@ abstract class Main {
   static Function()? setHomeState;
 
   static String? pathFromKey(String key) {
-    final localDir = IniManager.config
+    final localDir = IniManager.config!
         .get('directories', "${key.split('/').first}/")
         ?.replaceAll('\\', '/');
     if (localDir != null) {
@@ -34,8 +34,8 @@ abstract class Main {
   }
 
   static String? keyFromPath(String path) {
-    for (String dir in IniManager.config.options('directories')!) {
-      final localDir = IniManager.config
+    for (String dir in IniManager.config!.options('directories')!) {
+      final localDir = IniManager.config!
           .get('directories', dir)
           ?.replaceAll('\\', '/');
       if (localDir != null) {
@@ -84,12 +84,12 @@ abstract class Main {
   static BackupMode backupMode(String key) {
     final dir = key.split('/').first;
     return BackupMode.fromValue(
-      int.parse(IniManager.config.get('modes', dir) ?? '1'),
+      int.parse(IniManager.config?.get('modes', dir) ?? '1'),
     );
   }
 
   static Future<void> addWatcher(String dir, {bool background = false}) async {
-    final localDir = IniManager.config
+    final localDir = IniManager.config!
         .get('directories', dir)
         ?.replaceAll('\\', '/');
 
@@ -219,8 +219,8 @@ abstract class Main {
     BuildContext? context, {
     bool background = false,
   }) async {
-    setConfig(context);
     await IniManager.init();
+    setConfig(context);
     s3Manager = await S3FileManager.create(context, httpClient);
     if (s3Manager == null) {
       // TODO: Show config notification

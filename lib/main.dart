@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -7,6 +8,8 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:s3_drive/components.dart';
 import 'package:s3_drive/list_files.dart';
+import 'package:s3_drive/services/config_manager.dart';
+import 'package:s3_drive/services/ini_manager.dart';
 import 'package:s3_drive/services/models/common.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 'package:s3_drive/settings.dart';
@@ -107,10 +110,43 @@ class LifecycleWatcher extends WidgetsBindingObserver {
   }
 }
 
+class ThemeController extends ChangeNotifier {
+  ThemeMode _theme = ThemeMode.system;
+
+  ThemeMode get theme => _theme;
+
+  ThemeMode get themeMode {
+    switch (_theme) {
+      case ThemeMode.light:
+        return ThemeMode.light;
+      case ThemeMode.dark:
+        return ThemeMode.dark;
+      case ThemeMode.system:
+        return ThemeMode.system;
+    }
+  }
+
+  void update(ThemeMode theme) {
+    _theme = theme;
+    notifyListeners();
+  }
+}
+
+class UltraDarkController extends ChangeNotifier {
+  bool _ultraDark = false;
+
+  bool get ultraDark => _ultraDark;
+
+  void update(bool ultraDark) {
+    _ultraDark = ultraDark;
+    notifyListeners();
+  }
+}
+
 /// ===============================
 /// MAIN
 /// ===============================
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   WidgetsBinding.instance.addObserver(LifecycleWatcher());
@@ -121,22 +157,64 @@ void main() async {
     await Workmanager().initialize(callbackDispatcher);
   }
 
-  runApp(
-    MaterialApp(
-      title: 'S3 Drive',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        snackBarTheme: SnackBarThemeData(
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(32),
-          ),
-          showCloseIcon: true,
-        ),
-      ),
-      home: const Scaffold(body: Home()),
-    ),
+  runApp(MainApp());
+}
+
+class MainApp extends StatelessWidget {
+  MainApp({super.key});
+
+  final snackBarTheme = SnackBarThemeData(
+    behavior: SnackBarBehavior.floating,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+    showCloseIcon: true,
   );
+
+  ThemeData getLightTheme(ColorScheme? lightScheme) => ThemeData(
+    colorScheme: lightScheme ?? ColorScheme.fromSeed(seedColor: Colors.blue),
+    useMaterial3: true,
+    snackBarTheme: snackBarTheme,
+  );
+
+  ThemeData getDarkTheme(ColorScheme? darkScheme) => ThemeData(
+    colorScheme:
+        darkScheme?.copyWith(
+          surface: ultraDarkController.ultraDark
+              ? Colors.black
+              : darkScheme.surface,
+          surfaceDim: ultraDarkController.ultraDark
+              ? Colors.black
+              : darkScheme.surfaceDim,
+        ) ??
+        ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
+    useMaterial3: true,
+    snackBarTheme: snackBarTheme,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([themeController, ultraDarkController]),
+      builder: (_, __) {
+        return DynamicColorBuilder(
+          builder: (lightScheme, darkScheme) {
+            return MaterialApp(
+              title: 'S3 Drive',
+              theme: themeController.themeMode == ThemeMode.dark
+                  ? getDarkTheme(darkScheme)
+                  : getLightTheme(lightScheme),
+              darkTheme: themeController.themeMode == ThemeMode.light
+                  ? getLightTheme(lightScheme)
+                  : getDarkTheme(darkScheme),
+              home: Home(),
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 class Home extends StatefulWidget {
@@ -662,6 +740,8 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _init() async {
+    await IniManager.init();
+
     while (await Permission.manageExternalStorage.request().isDenied) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

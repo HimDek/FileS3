@@ -4,7 +4,7 @@ import "package:path_provider/path_provider.dart";
 
 class IniManager {
   static late File _file;
-  static late Config config;
+  static Config? config;
 
   static Future<void> init() async {
     if (Platform.isWindows) {
@@ -25,10 +25,12 @@ class IniManager {
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
-      _file.writeAsStringSync('[aws]\n[s3]\n[directories]\n[modes]');
+      _file.writeAsStringSync('[aws]\n[s3]\n[directories]\n[modes]\n[ui]');
     }
 
-    _file.readAsLines().then((lines) => config = Config.fromStrings(lines));
+    await _file.readAsLines().then(
+      (lines) => config = Config.fromStrings(lines),
+    );
   }
 
   static void save() {

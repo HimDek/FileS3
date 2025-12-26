@@ -25,6 +25,16 @@ class SettingsPageState extends State<SettingsPage> {
               context,
             ).push(MaterialPageRoute(builder: (context) => S3ConfigPage())),
           ),
+          ListTile(
+            leading: Icon(Icons.palette),
+            title: Text("Appearance"),
+            subtitle: Text(
+              "Configure UI settings like theme, colors, font size etc.",
+            ),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (context) => UiSettingsPage())),
+          ),
         ],
       ),
     );

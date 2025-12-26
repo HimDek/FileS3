@@ -34,14 +34,20 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
   }
 
   void setLocal(String dir) {
-    IniManager.config.set('directories', widget.directory, dir);
+    if (!IniManager.config!.sections().contains('directories')) {
+      IniManager.config!.addSection('directories');
+    }
+    IniManager.config!.set('directories', widget.directory, dir);
     IniManager.save();
     Main.listDirectories();
     getLocal();
   }
 
   void setMode(int newMode) {
-    IniManager.config.set('modes', widget.directory, newMode.toString());
+    if (!IniManager.config!.sections().contains('modes')) {
+      IniManager.config!.addSection('modes');
+    }
+    IniManager.config!.set('modes', widget.directory, newMode.toString());
     IniManager.save();
     Main.refreshWatchers();
     getLocal();

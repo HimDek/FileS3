@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:s3_drive/main.dart';
 import 'package:s3_drive/services/ini_manager.dart';
+
+final themeController = ThemeController();
+final ultraDarkController = UltraDarkController();
 
 class S3Config {
   final String accessKey;
@@ -20,6 +24,13 @@ class S3Config {
   });
 }
 
+class UiConfig {
+  final ThemeMode colorMode;
+  final bool ultraDark;
+
+  UiConfig({required this.colorMode, required this.ultraDark});
+}
+
 class ConfigManager {
   static const _storage = FlutterSecureStorage();
 
@@ -30,10 +41,10 @@ class ConfigManager {
     final accessKey = await _storage.read(key: 'aws_access_key') ?? '';
     final secretKey = await _storage.read(key: 'aws_secret_key') ?? '';
 
-    final region = IniManager.config.get("aws", "region") ?? '';
-    final bucket = IniManager.config.get("s3", "bucket") ?? '';
-    final prefix = IniManager.config.get("s3", "prefix") ?? '';
-    final host = IniManager.config.get("s3", "host") ?? '';
+    final region = IniManager.config?.get("aws", "region") ?? '';
+    final bucket = IniManager.config?.get("s3", "bucket") ?? '';
+    final prefix = IniManager.config?.get("s3", "prefix") ?? '';
+    final host = IniManager.config?.get("s3", "host") ?? '';
 
     if ((accessKey.isEmpty ||
             secretKey.isEmpty ||
@@ -62,10 +73,46 @@ class ConfigManager {
   static Future<void> saveS3Config(S3Config config) async {
     await _storage.write(key: 'aws_access_key', value: config.accessKey);
     await _storage.write(key: 'aws_secret_key', value: config.secretKey);
-    IniManager.config.set("aws", "region", config.region);
-    IniManager.config.set("s3", "bucket", config.bucket);
-    IniManager.config.set("s3", "prefix", config.prefix);
-    IniManager.config.set("s3", "host", config.host);
+    if (!IniManager.config!.sections().contains("aws")) {
+      IniManager.config!.addSection("aws");
+    }
+    IniManager.config!.set("aws", "region", config.region);
+    if (!IniManager.config!.sections().contains("s3")) {
+      IniManager.config!.addSection("s3");
+    }
+    IniManager.config!.set("s3", "bucket", config.bucket);
+    IniManager.config!.set("s3", "prefix", config.prefix);
+    IniManager.config!.set("s3", "host", config.host);
+    IniManager.save();
+  }
+
+  static UiConfig loadUiConfig() {
+    final colorModeStr = IniManager.config?.get("ui", "color_mode") ?? 'system';
+    final ultraDarkStr = IniManager.config?.get("ui", "ultra_dark") ?? 'false';
+
+    final colorMode = switch (colorModeStr) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
+
+    final ultraDark = ultraDarkStr.toLowerCase() == 'true';
+
+    return UiConfig(colorMode: colorMode, ultraDark: ultraDark);
+  }
+
+  static Future<void> saveUiConfig(UiConfig config) async {
+    final colorModeStr = switch (config.colorMode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    };
+
+    if (!IniManager.config!.sections().contains("ui")) {
+      IniManager.config!.addSection("ui");
+    }
+    IniManager.config!.set("ui", "color_mode", colorModeStr);
+    IniManager.config!.set("ui", "ultra_dark", config.ultraDark.toString());
     IniManager.save();
   }
 }
@@ -201,6 +248,89 @@ class S3ConfigPageState extends State<S3ConfigPage> {
             onChanged: (value) => _host = value,
             enabled: !_loading,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class UiSettingsPage extends StatefulWidget {
+  const UiSettingsPage({super.key});
+
+  @override
+  State<UiSettingsPage> createState() => UiSettingsPageState();
+}
+
+class UiSettingsPageState extends State<UiSettingsPage> {
+  late UiConfig _uiConfig;
+
+  @override
+  void initState() {
+    super.initState();
+    _uiConfig = ConfigManager.loadUiConfig();
+  }
+
+  Future<void> _saveConfig() async {
+    await ConfigManager.saveUiConfig(_uiConfig);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Appearance Settings')),
+      body: ListView(
+        children: [
+          ListTile(
+            title: Text('Color Mode'),
+            subtitle: Text('Select the app color mode'),
+          ),
+          RadioGroup<ThemeMode>(
+            groupValue: _uiConfig.colorMode,
+            onChanged: (ThemeMode? value) async {
+              if (value != null) {
+                setState(() {
+                  _uiConfig = UiConfig(
+                    colorMode: value,
+                    ultraDark: _uiConfig.ultraDark,
+                  );
+                });
+                await _saveConfig();
+                themeController.update(value);
+              }
+            },
+            child: Column(
+              children: [
+                RadioListTile<ThemeMode>(
+                  title: Text('System Default'),
+                  value: ThemeMode.system,
+                ),
+                RadioListTile<ThemeMode>(
+                  title: Text('Light Mode'),
+                  value: ThemeMode.light,
+                ),
+                RadioListTile<ThemeMode>(
+                  title: Text('Dark Mode'),
+                  value: ThemeMode.dark,
+                ),
+              ],
+            ),
+          ),
+          if (_uiConfig.colorMode != ThemeMode.light)
+            SwitchListTile(
+              title: Text('Ultra Dark Mode'),
+              subtitle: Text('Pure black background for dark mode'),
+              value: _uiConfig.ultraDark,
+              onChanged: (value) async {
+                setState(() {
+                  _uiConfig = UiConfig(
+                    colorMode: _uiConfig.colorMode,
+                    ultraDark: value,
+                  );
+                });
+                await _saveConfig();
+                ultraDarkController.update(value);
+              },
+            ),
         ],
       ),
     );
