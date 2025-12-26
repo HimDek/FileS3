@@ -9,119 +9,56 @@ import 'package:s3_drive/services/models/common.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// class ListFiles extends StatelessWidget {
-//   final BuildContext context;
-//   final List<dynamic> files;
-//   final SortMode sortMode;
-//   final bool foldersFirst;
-//   final Function(RemoteFile) showContextMenu;
-//   final bool showFullPath;
-//   final Processor processor;
-//   final String? focusedKey;
-//   final Set<RemoteFile> selection;
-//   final SelectionAction selectionAction;
-//   final void Function(RemoteFile) select;
-//   final String Function(String) pathFromKey;
-//   final Function(String) setFocus;
-//   final Function(int) setNavIndex;
-//   final Function() onJobUpdate;
-//   final Function(Job, dynamic) onJobComplete;
-//   final Function(Job) removeJob;
-//   final Function(String) onChangeDirectory;
-//   final String Function(RemoteFile, int?) getLink;
-//   final Function() stopWatchers;
+class ListFiles extends StatelessWidget {
+  final List<dynamic> files;
+  final SortMode sortMode;
+  final bool foldersFirst;
+  final String relativeto;
+  final String? focusedKey;
+  final Set<RemoteFile> selection;
+  final SelectionAction selectionAction;
+  final Function() onUpdate;
+  final Function(String) setFocus;
+  final Function(String) onChangeDirectory;
+  final Function(RemoteFile) select;
+  final Function(RemoteFile) showContextMenu;
+  final String Function(RemoteFile, int?) getLink;
 
-//   const ListFiles({
-//     super.key,
-//     required this.context,
-//     required this.files,
-//     required this.sortMode,
-//     required this.foldersFirst,
-//     required this.showContextMenu,
-//     required this.showFullPath,
-//     required this.processor,
-//     required this.focusedKey,
-//     required this.selection,
-//     required this.selectionAction,
-//     required this.select,
-//     required this.pathFromKey,
-//     required this.setFocus,
-//     required this.setNavIndex,
-//     required this.onJobUpdate,
-//     required this.onJobComplete,
-//     required this.removeJob,
-//     required this.onChangeDirectory,
-//     required this.getLink,
-//     required this.stopWatchers,
-//   });
+  const ListFiles({
+    super.key,
+    required this.files,
+    required this.sortMode,
+    required this.foldersFirst,
+    required this.relativeto,
+    required this.focusedKey,
+    required this.selection,
+    required this.selectionAction,
+    required this.onUpdate,
+    required this.setFocus,
+    required this.onChangeDirectory,
+    required this.select,
+    required this.showContextMenu,
+    required this.getLink,
+  });
 
-//   @override
-//   Widget build(BuildContext context) {
-//     return Column(
-//       children: listFiles(
-//         this.context,
-//         files,
-//         sortMode,
-//         foldersFirst,
-//         showContextMenu,
-//         showFullPath,
-//         processor,
-//         focusedKey,
-//         selection,
-//         selectionAction,
-//         select,
-//         pathFromKey,
-//         setFocus,
-//         setNavIndex,
-//         onJobUpdate,
-//         onJobComplete,
-//         removeJob,
-//         onChangeDirectory,
-//         getLink,
-//         stopWatchers,
-//       ),
-//     );
-//   }
-// }
-
-List<Widget> listFiles(
-  BuildContext context,
-  List<dynamic> files,
-  SortMode sortMode,
-  bool foldersFirst,
-  String relativeto,
-  String? focusedKey,
-  Set<RemoteFile> selection,
-  SelectionAction selectionAction,
-  Function() onUpdate,
-  Function(String) setFocus,
-  Function(String) onChangeDirectory,
-  Function(RemoteFile) select,
-  Function(RemoteFile) showContextMenu,
-  String Function(RemoteFile, int?) getLink,
-) {
-  Iterable<Job> jobs = files.whereType<Job>();
-  Iterable<RemoteFile> remoteFiles = files.whereType<RemoteFile>();
-
-  List<FileProps> list = sort(
-    [
-      for (RemoteFile file in remoteFiles.where(
-        (file) => file.key.endsWith('/'),
-      ))
-        FileProps(key: file.key, size: file.size, file: file),
-      for (Job job in jobs)
-        FileProps(key: job.remoteKey, size: job.bytes, job: job),
-      for (RemoteFile file in remoteFiles)
-        if (!file.key.endsWith('/'))
-          FileProps(key: file.key, size: file.size, file: file),
-    ],
-    sortMode,
-    foldersFirst,
-  );
-
-  return list
-      .map(
-        (item) => item.job != null
+  @override
+  Widget build(BuildContext context) {
+    final sortedFiles = sort(
+      files.map(
+        (file) => file is Job
+            ? FileProps(key: file.remoteKey, size: file.bytes, job: file)
+            : file.key.endsWith('/')
+            ? FileProps(key: file.key, size: file.size, file: file)
+            : FileProps(key: file.key, size: file.size, file: file),
+      ),
+      sortMode,
+      foldersFirst,
+    );
+    return SliverList.builder(
+      itemCount: sortedFiles.length,
+      itemBuilder: (context, index) {
+        final item = sortedFiles[index];
+        return item.job != null
             ? JobView(
                 job: item.job!,
                 relativeTo: relativeto,
@@ -229,10 +166,10 @@ List<Widget> listFiles(
                       }
                     : selectionAction != SelectionAction.none
                     ? null
-                    : File(Main.pathFromKey(item.key)).existsSync()
+                    : File(Main.pathFromKey(item.key) ?? item.key).existsSync()
                     ? () {
                         setFocus(item.key);
-                        OpenFile.open(Main.pathFromKey(item.key));
+                        OpenFile.open(Main.pathFromKey(item.key) ?? item.key);
                       }
                     : () {
                         setFocus(item.key);
@@ -250,7 +187,8 @@ List<Widget> listFiles(
                         select(item.file!);
                       }
                     : null,
-              ),
-      )
-      .toList();
+              );
+      },
+    );
+  }
 }

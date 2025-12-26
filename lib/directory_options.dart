@@ -28,10 +28,8 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
   BackupMode mode = BackupMode.upload;
 
   void getLocal() {
-    local = IniManager.config.get('directories', widget.directory) ?? '';
-    mode = BackupMode.fromValue(
-      int.tryParse(IniManager.config.get('modes', widget.directory) ?? '1')!,
-    );
+    local = Main.pathFromKey(widget.directory) ?? '';
+    mode = Main.backupMode(widget.directory);
     setState(() {});
   }
 

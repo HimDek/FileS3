@@ -88,7 +88,7 @@ String bytesToReadable(int bytes) {
 }
 
 List<FileProps> sort(
-  List<FileProps> items,
+  Iterable<FileProps> items,
   SortMode sortMode,
   bool foldersFirst,
 ) {
@@ -200,13 +200,13 @@ class FileContextActionHandler extends ContextActionHandler {
   });
 
   bool rootExists() {
-    return p.isAbsolute(Main.pathFromKey(file.key));
+    return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
   }
 
   dynamic Function() open() {
-    return File(Main.pathFromKey(file.key)).existsSync()
+    return File(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? () {
-            OpenFile.open(Main.pathFromKey(file.key));
+            OpenFile.open(Main.pathFromKey(file.key) ?? file.key);
           }
         : () {
             launchUrl(Uri.parse(getLink(file, null)));
@@ -215,7 +215,8 @@ class FileContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return !rootExists() || File(Main.pathFromKey(file.key)).existsSync()
+    return !rootExists() ||
+            File(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? null
         : () {
             Main.downloadFile(file);
@@ -226,16 +227,16 @@ class FileContextActionHandler extends ContextActionHandler {
   String Function()? saveAs(String? path) {
     return path != null
         ? () {
-            saveFile(file, Main.pathFromKey(file.key));
+            saveFile(file, Main.pathFromKey(file.key) ?? file.key);
             return 'Saving to $path';
           }
         : null;
   }
 
   XFile Function()? getXFile() {
-    return File(Main.pathFromKey(file.key)).existsSync()
+    return File(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? () {
-            return XFile(Main.pathFromKey(file.key));
+            return XFile(Main.pathFromKey(file.key) ?? file.key);
           }
         : null;
   }
@@ -675,11 +676,11 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   final Function(String) deleteDirectory;
 
   bool rootExists() {
-    return p.isAbsolute(Main.pathFromKey(file.key));
+    return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
   }
 
   void Function()? open() {
-    return Directory(Main.pathFromKey(file.key)).existsSync()
+    return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? () {
             OpenFile.open(Main.pathFromKey(file.key));
           }
@@ -700,7 +701,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     return path == null
         ? null
         : () {
-            saveDirectory(file, Main.pathFromKey(file.key));
+            saveDirectory(file, Main.pathFromKey(file.key) ?? file.key);
             return 'Saving to $path';
           };
   }

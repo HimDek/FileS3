@@ -15,10 +15,12 @@ class ActiveJobs extends StatefulWidget {
 class ActiveJobsState extends State<ActiveJobs> {
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: widget.jobs.map((job) {
+    return SliverList.builder(
+      itemCount: widget.jobs.length,
+      itemBuilder: (context, index) {
+        final job = widget.jobs[index];
         return JobView(job: job, onUpdate: widget.onUpdate);
-      }).toList(),
+      },
     );
   }
 }

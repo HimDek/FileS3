@@ -151,6 +151,8 @@ class _HomeState extends State<Home> {
   final List<RemoteFile> _allSelectableItems = [];
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
+  List<Object> _searchResults = [];
+  String _driveDir = '';
   String? _focusedKey;
   bool _foldersFirst = true;
   SortMode _sortMode = SortMode.nameAsc;
@@ -158,8 +160,6 @@ class _HomeState extends State<Home> {
   int _dirCount = 0;
   int _fileCount = 0;
   int _navIndex = 0;
-  String _localDir = './';
-  String _localRoot = '';
   bool _loading = true;
   bool _searching = false;
   bool _controlsVisible = true;
@@ -206,11 +206,15 @@ class _HomeState extends State<Home> {
       _loading = true;
     });
     await Main.s3Manager!.copyFile(key, newKey);
-    if (File(Main.pathFromKey(key)).existsSync()) {
-      if (!File(Main.pathFromKey(newKey)).parent.existsSync()) {
-        File(Main.pathFromKey(newKey)).parent.createSync(recursive: true);
+    if (File(Main.pathFromKey(key) ?? key).existsSync()) {
+      if (!File(Main.pathFromKey(newKey) ?? newKey).parent.existsSync()) {
+        File(
+          Main.pathFromKey(newKey) ?? newKey,
+        ).parent.createSync(recursive: true);
       }
-      File(Main.pathFromKey(key)).copySync(Main.pathFromKey(newKey));
+      File(
+        Main.pathFromKey(key) ?? key,
+      ).copySync(Main.pathFromKey(newKey) ?? newKey);
     }
 
     RemoteFile oldFile = (Main.remoteFilesMap['${key.split('/').first}/']
@@ -266,8 +270,8 @@ class _HomeState extends State<Home> {
       _loading = true;
     });
     await Main.s3Manager!.deleteFile(key);
-    if (File(Main.pathFromKey(key)).existsSync()) {
-      File(Main.pathFromKey(key)).deleteSync();
+    if (File(Main.pathFromKey(key) ?? key).existsSync()) {
+      File(Main.pathFromKey(key) ?? key).deleteSync();
     }
     Main.remoteFilesMap['${key.split('/').first}/'] = [
       ...(Main.remoteFilesMap['${key.split('/').first}/'] ?? []).where((file) {
@@ -317,8 +321,8 @@ class _HomeState extends State<Home> {
         return file.key != dir;
       }),
     ];
-    if (Main.dirs.contains(dir)) {
-      Main.dirs.remove(dir);
+    if (Main.remoteFilesMap.keys.contains(dir)) {
+      Main.remoteFilesMap.remove(dir);
     }
     if (refresh) {
       Main.refreshWatchers();
@@ -330,8 +334,8 @@ class _HomeState extends State<Home> {
       _loading = true;
     });
     await _deleteS3Directory(dir, refresh: false);
-    if (Directory(Main.pathFromKey(dir)).existsSync()) {
-      Directory(Main.pathFromKey(dir)).deleteSync(recursive: true);
+    if (Directory(Main.pathFromKey(dir) ?? dir).existsSync()) {
+      Directory(Main.pathFromKey(dir) ?? dir).deleteSync(recursive: true);
     }
     if (refresh) {
       Main.refreshWatchers();
@@ -376,7 +380,7 @@ class _HomeState extends State<Home> {
             !file.key.endsWith('/')) {
           final relativePath = p.relative(file.key, from: dir.key);
           final localFilePath = p.join(
-            localPath ?? Main.pathFromKey(dir.key),
+            localPath ?? Main.pathFromKey(dir.key) ?? dir.key,
             relativePath,
           );
           final localFileDir = p.dirname(localFilePath);
@@ -412,7 +416,7 @@ class _HomeState extends State<Home> {
     for (final item in selection) {
       if (!item.key.endsWith('/')) {
         final file = item;
-        final newKey = p.join(_localDir, p.basename(file.key));
+        final newKey = p.join(_driveDir, p.basename(file.key));
         if (_selectionAction == SelectionAction.copy) {
           await _copyFile(file.key, newKey, refresh: false);
         } else if (_selectionAction == SelectionAction.cut) {
@@ -420,7 +424,7 @@ class _HomeState extends State<Home> {
         }
       } else if (item is String) {
         final dir = item;
-        final newDir = p.join(_localDir, p.basename(dir.key));
+        final newDir = p.join(_driveDir, p.basename(dir.key));
         if (_selectionAction == SelectionAction.copy) {
           await _copyDirectory(dir.key, newDir, refresh: false);
         } else if (_selectionAction == SelectionAction.cut) {
@@ -443,11 +447,11 @@ class _HomeState extends State<Home> {
     //   }
     // }
     // Has to wait for download to finish
-    if (File(Main.pathFromKey(file.key)).existsSync()) {
+    if (File(Main.pathFromKey(file.key) ?? file.key).existsSync()) {
       if (!File(savePath).parent.existsSync()) {
         File(savePath).parent.createSync(recursive: true);
       }
-      File(Main.pathFromKey(file.key)).copySync(savePath);
+      File(Main.pathFromKey(file.key) ?? file.key).copySync(savePath);
     } else {
       Main.downloadFile(file, localPath: savePath);
     }
@@ -463,9 +467,9 @@ class _HomeState extends State<Home> {
     //   }
     // }
     // Has to wait for download to finish
-    if (Directory(Main.pathFromKey(dir.key)).existsSync()) {
+    if (Directory(Main.pathFromKey(dir.key) ?? dir.key).existsSync()) {
       for (final entity in Directory(
-        Main.pathFromKey(dir.key),
+        Main.pathFromKey(dir.key) ?? dir.key,
       ).listSync(recursive: true, followLinks: false)) {
         if (entity is File) {
           final relativePath = p.relative(
@@ -503,16 +507,16 @@ class _HomeState extends State<Home> {
       _dirCount = 0;
       _fileCount = 0;
     });
-    if (_localDir == './') {
-      _dirCount = Main.dirs.length;
+    if (_driveDir == '') {
+      _dirCount = Main.remoteFilesMap.length;
     } else {
       final remoteFiles =
-          Main.remoteFilesMap['${_localDir.split('/').first}/'] ?? [];
+          Main.remoteFilesMap['${_driveDir.split('/').first}/'] ?? [];
       _dirCount = remoteFiles
           .where(
             (file) =>
                 (file.key.endsWith('/') &&
-                p.normalize(p.dirname(file.key)) == p.normalize(_localDir)),
+                p.normalize(p.dirname(file.key)) == p.normalize(_driveDir)),
           )
           .length;
 
@@ -520,39 +524,47 @@ class _HomeState extends State<Home> {
           .where(
             (file) =>
                 !file.key.endsWith('/') &&
-                p.normalize(p.dirname(file.key)) == p.normalize(_localDir),
+                p.normalize(p.dirname(file.key)) == p.normalize(_driveDir),
           )
           .length;
     }
     setState(() {});
   }
 
-  List<Object> _search() {
-    final allItems = [
-      ...Main.remoteFilesMap.entries
-          .expand((entry) => entry.value)
-          .where(
-            (file) =>
-                p.isWithin(p.normalize(_localDir), p.normalize(file.key)) &&
-                !Job.jobs.any((job) => job.remoteKey == file.key),
+  Future<void> _search() async {
+    setState(() {
+      _loading = true;
+    });
+
+    _searchResults =
+        [
+          ...Main.remoteFilesMap.entries
+              .expand((entry) => entry.value)
+              .where(
+                (file) =>
+                    p.isWithin(p.normalize(_driveDir), p.normalize(file.key)) &&
+                    !Job.jobs.any((job) => job.remoteKey == file.key),
+              ),
+          ...Job.jobs.where(
+            (job) =>
+                p.isWithin(p.normalize(_driveDir), p.normalize(job.remoteKey)),
           ),
-      ...Job.jobs.where(
-        (job) => p.isWithin(p.normalize(_localDir), p.normalize(job.remoteKey)),
-      ),
-    ];
-    final result = allItems.where((item) {
-      if (item is RemoteFile) {
-        return item.key.toLowerCase().contains(
-          _searchController.text.trim().toLowerCase(),
-        );
-      } else if (item is Job) {
-        return item.remoteKey.toLowerCase().contains(
-          _searchController.text.trim().toLowerCase(),
-        );
-      }
-      return false;
-    }).toList();
-    return result;
+        ].where((item) {
+          if (item is RemoteFile) {
+            return item.key.toLowerCase().contains(
+              _searchController.text.trim().toLowerCase(),
+            );
+          } else if (item is Job) {
+            return item.remoteKey.toLowerCase().contains(
+              _searchController.text.trim().toLowerCase(),
+            );
+          }
+          return false;
+        }).toList();
+
+    setState(() {
+      _loading = false;
+    });
   }
 
   Future<void> _showContextMenu(RemoteFile? file) async {
@@ -704,19 +716,19 @@ class _HomeState extends State<Home> {
                         controller: _searchController,
                         decoration: InputDecoration(
                           visualDensity: VisualDensity.compact,
-                          hintText: 'Search in "$_localDir"',
+                          hintText: 'Search',
                           helperText:
-                              "${_search().where((item) => item is RemoteFile && item.key.endsWith('/')).isNotEmpty ? '${_search().where((item) => item is RemoteFile && item.key.endsWith('/')).length} Folders ' : ''}${_search().where((item) => item is RemoteFile && !item.key.endsWith('/')).isNotEmpty ? '${_search().where((item) => item is RemoteFile && !item.key.endsWith('/')).length} Files ' : ''}found",
+                              "${_searchResults.where((item) => item is RemoteFile && item.key.endsWith('/')).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && item.key.endsWith('/')).length} Folders ' : ''}${_searchResults.where((item) => item is RemoteFile && !item.key.endsWith('/')).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && !item.key.endsWith('/')).length} Files ' : ''}found",
                           border: InputBorder.none,
                           isDense: true,
                         ),
                         onChanged: (value) {
                           _selection.clear();
-                          setState(() {});
+                          _search();
                         },
                         onFieldSubmitted: (value) {
                           _selection.clear();
-                          setState(() {});
+                          _search();
                         },
                       ),
                     )
@@ -805,7 +817,7 @@ class _HomeState extends State<Home> {
                           ),
                         ]
                       : [
-                          if (_localDir != './' && _navIndex == 0)
+                          if (_driveDir != '' && _navIndex == 0)
                             IconButton(
                               onPressed: _paste,
                               icon: const Icon(Icons.paste),
@@ -830,10 +842,10 @@ class _HomeState extends State<Home> {
                                 _searchController.clear();
                                 setState(() {});
                               }
-                            : () {
+                            : () async {
                                 _selection.clear();
                                 _searching = true;
-                                setState(() {});
+                                _search();
                               },
                       ),
                     if (_searching)
@@ -878,7 +890,7 @@ class _HomeState extends State<Home> {
                                     ),
                                     const PopupMenuDivider(),
                                   ],
-                                  if (_localDir != './' || _searching) ...[
+                                  if (_driveDir != '' || _searching) ...[
                                     ListTile(
                                       contentPadding: EdgeInsets.only(
                                         left: 16,
@@ -1024,7 +1036,7 @@ class _HomeState extends State<Home> {
                       },
                     ),
                   ],
-            bottom: _navIndex == 0 && _localDir != "./"
+            bottom: _navIndex == 0 && _driveDir != ""
                 ? PreferredSize(
                     preferredSize: Size.fromHeight(32),
                     child: Container(
@@ -1047,7 +1059,7 @@ class _HomeState extends State<Home> {
                                                   SelectionAction.none
                                           ? () {
                                               setState(() {
-                                                _localDir = './';
+                                                _driveDir = '';
                                               });
                                             }
                                           : null,
@@ -1060,7 +1072,7 @@ class _HomeState extends State<Home> {
                                     ),
                                   ]
                                   .followedBy(
-                                    _localDir
+                                    _driveDir
                                         .split('/')
                                         .where((dir) => dir.isNotEmpty)
                                         .map(
@@ -1070,9 +1082,9 @@ class _HomeState extends State<Home> {
                                                     _selectionAction ==
                                                         SelectionAction.none
                                                 ? () {
-                                                    String newPath = './';
+                                                    String newPath = '';
                                                     for (final part
-                                                        in _localDir.split(
+                                                        in _driveDir.split(
                                                           '/',
                                                         )) {
                                                       if (part.isEmpty) {
@@ -1082,18 +1094,9 @@ class _HomeState extends State<Home> {
                                                       if (part == dir) break;
                                                     }
                                                     setState(() {
-                                                      _localDir =
-                                                          "${p.normalize(newPath)}/";
-                                                      _localRoot =
-                                                          Main.dirs.contains(
-                                                            "${p.normalize(newPath)}/",
-                                                          )
-                                                          ? Main.localDirs[Main
-                                                                .dirs
-                                                                .indexOf(
-                                                                  "${p.normalize(newPath)}/",
-                                                                )]
-                                                          : _localRoot;
+                                                      _driveDir = p.normalize(
+                                                        newPath,
+                                                      );
                                                     });
                                                   }
                                                 : null,
@@ -1124,200 +1127,151 @@ class _HomeState extends State<Home> {
                   )
                 : null,
           ),
-          SliverToBoxAdapter(
-            child: _searching && _navIndex == 0
-                ? Column(
-                    children: listFiles(
-                      context,
-                      () {
-                        final list = _search();
-                        _updateAllSelectableItems(
-                          list.whereType<RemoteFile>().toList(),
-                        );
-                        return list;
-                      }(),
-                      _sortMode,
-                      _foldersFirst,
-                      _localDir,
-                      _focusedKey,
-                      _selection,
-                      _selectionAction,
-                      () {
-                        setState(() {});
-                      },
-                      (String key) {
+          _searching && _navIndex == 0
+              ? ListFiles(
+                  files: () {
+                    _updateAllSelectableItems(
+                      _searchResults.whereType<RemoteFile>().toList(),
+                    );
+                    return _searchResults;
+                  }(),
+                  sortMode: _sortMode,
+                  foldersFirst: _foldersFirst,
+                  relativeto: _driveDir,
+                  focusedKey: _focusedKey,
+                  selection: _selection,
+                  selectionAction: _selectionAction,
+                  onUpdate: () {
+                    setState(() {});
+                  },
+                  setFocus: (String key) {
+                    setState(() {
+                      _focusedKey = key;
+                    });
+                  },
+                  onChangeDirectory: (String newDir) {
+                    setState(() {
+                      _navIndex = 0;
+                      _driveDir = newDir;
+                    });
+                    _updateCounts();
+                  },
+                  select: _select,
+                  showContextMenu: (file) async {
+                    await Main.stopWatchers();
+                    _showContextMenu(file);
+                  },
+                  getLink: _getLink,
+                )
+              : _driveDir == '' && _navIndex == 0
+              ? SliverList.builder(
+                  itemCount: Main.remoteFilesMap.keys.length,
+                  itemBuilder: (context, index) {
+                    final dir = Main.remoteFilesMap.keys.elementAt(index);
+                    return ListTile(
+                      leading: Icon(Icons.folder),
+                      title: Text(dir.substring(0, dir.length - 1)),
+                      subtitle: Text(
+                        '${Main.backupMode(dir).name}: ${Main.pathFromKey(dir) ?? 'Not set'}',
+                      ),
+                      trailing: IconButton(
+                        onPressed: _loading
+                            ? null
+                            : () {
+                                showModalBottomSheet(
+                                  context: context,
+                                  enableDrag: true,
+                                  showDragHandle: true,
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 800,
+                                    maxWidth: 800,
+                                  ),
+                                  builder: (context) => DirectoryOptions(
+                                    directory: dir,
+                                    onDelete: _deleteS3Directory,
+                                    remoteFiles: Main.remoteFilesMap[dir] ?? [],
+                                  ),
+                                );
+                              },
+                        icon: const Icon(Icons.more_vert),
+                      ),
+                      onTap: () {
                         setState(() {
-                          _focusedKey = key;
-                        });
-                      },
-                      (String newDir) {
-                        setState(() {
-                          _navIndex = 0;
-                          _localDir = newDir;
-                          _localRoot = Main.dirs.contains(newDir)
-                              ? Main.localDirs[Main.dirs.indexOf(newDir)]
-                              : _localRoot;
+                          _driveDir = dir;
                         });
                         _updateCounts();
                       },
-                      _select,
-                      (file) async {
-                        await Main.stopWatchers();
-                        _showContextMenu(file);
-                      },
-                      _getLink,
-                    ),
-                  )
-                : _localDir == './' && _navIndex == 0
-                ? Column(
-                    children: Main.dirs
-                        .map(
-                          (dir) => ListTile(
-                            leading: Icon(Icons.folder),
-                            title: Text(dir.substring(0, dir.length - 1)),
-                            subtitle:
-                                Main.backupModes.length > Main.dirs.indexOf(dir)
-                                ? Text(
-                                    '${Main.backupModes[Main.dirs.indexOf(dir)].name}: ${Main.localDirs[Main.dirs.indexOf(dir)]}',
-                                  )
-                                : Text("Loading..."),
-                            trailing: IconButton(
-                              onPressed: _loading
-                                  ? null
-                                  : () {
-                                      showModalBottomSheet(
-                                        context: context,
-                                        enableDrag: true,
-                                        showDragHandle: true,
-                                        constraints: const BoxConstraints(
-                                          maxHeight: 800,
-                                          maxWidth: 800,
-                                        ),
-                                        builder: (context) => DirectoryOptions(
-                                          directory: dir,
-                                          onDelete: _deleteS3Directory,
-                                          remoteFiles:
-                                              Main.remoteFilesMap[dir] ?? [],
-                                        ),
-                                      );
-                                    },
-                              icon: const Icon(Icons.more_vert),
-                            ),
-                            onTap: () {
-                              setState(() {
-                                _localDir = dir;
-                                _localRoot = Main.dirs.contains(dir)
-                                    ? Main.localDirs[Main.dirs.indexOf(dir)]
-                                    : _localRoot;
-                              });
-                              _updateCounts();
-                            },
+                    );
+                  },
+                )
+              : _driveDir != '' && _navIndex == 0
+              ? ListFiles(
+                  files: () {
+                    final files = [
+                      ...(Main.remoteFilesMap['${_driveDir.split('/').first}/'] ??
+                              [])
+                          .where(
+                            (file) =>
+                                p.normalize(p.dirname(file.key)) ==
+                                    p.normalize(_driveDir) &&
+                                !Job.jobs.any(
+                                  (job) => job.remoteKey == file.key,
+                                ),
                           ),
-                        )
-                        .toList(),
-                  )
-                : _localDir != './' && _navIndex == 0
-                ? Column(
-                    children: [
-                      ListTile(
-                        selected: _focusedKey == '..' && _selection.isEmpty,
-                        selectedTileColor: Theme.of(
-                          context,
-                        ).colorScheme.primary.withValues(alpha: 0.1),
-                        selectedColor: Theme.of(context).colorScheme.primary,
-                        leading: Icon(Icons.folder),
-                        title: Text('../'),
-                        onTap:
-                            _selection.isNotEmpty &&
-                                _selectionAction == SelectionAction.none
-                            ? null
-                            : () {
-                                setState(() {
-                                  _localDir =
-                                      "${Directory(_localDir).parent.path}/";
-                                  _localRoot = Main.dirs.contains(_localDir)
-                                      ? Main.localDirs[Main.dirs.indexOf(
-                                          _localDir,
-                                        )]
-                                      : _localRoot;
-                                });
-                                _updateCounts();
-                              },
+                      ...Job.jobs.where(
+                        (job) =>
+                            p.normalize(p.dirname(job.remoteKey)) ==
+                            p.normalize(_driveDir),
                       ),
-                      ...() {
-                        final files = [
-                          ...(Main.remoteFilesMap['${_localDir.split('/').first}/'] ??
-                                  [])
-                              .where(
-                                (file) =>
-                                    p.normalize(p.dirname(file.key)) ==
-                                        p.normalize(_localDir) &&
-                                    !Job.jobs.any(
-                                      (job) => job.remoteKey == file.key,
-                                    ),
-                              ),
-                          ...Job.jobs.where(
-                            (job) =>
-                                p.normalize(p.dirname(job.remoteKey)) ==
-                                p.normalize(_localDir),
-                          ),
-                        ];
-                        _updateAllSelectableItems(
-                          files.whereType<RemoteFile>().toList(),
-                        );
-                        return listFiles(
-                          context,
-                          files,
-                          _sortMode,
-                          _foldersFirst,
-                          _localDir,
-                          _focusedKey,
-                          _selection,
-                          _selectionAction,
-                          () {
-                            setState(() {});
-                          },
-                          (String key) {
-                            setState(() {
-                              _focusedKey = key;
-                            });
-                          },
-                          (String newDir) {
-                            setState(() {
-                              _navIndex = 0;
-                              _localDir = newDir;
-                              _localRoot = Main.dirs.contains(newDir)
-                                  ? Main.localDirs[Main.dirs.indexOf(newDir)]
-                                  : _localRoot;
-                            });
-                            _updateCounts();
-                          },
-                          _select,
-                          (file) async {
-                            await Main.stopWatchers();
-                            _showContextMenu(file);
-                          },
-                          _getLink,
-                        );
-                      }(),
-                    ],
-                  )
-                : _navIndex == 1
-                ? CompletedJobs(
-                    completedJobs: Job.completedJobs,
-                    onUpdate: () {
-                      setState(() {});
-                    },
-                  )
-                : _navIndex == 2
-                ? ActiveJobs(
-                    jobs: Job.jobs,
-                    onUpdate: () {
-                      setState(() {});
-                    },
-                  )
-                : Container(),
-          ),
+                    ];
+                    _updateAllSelectableItems(
+                      files.whereType<RemoteFile>().toList(),
+                    );
+                    return files;
+                  }(),
+                  sortMode: _sortMode,
+                  foldersFirst: _foldersFirst,
+                  relativeto: _driveDir,
+                  focusedKey: _focusedKey,
+                  selection: _selection,
+                  selectionAction: _selectionAction,
+                  onUpdate: () {
+                    setState(() {});
+                  },
+                  setFocus: (String key) {
+                    setState(() {
+                      _focusedKey = key;
+                    });
+                  },
+                  onChangeDirectory: (String newDir) {
+                    setState(() {
+                      _navIndex = 0;
+                      _driveDir = newDir;
+                    });
+                    _updateCounts();
+                  },
+                  select: _select,
+                  showContextMenu: (file) async {
+                    await Main.stopWatchers();
+                    _showContextMenu(file);
+                  },
+                  getLink: _getLink,
+                )
+              : _navIndex == 1
+              ? CompletedJobs(
+                  completedJobs: Job.completedJobs,
+                  onUpdate: () {
+                    setState(() {});
+                  },
+                )
+              : _navIndex == 2
+              ? ActiveJobs(
+                  jobs: Job.jobs,
+                  onUpdate: () {
+                    setState(() {});
+                  },
+                )
+              : Container(),
         ],
       ),
       floatingActionButton: AnimatedSlide(
@@ -1341,7 +1295,7 @@ class _HomeState extends State<Home> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_localDir != './')
+              if (_driveDir != '')
                 FloatingActionButton(
                   heroTag: 'upload_file',
                   child: const Icon(Icons.file_upload_outlined),
@@ -1349,7 +1303,7 @@ class _HomeState extends State<Home> {
                     final XFile? file = await openFile();
                     if (file != null) {
                       Main.uploadFile(
-                        p.join(_localDir, p.basename(file.path)),
+                        p.join(_driveDir, p.basename(file.path)),
                         File(file.path),
                       );
                     }
@@ -1362,7 +1316,7 @@ class _HomeState extends State<Home> {
                 onPressed: () async {
                   final String? directoryPath = await getDirectoryPath();
                   if (directoryPath != null) {
-                    String dir = _localDir == './' ? '' : _localDir;
+                    String dir = _driveDir == '' ? '' : _driveDir;
                     _uploadDirectory(
                       p.join(dir, p.basename(directoryPath)),
                       Directory(directoryPath),
@@ -1401,28 +1355,28 @@ class _HomeState extends State<Home> {
                     },
                   );
                   if (dir != null && dir.isNotEmpty) {
-                    if (Main.remoteFilesMap[_localDir]!.any(
+                    if (Main.remoteFilesMap[_driveDir]!.any(
                           (file) => [
-                            p.join(_localDir, dir),
-                            '${p.join(_localDir, dir)}/',
+                            p.join(_driveDir, dir),
+                            '${p.join(_driveDir, dir)}/',
                           ].contains(file.key),
                         ) ||
                         Main.remoteFilesMap.containsKey(
-                          p.join(_localDir, dir),
+                          p.join(_driveDir, dir),
                         ) ||
                         Main.remoteFilesMap.containsKey(
-                          '${p.join(_localDir, dir)}/',
+                          '${p.join(_driveDir, dir)}/',
                         )) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Directory "${p.join(_localDir, dir)}" already exists.',
+                            'Directory "${p.join(_driveDir, dir)}" already exists.',
                           ),
                         ),
                       );
                       return;
                     }
-                    await _createDirectory(p.join(_localDir, dir));
+                    await _createDirectory(p.join(_driveDir, dir));
                   }
                 },
               ),
@@ -1442,6 +1396,7 @@ class _HomeState extends State<Home> {
             ),
             BottomNavigationBarItem(
               icon: Badge.count(
+                isLabelVisible: Job.completedJobs.isNotEmpty,
                 count: Job.completedJobs.length,
                 child: Icon(Icons.done_all),
               ),
@@ -1449,6 +1404,7 @@ class _HomeState extends State<Home> {
             ),
             BottomNavigationBarItem(
               icon: Badge.count(
+                isLabelVisible: Job.jobs.isNotEmpty,
                 count: Job.jobs.length,
                 child: Icon(Icons.swap_vert),
               ),

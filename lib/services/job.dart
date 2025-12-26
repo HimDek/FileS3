@@ -15,9 +15,6 @@ import 'config_manager.dart';
 
 abstract class Main {
   static late S3FileManager? s3Manager;
-  static List<String> dirs = <String>[];
-  static final List<String> localDirs = <String>[];
-  static final List<BackupMode> backupModes = <BackupMode>[];
   static final List<Watcher> watchers = <Watcher>[];
   static final Map<String, List<RemoteFile>> remoteFilesMap =
       <String, List<RemoteFile>>{};
@@ -25,15 +22,35 @@ abstract class Main {
   static Function(bool loading)? setLoadingState;
   static Function()? setHomeState;
 
-  static String pathFromKey(String key) {
-    if (localDirs.length > dirs.indexOf('${key.split('/').first}/')) {
-      final localDir = dirs.contains('${key.split('/').first}/')
-          ? localDirs[dirs.indexOf('${key.split('/').first}/')]
-          : key.split('/').first;
+  static String? pathFromKey(String key) {
+    final localDir = IniManager.config
+        .get('directories', "${key.split('/').first}/")
+        ?.replaceAll('\\', '/');
+    if (localDir != null) {
       return p.join(localDir, key.split('/').sublist(1).join('/'));
     } else {
-      return key;
+      return null;
     }
+  }
+
+  static String? keyFromPath(String path) {
+    for (String dir in IniManager.config.options('directories')!) {
+      final localDir = IniManager.config
+          .get('directories', dir)
+          ?.replaceAll('\\', '/');
+      if (localDir != null) {
+        final normalizedLocalDir = p.normalize(localDir);
+        final normalizedPath = p.normalize(path);
+        if (p.isWithin(normalizedLocalDir, normalizedPath) ||
+            normalizedLocalDir == normalizedPath) {
+          final relativePath = p
+              .relative(normalizedPath, from: normalizedLocalDir)
+              .replaceAll('\\', '/');
+          return p.join(dir, relativePath).replaceAll('\\', '/');
+        }
+      }
+    }
+    return null;
   }
 
   static Future<void> onJobStatus(Job job, dynamic result) async {
@@ -46,9 +63,6 @@ abstract class Main {
         }),
         result,
       ];
-      if (!dirs.contains('${job.remoteKey.split('/').first}/')) {
-        dirs.add('${job.remoteKey.split('/').first}/');
-      }
       await refreshWatchers();
     }
     if (job is DownloadJob && job.completed && !job.running) {
@@ -67,18 +81,17 @@ abstract class Main {
     }
   }
 
-  static Future<void> addWatcher(String dir, {bool background = false}) async {
-    final localDir = IniManager.config.get('directories', dir);
-    final modeValue = int.parse(IniManager.config.get('modes', dir) ?? '1');
+  static BackupMode backupMode(String key) {
+    final dir = key.split('/').first;
+    return BackupMode.fromValue(
+      int.parse(IniManager.config.get('modes', dir) ?? '1'),
+    );
+  }
 
-    backupModes.add(BackupMode.fromValue(modeValue));
-    if (localDir != null &&
-        localDir.isNotEmpty &&
-        Directory(localDir).existsSync()) {
-      localDirs.add(localDir);
-    } else {
-      localDirs.add('');
-    }
+  static Future<void> addWatcher(String dir, {bool background = false}) async {
+    final localDir = IniManager.config
+        .get('directories', dir)
+        ?.replaceAll('\\', '/');
 
     if (localDir != null &&
         localDir.isNotEmpty &&
@@ -86,7 +99,6 @@ abstract class Main {
       Watcher watcher = Watcher(
         localDir: Directory(localDir),
         remoteDir: dir,
-        mode: BackupMode.fromValue(modeValue),
         remoteFiles: remoteFilesMap[dir] ?? [],
         remoteRefresh: () => refreshRemote(dir),
       );
@@ -95,9 +107,7 @@ abstract class Main {
       if (background) {
         await watcher.scan();
       } else {
-        print('Starting watcher for $localDir');
         watcher.start();
-        print('Watcher started for $localDir');
       }
     }
   }
@@ -113,10 +123,8 @@ abstract class Main {
     setLoadingState?.call(true);
     stopWatchers();
     watchers.clear();
-    localDirs.clear();
-    backupModes.clear();
 
-    for (final dir in dirs) {
+    for (final dir in Main.remoteFilesMap.keys) {
       await addWatcher(dir);
     }
     setLoadingState?.call(false);
@@ -124,14 +132,12 @@ abstract class Main {
 
   static Future<void> listDirectories({bool background = false}) async {
     await setLoadingState?.call(true);
-    dirs = await s3Manager!.listDirectories();
+    final dirs = await s3Manager!.listDirectories();
 
     await stopWatchers();
 
     Job.clear();
     watchers.clear();
-    localDirs.clear();
-    backupModes.clear();
 
     for (final dir in dirs) {
       await refreshRemote(dir);
@@ -142,7 +148,7 @@ abstract class Main {
 
   static void downloadFile(RemoteFile file, {String? localPath}) {
     DownloadJob(
-      localFile: File(localPath ?? pathFromKey(file.key)),
+      localFile: File(localPath ?? pathFromKey(file.key) ?? file.key),
       remoteKey: file.key,
       bytes: file.size,
       md5: file.etag,
@@ -162,7 +168,7 @@ abstract class Main {
         onStatus: onJobStatus,
         md5: HashUtil.md5Hash(file),
       ).add();
-    } else if (p.isAbsolute(pathFromKey(key))) {
+    } else if (p.isAbsolute(pathFromKey(key) ?? key)) {
       final newKey = () {
         String base = p.basenameWithoutExtension(key);
         String ext = p.extension(key);
@@ -177,11 +183,11 @@ abstract class Main {
         }
         return candidateKey;
       }();
-      if (!File(pathFromKey(newKey)).parent.existsSync()) {
-        File(pathFromKey(newKey)).parent.createSync(recursive: true);
+      if (!File(pathFromKey(newKey) ?? newKey).parent.existsSync()) {
+        File(pathFromKey(newKey) ?? newKey).parent.createSync(recursive: true);
       }
       stopWatchers().then((value) {
-        file.copySync(pathFromKey(newKey));
+        file.copySync(pathFromKey(newKey) ?? newKey);
         refreshWatchers();
       });
     } else {
@@ -194,7 +200,7 @@ abstract class Main {
               (remoteFile) => remoteFile.key == candidateKey,
             ) ==
             true) {
-          candidateKey = p.join(p.dirname(key), '${base}${'($count)'}$ext');
+          candidateKey = p.join(p.dirname(key), '$base${'($count)'}$ext');
           count++;
         }
         return candidateKey;
@@ -434,7 +440,6 @@ class DownloadJob extends Job {
 class Watcher {
   final Directory localDir;
   final String remoteDir;
-  final BackupMode mode;
   final List<RemoteFile> remoteFiles;
   final Future<void> Function() remoteRefresh;
   StreamSubscription<FileSystemEvent>? subscription;
@@ -446,7 +451,6 @@ class Watcher {
   Watcher({
     required this.localDir,
     required this.remoteDir,
-    required this.mode,
     required this.remoteFiles,
     required this.remoteRefresh,
   });
@@ -497,16 +501,17 @@ class Watcher {
     );
     final result = analyzer.analyze();
 
-    for (final job in Job.jobs.where((job) => !job.completed && !job.running)) {
+    for (Job job in Job.jobs.where((job) => !job.completed && !job.running)) {
       job.remove();
     }
 
-    for (final file in [...result.newFile, ...result.modifiedLocally]) {
+    for (File file in [...result.newFile, ...result.modifiedLocally]) {
       if (Job.jobs.any((job) {
         return job.localFile.path == file.path && !job.completed;
       })) {
         continue;
       }
+      BackupMode mode = Main.backupMode(Main.keyFromPath(file.path) ?? '');
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
         Main.uploadFile(
           p.join(remoteDir, p.relative(file.path, from: localDir.path)),
@@ -515,24 +520,25 @@ class Watcher {
       }
     }
 
-    for (final file in result.modifiedRemotely) {
+    for (RemoteFile file in result.modifiedRemotely) {
       if (Job.jobs.any((job) {
         return job.remoteKey == file.key;
       })) {
         continue;
       }
+      BackupMode mode = Main.backupMode(file.key);
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
         Main.downloadFile(file);
       }
     }
 
-    for (final file in result.remoteOnly) {
+    for (RemoteFile file in result.remoteOnly) {
       if (Job.jobs.any((job) {
         return job.remoteKey == file.key;
       })) {
         continue;
       }
-      if (mode == BackupMode.sync) {
+      if (Main.backupMode(file.key) == BackupMode.sync) {
         Main.downloadFile(file);
       }
     }
