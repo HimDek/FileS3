@@ -16,8 +16,7 @@ import 'config_manager.dart';
 abstract class Main {
   static late S3FileManager? s3Manager;
   static final List<Watcher> watchers = <Watcher>[];
-  static final Map<String, List<RemoteFile>> remoteFilesMap =
-      <String, List<RemoteFile>>{};
+  static final List<RemoteFile> remoteFiles = <RemoteFile>[];
   static http.Client httpClient = http.Client();
   static Function(bool loading)? setLoadingState;
   static Function()? setHomeState;
@@ -55,18 +54,8 @@ abstract class Main {
 
   static Future<void> onJobStatus(Job job, dynamic result) async {
     if (job is UploadJob && job.completed && !job.running) {
-      remoteFilesMap['${job.remoteKey.split('/').first}/'] = [
-        ...(remoteFilesMap['${job.remoteKey.split('/').first}/'] ?? []).where((
-          file,
-        ) {
-          return file.key != job.remoteKey;
-        }),
-        result,
-      ];
-      await refreshWatchers();
-    }
-    if (job is DownloadJob && job.completed && !job.running) {
-      await refreshWatchers();
+      remoteFiles.removeWhere((file) => file.key == job.remoteKey);
+      remoteFiles.add(result);
     }
     setHomeState?.call();
   }
@@ -82,26 +71,21 @@ abstract class Main {
   }
 
   static BackupMode backupMode(String key) {
-    final dir = key.split('/').first;
-    return BackupMode.fromValue(
-      int.parse(IniManager.config?.get('modes', dir) ?? '1'),
-    );
+    String? value = IniManager.config?.get('modes', key);
+    if (value == null && p.split(key).length > 1) {
+      return backupMode(p.dirname(key));
+    } else {
+      return BackupMode.fromValue(int.parse(value ?? '1'));
+    }
   }
 
   static Future<void> addWatcher(String dir, {bool background = false}) async {
-    final localDir = IniManager.config!
-        .get('directories', dir)
-        ?.replaceAll('\\', '/');
+    final localDir = Main.pathFromKey(dir);
 
     if (localDir != null &&
         localDir.isNotEmpty &&
         Directory(localDir).existsSync()) {
-      Watcher watcher = Watcher(
-        localDir: Directory(localDir),
-        remoteDir: dir,
-        remoteFiles: remoteFilesMap[dir] ?? [],
-        remoteRefresh: () => refreshRemote(dir),
-      );
+      Watcher watcher = Watcher(remoteDir: dir);
 
       watchers.add(watcher);
       if (background) {
@@ -112,20 +96,10 @@ abstract class Main {
     }
   }
 
-  static Future<void> refreshRemote(String dir) async {
-    final remoteFiles = await s3Manager!.listObjects(dir: dir);
-    remoteFilesMap[dir] = remoteFiles;
-  }
-
-  static Future<void> refreshWatchers() async {
-    setLoadingState?.call(true);
-    stopWatchers();
-    watchers.clear();
-
-    for (final dir in Main.remoteFilesMap.keys) {
-      await addWatcher(dir);
-    }
-    setLoadingState?.call(false);
+  static Future<void> refreshRemote({String dir = ''}) async {
+    final fetchedRemoteFiles = await s3Manager!.listObjects(dir: dir);
+    remoteFiles.removeWhere((file) => p.isWithin(dir, file.key));
+    remoteFiles.addAll(fetchedRemoteFiles);
   }
 
   static Future<void> listDirectories({bool background = false}) async {
@@ -136,10 +110,9 @@ abstract class Main {
 
     Job.clear();
     watchers.clear();
-    remoteFilesMap.removeWhere((key, value) => !dirs.contains(key));
 
+    await refreshRemote();
     for (final dir in dirs) {
-      await refreshRemote(dir);
       await addWatcher(dir, background: background);
     }
     await setLoadingState?.call(false);
@@ -173,7 +146,7 @@ abstract class Main {
         String ext = p.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (remoteFilesMap['${key.split('/').first}/']?.any(
+        while (remoteFiles.any(
               (remoteFile) => remoteFile.key == candidateKey,
             ) ==
             true) {
@@ -185,17 +158,15 @@ abstract class Main {
       if (!File(pathFromKey(newKey) ?? newKey).parent.existsSync()) {
         File(pathFromKey(newKey) ?? newKey).parent.createSync(recursive: true);
       }
-      stopWatchers().then((value) {
-        file.copySync(pathFromKey(newKey) ?? newKey);
-        refreshWatchers();
-      });
+      file.copySync(pathFromKey(newKey) ?? newKey);
+      // TODO: Force a scan
     } else {
       final newKey = () {
         String base = p.basenameWithoutExtension(key);
         String ext = p.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (remoteFilesMap[key.split('/').first]?.any(
+        while (remoteFiles.any(
               (remoteFile) => remoteFile.key == candidateKey,
             ) ==
             true) {
@@ -374,6 +345,13 @@ abstract class Job {
 
   void stop(Job job) {
     if (stoppable()) task!.cancel();
+    failed = true;
+    running = false;
+    completed = false;
+    bytesCompleted = 0;
+    statusMsg = "Cancelled";
+    onStatus?.call(this, null);
+    onProgressUpdate?.call();
   }
 
   bool removable() {
@@ -441,24 +419,18 @@ class DownloadJob extends Job {
 }
 
 class Watcher {
-  final Directory localDir;
   final String remoteDir;
-  final List<RemoteFile> remoteFiles;
-  final Future<void> Function() remoteRefresh;
   StreamSubscription<FileSystemEvent>? subscription;
   Timer? timer;
   bool watching = false;
   bool scanning = false;
   bool waitingScan = false;
 
-  Watcher({
-    required this.localDir,
-    required this.remoteDir,
-    required this.remoteFiles,
-    required this.remoteRefresh,
-  });
+  Watcher({required this.remoteDir});
 
   Future<void> scan() async {
+    final localDir = Directory(Main.pathFromKey(remoteDir) ?? remoteDir);
+
     if (waitingScan) {
       debugPrint(
         "A Scan is already waiting for a scan already in progress for ${localDir.path}. Skipping...",
@@ -491,16 +463,25 @@ class Watcher {
       return;
     }
 
-    if (remoteFiles.isEmpty) {
+    if (Main.remoteFiles
+        .where((file) => p.isWithin(remoteDir, file.key))
+        .isEmpty) {
       if (kDebugMode) {
         debugPrint("Remote files list is empty, refreshing remote files.");
       }
-      await remoteRefresh();
+      await Main.refreshRemote(dir: remoteDir);
     }
 
     final analyzer = SyncAnalyzer(
       localRoot: localDir,
-      remoteFiles: remoteFiles,
+      remoteFiles: Main.remoteFiles
+          .where(
+            (file) => p.isWithin(
+              localDir.path,
+              Main.pathFromKey(file.key) ?? file.key,
+            ),
+          )
+          .toList(),
     );
     final result = analyzer.analyze();
 
@@ -550,6 +531,8 @@ class Watcher {
   }
 
   Future<void> start() async {
+    final localDir = Directory(Main.pathFromKey(remoteDir) ?? remoteDir);
+
     if (watching) {
       if (kDebugMode) {
         debugPrint("Watcher is already running for ${localDir.path}");

@@ -137,18 +137,18 @@ List<FileProps> sort(
         return b.key.toLowerCase().compareTo(a.key.toLowerCase());
       case SortMode.dateAsc:
         DateTime aDate = a.file != null
-            ? a.file!.lastModified
+            ? a.file!.lastModified!
             : DateTime.fromMillisecondsSinceEpoch(0);
         DateTime bDate = b.file != null
-            ? b.file!.lastModified
+            ? b.file!.lastModified!
             : DateTime.fromMillisecondsSinceEpoch(0);
         return aDate.compareTo(bDate);
       case SortMode.dateDesc:
         DateTime aDate = a.file != null
-            ? a.file!.lastModified
+            ? a.file!.lastModified!
             : DateTime.fromMillisecondsSinceEpoch(0);
         DateTime bDate = b.file != null
-            ? b.file!.lastModified
+            ? b.file!.lastModified!
             : DateTime.fromMillisecondsSinceEpoch(0);
         return bDate.compareTo(aDate);
       case SortMode.sizeAsc:
@@ -176,54 +176,32 @@ List<FileProps> sort(
   return sortedItems;
 }
 
-class SnapHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final Widget child;
-  final double height;
-
-  SnapHeaderDelegate({required this.child, required this.height});
-
-  @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return Material(elevation: overlapsContent ? 4 : 0, child: child);
-  }
-
-  @override
-  bool shouldRebuild(covariant SnapHeaderDelegate oldDelegate) {
-    return oldDelegate.child != child || oldDelegate.height != height;
-  }
-}
-
 abstract class ContextActionHandler {
   ContextActionHandler();
 
   void Function()? download();
   String Function()? saveAs(String? path);
   Future<String> Function() rename(String newName);
+  Future<String> Function()? deleteLocal(bool? yes);
   Future<String> Function()? delete(bool? yes);
 }
 
 class FileContextActionHandler extends ContextActionHandler {
   final RemoteFile file;
   final String Function(RemoteFile, int?) getLink;
+  final Function(RemoteFile) downloadFile;
   final Function(RemoteFile, String) saveFile;
   final Function(String, String) moveFile;
+  final Function(String) deleteLocalFile;
   final Function(String) deleteFile;
 
   FileContextActionHandler({
     required this.file,
     required this.getLink,
+    required this.downloadFile,
     required this.saveFile,
     required this.moveFile,
+    required this.deleteLocalFile,
     required this.deleteFile,
   });
 
@@ -247,7 +225,7 @@ class FileContextActionHandler extends ContextActionHandler {
             File(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? null
         : () {
-            Main.downloadFile(file);
+            downloadFile(file);
           };
   }
 
@@ -282,6 +260,16 @@ class FileContextActionHandler extends ContextActionHandler {
       await moveFile(file.key, newKey);
       return 'Renamed to $newName';
     };
+  }
+
+  @override
+  Future<String> Function()? deleteLocal(bool? yes) {
+    return yes ?? false
+        ? () async {
+            await deleteLocalFile(file.key);
+            return 'Deleted local copy of ${file.key.split('/').last}';
+          }
+        : null;
   }
 
   @override
@@ -446,6 +434,43 @@ class FileContextOption {
     },
   );
 
+  static FileContextOption deleteLocal(
+    FileContextActionHandler handler,
+    BuildContext context,
+  ) => FileContextOption(
+    title: 'Delete Local Copy',
+    icon: Icons.delete_outline,
+    subtitle: 'Delete from device only',
+    action: () async {
+      final handle = handler.deleteLocal(
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete Local Copy'),
+            content: Text(
+              'Are you sure you want to delete the local copy of ${handler.file.key.split('/').last}? This action cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (handle != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(await handle())));
+      }
+    },
+  );
+
   static FileContextOption delete(
     FileContextActionHandler handler,
     BuildContext context,
@@ -499,6 +524,7 @@ class FileContextOption {
       cut(handler, cutKey),
       copy(handler, copyKey),
       rename(handler, context),
+      deleteLocal(handler, context),
       delete(handler, context),
     ];
   }
@@ -640,6 +666,48 @@ class FilesContextOption {
         },
       );
 
+  static FilesContextOption deleteLocalAll(
+    BuildContext context,
+    List<FileContextActionHandler> handlers,
+    Function() clearSelection,
+  ) => FilesContextOption(
+    title: 'Delete Local Copies',
+    icon: Icons.delete_outline,
+    subtitle: 'Delete from device only',
+    action: () async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Local Copies'),
+          content: const Text(
+            'Are you sure you want to delete the local copies of the selected files? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        for (final handler in handlers) {
+          handler.deleteLocal(true)!.call();
+        }
+        clearSelection();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Local copies of selected files deleted'),
+          ),
+        );
+      }
+    },
+  );
+
   static FilesContextOption deleteAll(
     BuildContext context,
     List<FileContextActionHandler> handlers,
@@ -697,6 +765,7 @@ class FilesContextOption {
       copyAllLinks(context, handlers),
       cut(cutKey),
       copy(copyKey),
+      deleteLocalAll(context, handlers, clearSelection),
       deleteAll(context, handlers, clearSelection),
     ];
   }
@@ -707,7 +776,17 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   final Function(RemoteFile) downloadDirectory;
   final Function(RemoteFile, String) saveDirectory;
   final Function(String, String) moveDirectory;
+  final Function(String) deleteLocalDirectory;
   final Function(String) deleteDirectory;
+
+  DirectoryContextActionHandler({
+    required this.file,
+    required this.downloadDirectory,
+    required this.saveDirectory,
+    required this.moveDirectory,
+    required this.deleteLocalDirectory,
+    required this.deleteDirectory,
+  });
 
   bool rootExists() {
     return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
@@ -751,6 +830,17 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   }
 
   @override
+  Future<String> Function()? deleteLocal(bool? yes) {
+    return yes ?? false
+        ? () async {
+            final key = file.key.endsWith('/') ? file.key : '${file.key}/';
+            deleteLocalDirectory(key);
+            return 'Deleted local copy of ${p.basename(key)}';
+          }
+        : null;
+  }
+
+  @override
   Future<String> Function()? delete(bool? yes) {
     return yes ?? false
         ? () async {
@@ -760,14 +850,6 @@ class DirectoryContextActionHandler extends ContextActionHandler {
           }
         : null;
   }
-
-  DirectoryContextActionHandler({
-    required this.file,
-    required this.downloadDirectory,
-    required this.saveDirectory,
-    required this.moveDirectory,
-    required this.deleteDirectory,
-  });
 }
 
 class DirectoryContextOption {
@@ -869,6 +951,41 @@ class DirectoryContextOption {
     },
   );
 
+  static DirectoryContextOption deleteLocal(
+    BuildContext context,
+    DirectoryContextActionHandler handler,
+  ) => DirectoryContextOption(
+    title: 'Delete Local Copy',
+    icon: Icons.folder_delete,
+    subtitle: 'Delete from device only',
+    action: () async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Local Copy'),
+          content: Text(
+            'Are you sure you want to delete the local copy of ${p.basename(handler.file.key)}? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(await handler.deleteLocal(true)!())),
+        );
+      }
+    },
+  );
+
   static DirectoryContextOption delete(
     BuildContext context,
     DirectoryContextActionHandler handler,
@@ -917,6 +1034,7 @@ class DirectoryContextOption {
       cut(handler, cutKey),
       copy(handler, copyKey),
       rename(context, handler),
+      deleteLocal(context, handler),
       delete(context, handler),
     ];
   }
@@ -993,6 +1111,47 @@ class DirectoriesContextOption {
         },
       );
 
+  static DirectoriesContextOption deleteLocal(
+    List<DirectoryContextActionHandler> handlers,
+    BuildContext context,
+    Function() clearSelection,
+  ) => DirectoriesContextOption(
+    title: 'Delete Local Copies',
+    icon: Icons.delete_outline,
+    action: (BuildContext context) async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Local Copies'),
+          content: const Text(
+            'Are you sure you want to delete the local copies of the selected directories? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        for (final handler in handlers) {
+          handler.deleteLocal(true)!.call();
+        }
+        clearSelection();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Local copies of selected directories deleted'),
+          ),
+        );
+      }
+    },
+  );
+
   static DirectoriesContextOption deleteAll(
     List<DirectoryContextActionHandler> handlers,
     BuildContext context,
@@ -1046,6 +1205,7 @@ class DirectoriesContextOption {
       saveAllTo(handlers, context),
       cut(cutKey),
       copy(copyKey),
+      deleteLocal(handlers, context, clearSelection),
       deleteAll(handlers, context, clearSelection),
     ];
   }
@@ -1144,6 +1304,47 @@ class BulkContextOption {
         },
       );
 
+  static BulkContextOption deleteLocalAll(
+    List<ContextActionHandler> handlers,
+    BuildContext context,
+    Function() clearSelection,
+  ) => BulkContextOption(
+    title: 'Delete Local Copies',
+    icon: Icons.delete_outline,
+    action: (BuildContext context) async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Local Copies'),
+          content: const Text(
+            'Are you sure you want to delete the local copies of the selected items? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        for (final handler in handlers) {
+          handler.deleteLocal(true)!.call();
+        }
+        clearSelection();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Local copies of selected items deleted'),
+          ),
+        );
+      }
+    },
+  );
+
   static BulkContextOption deleteAll(
     List<ContextActionHandler> handlers,
     BuildContext context,
@@ -1199,6 +1400,7 @@ class BulkContextOption {
       saveAllTo(handlers, context),
       cut(cutKey),
       copy(copyKey),
+      deleteLocalAll(handlers, context, clearSelection),
       deleteAll(handlers, context, clearSelection),
     ];
   }
@@ -1215,17 +1417,21 @@ Widget buildFileContextMenu(
   BuildContext context,
   RemoteFile item,
   String Function(RemoteFile, int?) getLink,
+  Function(RemoteFile) downloadFile,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile) cut,
   Function(RemoteFile) copy,
   Function(String, String) moveFile,
+  Function(String) deleteLocal,
   Function(String) deleteFile,
 ) {
   FileContextActionHandler handler = FileContextActionHandler(
     file: item,
     getLink: getLink,
+    downloadFile: downloadFile,
     saveFile: saveFile,
     moveFile: moveFile,
+    deleteLocalFile: deleteLocal,
     deleteFile: deleteFile,
   );
   return ListView(
@@ -1245,7 +1451,7 @@ Widget buildFileContextMenu(
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          Text(timeToReadable(item.lastModified)),
+                          Text(timeToReadable(item.lastModified!)),
                           const SizedBox(width: 8),
                           Text(bytesToReadable(item.size)),
                           const SizedBox(width: 8),
@@ -1297,10 +1503,12 @@ Widget buildFilesContextMenu(
   BuildContext context,
   List<RemoteFile> items,
   String Function(RemoteFile, int?) getLink,
+  Function(RemoteFile) downloadFile,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
   Function(String, String) moveFile,
+  Function(String) deleteLocal,
   Function(String) deleteFile,
   Function() clearSelection,
 ) {
@@ -1309,8 +1517,10 @@ Widget buildFilesContextMenu(
         (item) => FileContextActionHandler(
           file: item,
           getLink: getLink,
+          downloadFile: downloadFile,
           saveFile: saveFile,
           moveFile: moveFile,
+          deleteLocalFile: deleteLocal,
           deleteFile: deleteFile,
         ),
       )
@@ -1352,6 +1562,7 @@ Widget buildDirectoryContextMenu(
   Function(RemoteFile) cut,
   Function(RemoteFile) copy,
   Function(String, String) moveDirectory,
+  Function(String) deleteLocal,
   Function(String) deleteDirectory,
   (int, int) Function(RemoteFile, {bool recursive}) countContent,
   int Function(RemoteFile) dirSize,
@@ -1362,6 +1573,7 @@ Widget buildDirectoryContextMenu(
     downloadDirectory: downloadDirectory,
     saveDirectory: saveDirectory,
     moveDirectory: moveDirectory,
+    deleteLocalDirectory: deleteLocal,
     deleteDirectory: deleteDirectory,
   );
   return ListView(
@@ -1408,7 +1620,10 @@ Widget buildDirectoryContextMenu(
                   leading: Icon(option.icon),
                   title: Text(option.title),
                   subtitle: option.subtitle != null
-                      ? Text(option.subtitle!)
+                      ? SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Text(option.subtitle!),
+                        )
                       : null,
                   onTap: option.action != null
                       ? () async {
@@ -1431,6 +1646,7 @@ Widget buildDirectoriesContextMenu(
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
   Function(String, String) moveDirectory,
+  Function(String) deleteLocal,
   Function(String) deleteDirectory,
   Function() clearSelection,
 ) {
@@ -1441,6 +1657,7 @@ Widget buildDirectoriesContextMenu(
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
           moveDirectory: moveDirectory,
+          deleteLocalDirectory: deleteLocal,
           deleteDirectory: deleteDirectory,
         ),
       )
@@ -1477,6 +1694,7 @@ Widget buildBulkContextMenu(
   BuildContext context,
   List<RemoteFile> items,
   String Function(RemoteFile, int?) getLink,
+  Function(RemoteFile) downloadFile,
   Function(RemoteFile) downloadDirectory,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile, String) saveDirectory,
@@ -1484,6 +1702,7 @@ Widget buildBulkContextMenu(
   Function(String, String) moveDirectory,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
+  Function(String) deleteLocal,
   Function(String) deleteFile,
   Function(String) deleteDirectory,
   Function() clearSelection,
@@ -1493,10 +1712,12 @@ Widget buildBulkContextMenu(
       context,
       items.cast<RemoteFile>(),
       getLink,
+      downloadFile,
       saveFile,
       cut,
       copy,
       moveFile,
+      deleteLocal,
       deleteFile,
       clearSelection,
     );
@@ -1509,6 +1730,7 @@ Widget buildBulkContextMenu(
       cut,
       copy,
       moveDirectory,
+      deleteLocal,
       deleteDirectory,
       clearSelection,
     );
@@ -1518,8 +1740,10 @@ Widget buildBulkContextMenu(
         return FileContextActionHandler(
           file: item,
           getLink: getLink,
+          downloadFile: downloadFile,
           saveFile: saveFile,
           moveFile: moveFile,
+          deleteLocalFile: deleteLocal,
           deleteFile: deleteFile,
         );
       } else {
@@ -1528,6 +1752,7 @@ Widget buildBulkContextMenu(
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
           moveDirectory: moveDirectory,
+          deleteLocalDirectory: deleteLocal,
           deleteDirectory: deleteDirectory,
         );
       }

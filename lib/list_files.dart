@@ -13,11 +13,11 @@ class ListFiles extends StatelessWidget {
   final List<dynamic> files;
   final SortMode sortMode;
   final bool foldersFirst;
-  final String relativeto;
+  final RemoteFile relativeto;
   final Set<RemoteFile> selection;
   final SelectionAction selectionAction;
   final Function() onUpdate;
-  final Function(String) onChangeDirectory;
+  final Function(RemoteFile) onChangeDirectory;
   final Function(RemoteFile) select;
   final Function(RemoteFile) showContextMenu;
   final (int, int) Function(RemoteFile, {bool recursive}) count;
@@ -81,8 +81,8 @@ class ListFiles extends StatelessWidget {
                 selectedColor: Theme.of(context).colorScheme.primary,
                 leading: Icon(Icons.folder),
                 title: Text(
-                  p.isWithin(relativeto, item.key)
-                      ? "${p.relative(item.key, from: relativeto)}/"
+                  p.isWithin(relativeto.key, item.key)
+                      ? "${p.relative(item.key, from: relativeto.key)}/"
                       : "${item.key}/",
                 ),
                 subtitle: SingleChildScrollView(
@@ -113,7 +113,7 @@ class ListFiles extends StatelessWidget {
                         select(item.file!);
                       }
                     : () {
-                        onChangeDirectory(item.key);
+                        onChangeDirectory(item.file!);
                       },
                 onLongPress: selectionAction == SelectionAction.none
                     ? () {
@@ -150,8 +150,8 @@ class ListFiles extends StatelessWidget {
                 title: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(
-                    p.isWithin(relativeto, item.key)
-                        ? p.relative(item.key, from: relativeto)
+                    p.isWithin(relativeto.key, item.key)
+                        ? p.relative(item.key, from: relativeto.key)
                         : item.file!.key,
                   ),
                 ),
@@ -159,7 +159,7 @@ class ListFiles extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      Text(timeToReadable(item.file!.lastModified)),
+                      Text(timeToReadable(item.file!.lastModified!)),
                       SizedBox(width: 8),
                       Text(bytesToReadable(item.size)),
                       const SizedBox(width: 8),

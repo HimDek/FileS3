@@ -33,9 +33,10 @@ class SyncAnalyzer {
 
     for (var ent in localRoot.listSync(recursive: true)) {
       if (ent is File) {
-        final rel =
-            p.relative(ent.path, from: localRoot.path).replaceAll('\\', '/');
-        localMap[p.join(localRoot.path.split('/').last, rel)] = ent;
+        final rel = p
+            .relative(ent.path, from: localRoot.path)
+            .replaceAll('\\', '/');
+        localMap[p.join(p.split(localRoot.path).last, rel)] = ent;
       }
     }
     final remoteMap = {

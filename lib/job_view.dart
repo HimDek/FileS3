@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/percent_indicator.dart';
+import 'package:s3_drive/services/models/remote_file.dart';
 import 'package:path/path.dart' as p;
 import 'services/job.dart';
 
 class JobView extends StatefulWidget {
   final Job job;
-  final String? relativeTo;
+  final RemoteFile? relativeTo;
   final Function()? onUpdate;
 
   const JobView({super.key, required this.job, this.relativeTo, this.onUpdate});
@@ -45,8 +46,13 @@ class JobViewState extends State<JobView> {
             ),
       title: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: p.isWithin(widget.job.remoteKey, widget.relativeTo ?? '')
-            ? Text(p.relative(widget.job.remoteKey, from: widget.relativeTo))
+        child: p.isWithin(widget.job.remoteKey, widget.relativeTo?.key ?? '')
+            ? Text(
+                p.relative(
+                  widget.job.remoteKey,
+                  from: widget.relativeTo?.key ?? '',
+                ),
+              )
             : Text(widget.job.remoteKey),
       ),
       subtitle: SingleChildScrollView(

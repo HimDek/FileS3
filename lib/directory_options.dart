@@ -5,18 +5,21 @@ import 'package:s3_drive/services/ini_manager.dart';
 import 'package:s3_drive/services/job.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
 import 'services/models/backup_mode.dart';
-import 'package:path/path.dart' as p;
 
 class DirectoryOptions extends StatefulWidget {
-  final String directory;
+  final RemoteFile directory;
   final List<RemoteFile> remoteFiles;
+  final Function(String) deleteLocal;
   final Function(String) onDelete;
+  final Function(BackupMode) setBackupMode;
 
   const DirectoryOptions({
     super.key,
     required this.directory,
     required this.remoteFiles,
+    required this.deleteLocal,
     required this.onDelete,
+    required this.setBackupMode,
   });
 
   @override
@@ -28,8 +31,8 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
   BackupMode mode = BackupMode.upload;
 
   void getLocal() {
-    local = Main.pathFromKey(widget.directory) ?? '';
-    mode = Main.backupMode(widget.directory);
+    local = Main.pathFromKey(widget.directory.key) ?? '';
+    mode = Main.backupMode(widget.directory.key);
     setState(() {});
   }
 
@@ -37,31 +40,23 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
     if (!IniManager.config!.sections().contains('directories')) {
       IniManager.config!.addSection('directories');
     }
-    IniManager.config!.set('directories', widget.directory, dir);
+    IniManager.config!.set('directories', widget.directory.key, dir);
     IniManager.save();
     Main.listDirectories();
     getLocal();
   }
 
-  void setMode(int newMode) {
-    if (!IniManager.config!.sections().contains('modes')) {
-      IniManager.config!.addSection('modes');
-    }
-    IniManager.config!.set('modes', widget.directory, newMode.toString());
-    IniManager.save();
-    Main.refreshWatchers();
+  void setMode(BackupMode newMode) {
+    widget.setBackupMode(newMode);
     getLocal();
   }
 
-  List<File> removableFiles() {
-    final List<File> removableFiles = <File>[];
+  List<RemoteFile> removableFiles() {
+    final List<RemoteFile> removableFiles = <RemoteFile>[];
     if (mode == BackupMode.upload) {
       for (final file in widget.remoteFiles) {
-        final localFile = File(
-          p.join(local, file.key.split('/').sublist(1).join('/')),
-        );
-        if (localFile.existsSync()) {
-          removableFiles.add(localFile);
+        if (File(Main.pathFromKey(file.key) ?? file.key).existsSync()) {
+          removableFiles.add(file);
         }
       }
     }
@@ -106,7 +101,7 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
             title: const Text('Backup Mode'),
           ),
           RadioGroup(
-            groupValue: mode.value,
+            groupValue: mode,
             onChanged: (s) {
               setMode(s!);
             },
@@ -114,13 +109,13 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 RadioListTile(
-                  value: BackupMode.upload.value,
+                  value: BackupMode.upload,
                   title: Text(BackupMode.upload.name),
                   subtitle: Text(BackupMode.upload.description),
                   dense: true,
                 ),
                 RadioListTile(
-                  value: BackupMode.sync.value,
+                  value: BackupMode.sync,
                   title: Text(BackupMode.sync.name),
                   subtitle: Text(BackupMode.sync.description),
                   dense: true,
@@ -154,7 +149,9 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   for (final file in removableFiles())
-                                    Text(file.absolute.path),
+                                    Text(
+                                      Main.pathFromKey(file.key) ?? file.key,
+                                    ),
                                   if (removableFiles().isEmpty)
                                     const Text('No files to delete'),
                                 ],
@@ -181,11 +178,13 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
               if (yes) {
                 for (final file in removableFiles()) {
                   try {
-                    file.deleteSync();
+                    widget.deleteLocal(file.key);
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Error deleting file ${file.path}: $e'),
+                        content: Text(
+                          'Error deleting file ${Main.pathFromKey(file.key) ?? file.key}: $e',
+                        ),
                       ),
                     );
                   }
@@ -193,7 +192,6 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Files deleted successfully')),
                 );
-                Main.refreshWatchers();
               }
             },
           ),
@@ -225,7 +223,7 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
                 ) ??
                 false;
             if (yes) {
-              widget.onDelete(widget.directory);
+              widget.onDelete(widget.directory.key);
             } else {
               return;
             }

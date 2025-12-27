@@ -20,8 +20,8 @@ class FileSyncComparator {
     final localHash = HashUtil.md5Hash(localFile);
     return localHash == remote.etag
         ? FileSyncStatus.uploaded
-        : remote.lastModified.isAfter(localFile.lastModifiedSync())
-            ? FileSyncStatus.modifiedRemotely
-            : FileSyncStatus.modifiedLocally;
+        : remote.lastModified!.isAfter(localFile.lastModifiedSync())
+        ? FileSyncStatus.modifiedRemotely
+        : FileSyncStatus.modifiedLocally;
   }
 }
