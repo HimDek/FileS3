@@ -883,6 +883,7 @@ class _HomeState extends State<Home> {
             floating: _selection.isEmpty,
             snap: _selection.isEmpty,
             pinned: true,
+            actionsPadding: EdgeInsets.only(right: 24, top: 4, bottom: 4),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -967,7 +968,7 @@ class _HomeState extends State<Home> {
                             ),
                   ]
                 : _loading
-                ? [const CircularProgressIndicator(padding: EdgeInsets.all(12))]
+                ? [const CircularProgressIndicator()]
                 : _selection.isNotEmpty
                 ? _selectionAction == SelectionAction.none
                       ? [
