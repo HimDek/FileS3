@@ -159,7 +159,9 @@ abstract class Main {
         File(pathFromKey(newKey) ?? newKey).parent.createSync(recursive: true);
       }
       file.copySync(pathFromKey(newKey) ?? newKey);
-      // TODO: Force a scan
+      watchers
+          .firstWhere((watcher) => p.isWithin(watcher.remoteDir, newKey))
+          .scan();
     } else {
       final newKey = () {
         String base = p.basenameWithoutExtension(key);
@@ -194,8 +196,13 @@ abstract class Main {
     BuildContext? context, {
     bool background = false,
   }) async {
-    await IniManager.init();
+    if (IniManager.config == null) {
+      await IniManager.init();
+    }
     await initConfig(context);
+    Job.onProgressUpdate = () {
+      setHomeState?.call();
+    };
     if (s3Manager == null) {
       // TODO: Show config notification
       return;

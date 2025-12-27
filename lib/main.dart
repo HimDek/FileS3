@@ -158,6 +158,8 @@ Future<void> main() async {
     await Workmanager().initialize(callbackDispatcher);
   }
 
+  await IniManager.init();
+
   runApp(MainApp());
 }
 
@@ -382,7 +384,7 @@ class _HomeState extends State<Home> {
     Main.remoteFiles.add(newFile);
     if (refresh) {
       setState(() {
-        _loading = true;
+        _loading = false;
       });
     }
   }
@@ -409,7 +411,7 @@ class _HomeState extends State<Home> {
 
     if (refresh) {
       setState(() {
-        _loading = true;
+        _loading = false;
       });
     }
   }
@@ -453,7 +455,7 @@ class _HomeState extends State<Home> {
     Main.remoteFiles.removeWhere((file) => file.key == key);
     if (refresh) {
       setState(() {
-        _loading = true;
+        _loading = false;
       });
     }
   }
@@ -495,7 +497,7 @@ class _HomeState extends State<Home> {
     );
     if (refresh) {
       setState(() {
-        _loading = true;
+        _loading = false;
       });
     }
   }
@@ -510,7 +512,7 @@ class _HomeState extends State<Home> {
     }
     if (refresh) {
       setState(() {
-        _loading = true;
+        _loading = false;
       });
     }
   }
@@ -527,7 +529,7 @@ class _HomeState extends State<Home> {
     await _deleteFile(key, refresh: false);
     if (refresh) {
       setState(() {
-        _loading = true;
+        _loading = false;
       });
     }
   }
@@ -544,7 +546,7 @@ class _HomeState extends State<Home> {
     await _deleteDirectory(dir, refresh: false);
     if (refresh) {
       setState(() {
-        _loading = true;
+        _loading = false;
       });
     }
   }
@@ -787,7 +789,6 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _init() async {
-    await IniManager.init();
     final uiConfig = ConfigManager.loadUiConfig();
     themeController.update(uiConfig.colorMode);
     ultraDarkController.update(uiConfig.ultraDark);
@@ -834,7 +835,9 @@ class _HomeState extends State<Home> {
         _loading = loading;
       });
     };
-    Main.setHomeState = () {};
+    Main.setHomeState = () {
+      setState(() {});
+    };
     await Main.init(context);
     _updateCounts();
     setState(() {

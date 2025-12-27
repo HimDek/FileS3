@@ -24,9 +24,12 @@ class S3TransferTask {
   final StatusCallback? onStatus;
   final int validForSeconds;
 
-  late final http.Client _client;
-  late final Uri _uri;
+  bool _sinkClosed = false;
   bool _isCancelled = false;
+  StreamSubscription<List<int>>? sub;
+
+  late final Uri _uri;
+  late final http.Client _client;
 
   S3TransferTask({
     required this.accessKey,
@@ -49,6 +52,13 @@ class S3TransferTask {
     );
   }
 
+  Future<dynamic> closeSink(http.StreamedRequest request) async {
+    if (!_sinkClosed) {
+      _sinkClosed = true;
+      return await request.sink.close();
+    }
+  }
+
   /// Starts the upload or download operation.
   Future<dynamic> start() async {
     dynamic response;
@@ -57,8 +67,8 @@ class S3TransferTask {
         task == TransferTask.upload
             ? 'Starting upload...'
             : task == TransferTask.download
-                ? 'Starting download...'
-                : 'Generating pre-signed URL...',
+            ? 'Starting download...'
+            : 'Generating pre-signed URL...',
       );
       if (task == TransferTask.upload) {
         response = await _upload();
@@ -83,15 +93,15 @@ class S3TransferTask {
   /// Cancels the ongoing transfer.
   void cancel() {
     _isCancelled = true;
-    _client.close();
+    sub?.cancel();
   }
 
   Future<dynamic> _upload() async {
-    final totalBytes = await localFile.length();
-    final bytes = await localFile.readAsBytes();
+    _sinkClosed = false;
     int uploaded = 0;
+    final totalBytes = await localFile.length();
 
-    final contentHash = sha256.convert(bytes).toString();
+    final contentHash = await _sha256OfFile(localFile);
     final now = DateTime.now().toUtc();
     final amzDate = _formatAmzDate(now);
     final shortDate = _formatDate(now);
@@ -108,6 +118,7 @@ class S3TransferTask {
       ]),
       contentType: _guessMime(localFile),
     );
+    headers['Expect'] = '100-continue';
 
     // Streamed request
     final request = http.StreamedRequest('PUT', _uri)
@@ -117,21 +128,26 @@ class S3TransferTask {
     final completer = Completer<void>();
     final stream = localFile.openRead();
 
-    stream.listen(
+    sub = stream.listen(
       (chunk) {
-        if (_isCancelled) return;
+        if (_isCancelled) {
+          closeSink(request);
+          sub?.cancel();
+          return;
+        }
         request.sink.add(chunk);
         uploaded += chunk.length;
         onProgress?.call(uploaded, totalBytes);
         onStatus?.call(
-            'Uploading... ${bytesToReadable(uploaded)} / ${bytesToReadable(totalBytes)}');
+          'Uploading... ${bytesToReadable(uploaded)} / ${bytesToReadable(totalBytes)}',
+        );
       },
       onDone: () async {
-        await request.sink.close();
+        await closeSink(request);
         completer.complete();
       },
       onError: (e) async {
-        await request.sink.close();
+        await closeSink(request);
         completer.completeError(e);
       },
       cancelOnError: true,
@@ -167,39 +183,52 @@ class S3TransferTask {
     final request = http.Request('GET', _uri)..headers.addAll(headers);
 
     final response = await _client.send(request);
-    if (_isCancelled) return;
+    if (_isCancelled) {
+      return;
+    }
 
     final File tempFile = await File(
-            '${Directory.systemTemp.path}/app_${DateTime.now().microsecondsSinceEpoch}')
-        .create();
+      '${Directory.systemTemp.path}/app_${DateTime.now().microsecondsSinceEpoch}',
+    ).create();
+
     if (response.statusCode == 200) {
       final IOSink fileSink = tempFile.openWrite();
       int received = 0;
       final total = response.contentLength ?? 0;
 
-      await response.stream.listen(
-        (chunk) {
-          if (_isCancelled) return;
-          fileSink.add(chunk);
-          received += chunk.length;
-          onProgress?.call(received, total);
-          onStatus?.call(
-              'Downloading... ${bytesToReadable(received)} / ${bytesToReadable(total)}');
-        },
-        onDone: () async {
-          await fileSink.close();
-        },
-        onError: (e) async {
-          await fileSink.close();
-          throw e;
-        },
-        cancelOnError: true,
-      ).asFuture();
+      await response.stream
+          .listen(
+            (chunk) {
+              if (_isCancelled) {
+                fileSink.close();
+                if (tempFile.existsSync()) {
+                  tempFile.deleteSync();
+                }
+                return;
+              }
+              fileSink.add(chunk);
+              received += chunk.length;
+              onProgress?.call(received, total);
+              onStatus?.call(
+                'Downloading... ${bytesToReadable(received)} / ${bytesToReadable(total)}',
+              );
+            },
+            onDone: () async {
+              await fileSink.close();
+            },
+            onError: (e) async {
+              await fileSink.close();
+              throw e;
+            },
+            cancelOnError: true,
+          )
+          .asFuture();
     } else {
       final body = await response.stream.bytesToString();
       throw Exception('Download failed: ${response.statusCode} - $body');
     }
 
+    if (_isCancelled) return;
     final filemd5 = HashUtil.md5Hash(tempFile);
     if (filemd5 == md5) {
       if (localFile.existsSync()) {
@@ -251,8 +280,9 @@ class S3TransferTask {
         .join();
 
     // 4. Build signedHeadersString from those same sorted keys
-    final signedHeadersString =
-        sortedEntries.map((e) => e.key.toLowerCase()).join(';');
+    final signedHeadersString = sortedEntries
+        .map((e) => e.key.toLowerCase())
+        .join(';');
 
     // 5. Canonical URI (already encoded)
     final encodedPath = '/${key.split('/').map(awsEncode).join('/')}';
@@ -268,8 +298,9 @@ class S3TransferTask {
     ].join('\n');
 
     // 7. Hash the canonical request
-    final hashedCanonical =
-        sha256.convert(utf8.encode(canonicalRequest)).toString();
+    final hashedCanonical = sha256
+        .convert(utf8.encode(canonicalRequest))
+        .toString();
 
     // 8. Build string to sign
     final stringToSign = [
@@ -345,5 +376,10 @@ class S3TransferTask {
       }
       return '%${unit.toRadixString(16).toUpperCase().padLeft(2, '0')}';
     }).join();
+  }
+
+  Future<String> _sha256OfFile(File file) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
   }
 }
