@@ -11,14 +11,14 @@ enum FileSyncStatus {
 }
 
 class FileSyncComparator {
-  static FileSyncStatus compare({
+  static Future<FileSyncStatus> compare({
     required File localFile,
     required RemoteFile? remote,
-  }) {
+  }) async {
     if (!localFile.existsSync()) return FileSyncStatus.remoteOnly;
     if (remote == null) return FileSyncStatus.newFile;
-    final localHash = HashUtil.md5Hash(localFile);
-    return localHash == remote.etag
+    final localHash = await HashUtil(localFile).md5Hash();
+    return localHash.toString() == remote.etag
         ? FileSyncStatus.uploaded
         : remote.lastModified!.isAfter(localFile.lastModifiedSync())
         ? FileSyncStatus.modifiedRemotely

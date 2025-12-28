@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'models/remote_file.dart';
 import 'file_sync_status.dart';
@@ -24,7 +25,7 @@ class SyncAnalyzer {
 
   SyncAnalyzer({required this.localRoot, required this.remoteFiles});
 
-  SyncAnalysisResult analyze() {
+  Future<SyncAnalysisResult> analyze() async {
     final newFile = <File>[];
     final modifiedLocally = <File>[];
     final modifiedRemotely = <RemoteFile>[];
@@ -44,10 +45,16 @@ class SyncAnalyzer {
         f.key: f,
     };
 
+    if (kDebugMode) {
+      debugPrint(
+        "Starting sync analysis at ${localRoot.path}: Local files count: ${localMap.length}, Remote files count: ${remoteMap.length}",
+      );
+    }
+
     for (var e in localMap.entries) {
       final file = e.value;
       final remote = remoteMap[e.key];
-      final status = FileSyncComparator.compare(
+      final status = await FileSyncComparator.compare(
         localFile: file,
         remote: remote,
       );

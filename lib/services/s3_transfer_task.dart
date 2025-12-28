@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:s3_drive/components.dart';
+import 'package:s3_drive/services/s3_file_manager.dart';
 import 'hash_util.dart';
 
 typedef ProgressCallback = void Function(int bytesTransferred, int totalBytes);
@@ -12,44 +13,30 @@ typedef StatusCallback = void Function(String status);
 enum TransferTask { upload, download }
 
 class S3TransferTask {
-  final String accessKey;
-  final String secretKey;
-  final String region;
-  final String bucket;
   final String key;
   final File localFile;
+  final Digest md5;
+  final S3FileManager fileManager;
   final TransferTask task;
-  final String md5;
   final ProgressCallback? onProgress;
   final StatusCallback? onStatus;
-  final int validForSeconds;
 
   bool _sinkClosed = false;
   bool _isCancelled = false;
   StreamSubscription<List<int>>? sub;
 
-  late final Uri _uri;
   late final http.Client _client;
 
   S3TransferTask({
-    required this.accessKey,
-    required this.secretKey,
-    required this.region,
-    required this.bucket,
     required this.key,
     required this.localFile,
-    required this.task,
     required this.md5,
+    required this.fileManager,
+    required this.task,
     this.onProgress,
     this.onStatus,
-    this.validForSeconds = 3600,
   }) {
     _client = http.Client();
-    _uri = Uri(
-      scheme: 'https',
-      host: '$bucket.s3.$region.amazonaws.com',
-      path: '/${key.split('/').map(awsEncode).join('/')}',
-    );
   }
 
   Future<dynamic> closeSink(http.StreamedRequest request) async {
@@ -102,26 +89,25 @@ class S3TransferTask {
     final totalBytes = await localFile.length();
 
     final contentHash = await _sha256OfFile(localFile);
+    final contentMD5 = base64.encode(md5.bytes);
     final now = DateTime.now().toUtc();
-    final amzDate = _formatAmzDate(now);
-    final shortDate = _formatDate(now);
+    final amzDate = fileManager.formatAmzDate(now);
+    final shortDate = fileManager.formatDate(now);
 
     // Prepare signed headers
-    final headers = _buildSignedHeaders(
+    final headers = fileManager.buildSignedHeaders(
+      key: key,
       method: 'PUT',
       amzDate: amzDate,
       shortDate: shortDate,
       contentHash: contentHash,
-      contentMD5: base64.encode([
-        for (var i = 0; i < md5.length; i += 2)
-          int.parse(md5.substring(i, i + 2), radix: 16),
-      ]),
-      contentType: _guessMime(localFile),
+      contentMD5: contentMD5,
+      contentType: fileManager.guessMime(localFile),
     );
     headers['Expect'] = '100-continue';
 
     // Streamed request
-    final request = http.StreamedRequest('PUT', _uri)
+    final request = http.StreamedRequest('PUT', fileManager.getUri(key))
       ..headers.addAll(headers)
       ..contentLength = totalBytes;
 
@@ -169,18 +155,20 @@ class S3TransferTask {
 
   Future<dynamic> _download() async {
     final now = DateTime.now().toUtc();
-    final amzDate = _formatAmzDate(now);
-    final shortDate = _formatDate(now);
-    final contentHash = sha256.convert(utf8.encode("")).toString();
+    final amzDate = fileManager.formatAmzDate(now);
+    final shortDate = fileManager.formatDate(now);
+    final contentHash = S3FileManager.emptySha256;
 
-    final headers = _buildSignedHeaders(
+    final headers = fileManager.buildSignedHeaders(
+      key: key,
       method: 'GET',
       amzDate: amzDate,
       shortDate: shortDate,
       contentHash: contentHash,
     );
 
-    final request = http.Request('GET', _uri)..headers.addAll(headers);
+    final request = http.Request('GET', fileManager.getUri(key))
+      ..headers.addAll(headers);
 
     final response = await _client.send(request);
     if (_isCancelled) {
@@ -229,7 +217,7 @@ class S3TransferTask {
     }
 
     if (_isCancelled) return;
-    final filemd5 = HashUtil.md5Hash(tempFile);
+    final filemd5 = await HashUtil(tempFile).md5Hash();
     if (filemd5 == md5) {
       if (localFile.existsSync()) {
         localFile.deleteSync();
@@ -244,138 +232,6 @@ class S3TransferTask {
     tempFile.deleteSync();
 
     return null;
-  }
-
-  Map<String, String> _buildSignedHeaders({
-    required String method,
-    required String amzDate,
-    required String shortDate,
-    required String contentHash,
-    String? contentMD5,
-    String? contentType,
-  }) {
-    final service = 's3';
-    final host = '$bucket.s3.$region.amazonaws.com';
-    final credentialScope = '$shortDate/$region/$service/aws4_request';
-
-    // 1. Build the unsorted headers map
-    final headers = <String, String>{
-      'Host': host,
-      'x-amz-content-sha256': contentHash,
-      'x-amz-date': amzDate,
-      if (contentMD5 != null) 'Content-MD5': contentMD5,
-      if (contentType != null) 'Content-Type': contentType,
-    };
-    if (method == 'PUT' && contentType == null) {
-      headers['Content-Type'] = 'application/octet-stream';
-    }
-
-    // 2. Sort entries by lowercase header name
-    final sortedEntries = headers.entries.toList()
-      ..sort((a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()));
-
-    // 3. Build canonicalHeaders in sorted order
-    final canonicalHeaders = sortedEntries
-        .map((e) => '${e.key.toLowerCase()}:${e.value.trim()}\n')
-        .join();
-
-    // 4. Build signedHeadersString from those same sorted keys
-    final signedHeadersString = sortedEntries
-        .map((e) => e.key.toLowerCase())
-        .join(';');
-
-    // 5. Canonical URI (already encoded)
-    final encodedPath = '/${key.split('/').map(awsEncode).join('/')}';
-
-    // 6. Assemble canonical request
-    final canonicalRequest = [
-      method,
-      encodedPath,
-      '', // no query string
-      canonicalHeaders,
-      signedHeadersString,
-      contentHash,
-    ].join('\n');
-
-    // 7. Hash the canonical request
-    final hashedCanonical = sha256
-        .convert(utf8.encode(canonicalRequest))
-        .toString();
-
-    // 8. Build string to sign
-    final stringToSign = [
-      'AWS4-HMAC-SHA256',
-      amzDate,
-      credentialScope,
-      hashedCanonical,
-    ].join('\n');
-
-    // 9. Derive signing key
-    final signingKey = _getSigningKey(secretKey, shortDate, region, service);
-
-    // 10. Compute signature
-    final signature = Hmac(
-      sha256,
-      signingKey,
-    ).convert(utf8.encode(stringToSign)).toString();
-
-    // 11. Build Authorization header
-    final authorization = [
-      'AWS4-HMAC-SHA256 Credential=$accessKey/$credentialScope',
-      'SignedHeaders=$signedHeadersString',
-      'Signature=$signature',
-    ].join(', ');
-
-    // 12. Return all headers including Authorization
-    return {...headers, 'Authorization': authorization};
-  }
-
-  List<int> _sign(List<int> key, String data) =>
-      Hmac(sha256, key).convert(utf8.encode(data)).bytes;
-
-  List<int> _getSigningKey(
-    String secret,
-    String date,
-    String region,
-    String service,
-  ) {
-    final kDate = _sign(utf8.encode('AWS4$secret'), date);
-    final kRegion = _sign(kDate, region);
-    final kService = _sign(kRegion, service);
-    return _sign(kService, 'aws4_request');
-  }
-
-  String _formatAmzDate(DateTime time) =>
-      '${time.toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z';
-
-  String _formatDate(DateTime time) =>
-      time.toIso8601String().split('T').first.replaceAll('-', '');
-
-  String _guessMime(File f) {
-    final ext = f.path.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'png':
-        return 'image/png';
-      case 'pdf':
-        return 'application/pdf';
-      case 'txt':
-        return 'text/plain';
-      default:
-        return 'application/octet-stream';
-    }
-  }
-
-  String awsEncode(String input) {
-    return input.codeUnits.map((unit) {
-      final c = String.fromCharCode(unit);
-      if (RegExp(r'^[A-Za-z0-9\-_.~]$').hasMatch(c)) {
-        return c;
-      }
-      return '%${unit.toRadixString(16).toUpperCase().padLeft(2, '0')}';
-    }).join();
   }
 
   Future<String> _sha256OfFile(File file) async {

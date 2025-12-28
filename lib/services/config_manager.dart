@@ -184,9 +184,8 @@ class S3ConfigPageState extends State<S3ConfigPage> {
         context,
       ).showSnackBar(SnackBar(content: Text('Error saving configuration: $e')));
     }
-    await Main.initConfig(null);
+    await Main.setConfig(null);
     await Main.listDirectories();
-    print(await Main.s3Manager!.listDirectories());
     setState(() {
       _loading = false;
     });

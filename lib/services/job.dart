@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -11,7 +12,6 @@ import 'package:s3_drive/services/s3_file_manager.dart';
 import 'models/backup_mode.dart';
 import 'sync_analyzer.dart';
 import 's3_transfer_task.dart';
-import 'config_manager.dart';
 
 abstract class Main {
   static late S3FileManager? s3Manager;
@@ -60,10 +60,6 @@ abstract class Main {
     setHomeState?.call();
   }
 
-  static void setConfig() async {
-    Job.cfg = Job.cfg ?? await ConfigManager.loadS3Config(context: null);
-  }
-
   static Future<void> stopWatchers() async {
     for (final watcher in watchers) {
       await watcher.stop();
@@ -89,8 +85,14 @@ abstract class Main {
 
       watchers.add(watcher);
       if (background) {
+        if (kDebugMode) {
+          debugPrint("Performing background scan for $localDir");
+        }
         await watcher.scan();
       } else {
+        if (kDebugMode) {
+          debugPrint("Starting watcher for $localDir");
+        }
         watcher.start();
       }
     }
@@ -104,6 +106,9 @@ abstract class Main {
 
   static Future<void> listDirectories({bool background = false}) async {
     await setLoadingState?.call(true);
+    while (s3Manager == null || !s3Manager!.configured) {
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
     final dirs = await s3Manager!.listDirectories();
 
     await stopWatchers();
@@ -123,12 +128,25 @@ abstract class Main {
       localFile: File(localPath ?? pathFromKey(file.key) ?? file.key),
       remoteKey: file.key,
       bytes: file.size,
-      md5: file.etag,
+      md5: () {
+        final hex = file.etag.replaceAll('"', '');
+
+        if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
+          throw StateError('ETag is not a single-part MD5 digest');
+        }
+
+        final bytes = List<int>.generate(
+          16,
+          (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16),
+        );
+
+        return Digest(bytes);
+      }(),
       onStatus: onJobStatus,
     ).add();
   }
 
-  static void uploadFile(String key, File file) {
+  static Future<void> uploadFile(String key, File file) async {
     if (!file.existsSync()) {
       return;
     }
@@ -138,7 +156,7 @@ abstract class Main {
         remoteKey: key,
         bytes: file.lengthSync(),
         onStatus: onJobStatus,
-        md5: HashUtil.md5Hash(file),
+        md5: await HashUtil(file).md5Hash(),
       ).add();
     } else if (p.isAbsolute(pathFromKey(key) ?? key)) {
       final newKey = () {
@@ -159,6 +177,11 @@ abstract class Main {
         File(pathFromKey(newKey) ?? newKey).parent.createSync(recursive: true);
       }
       file.copySync(pathFromKey(newKey) ?? newKey);
+      if (kDebugMode) {
+        debugPrint(
+          "File copied to monitored directory: ${pathFromKey(newKey) ?? newKey}",
+        );
+      }
       watchers
           .firstWhere((watcher) => p.isWithin(watcher.remoteDir, newKey))
           .scan();
@@ -182,14 +205,13 @@ abstract class Main {
         remoteKey: newKey,
         bytes: file.lengthSync(),
         onStatus: onJobStatus,
-        md5: HashUtil.md5Hash(file),
+        md5: await HashUtil(file).md5Hash(),
       ).add();
     }
   }
 
-  static Future<void> initConfig(BuildContext? context) async {
+  static Future<void> setConfig(BuildContext? context) async {
     s3Manager = await S3FileManager.create(context, httpClient);
-    setConfig();
   }
 
   static Future<void> init(
@@ -199,7 +221,7 @@ abstract class Main {
     if (IniManager.config == null) {
       await IniManager.init();
     }
-    await initConfig(context);
+    await setConfig(context);
     Job.onProgressUpdate = () {
       setHomeState?.call();
     };
@@ -214,7 +236,7 @@ abstract class Main {
 abstract class Job {
   final File localFile;
   final String remoteKey;
-  final String md5;
+  final Digest md5;
   final int bytes;
   S3TransferTask? task;
   int bytesCompleted = 0;
@@ -223,7 +245,7 @@ abstract class Job {
   bool failed = false;
   String statusMsg = '';
 
-  static S3Config? cfg;
+  static S3FileManager fileManager = Main.s3Manager!;
   static int maxrun = 5;
   static bool scheduled = false;
   static final List<Job> jobs = [];
@@ -242,12 +264,20 @@ abstract class Job {
   });
 
   void add() {
+    if (kDebugMode) {
+      debugPrint(
+        "Adding job: ${runtimeType == UploadJob ? 'Upload' : 'Download'} - $remoteKey",
+      );
+    }
     if (!jobs.contains(this)) jobs.add(this);
     if (jobs.any((job) => !job.running)) startall();
   }
 
   bool startable() {
-    return !running && !completed && cfg != null;
+    return !running &&
+        !completed &&
+        Main.s3Manager != null &&
+        Main.s3Manager!.configured;
   }
 
   Future<void> start() async {
@@ -256,17 +286,10 @@ abstract class Job {
       if (runtimeType == UploadJob) {
         running = true;
         task = S3TransferTask(
-          accessKey: cfg!.accessKey,
-          secretKey: cfg!.secretKey,
-          region: cfg!.region,
-          bucket: cfg!.bucket,
-          key:
-              (cfg!.prefix[cfg!.prefix.length - 1] != '/'
-                  ? '${cfg!.prefix}/'
-                  : cfg!.prefix) +
-              remoteKey,
+          key: remoteKey,
           localFile: localFile,
           task: TransferTask.upload,
+          fileManager: fileManager,
           md5: md5,
           onProgress: (sent, total) {
             bytesCompleted = sent;
@@ -304,17 +327,10 @@ abstract class Job {
           dir.createSync(recursive: true);
         }
         task = S3TransferTask(
-          accessKey: cfg!.accessKey,
-          secretKey: cfg!.secretKey,
-          region: cfg!.region,
-          bucket: cfg!.bucket,
-          key:
-              (cfg!.prefix[cfg!.prefix.length - 1] != '/'
-                  ? '${cfg!.prefix}/'
-                  : cfg!.prefix) +
-              remoteKey,
+          key: remoteKey,
           localFile: localFile,
           task: TransferTask.download,
+          fileManager: fileManager,
           md5: md5,
           onProgress: (received, total) {
             bytesCompleted = received;
@@ -378,13 +394,30 @@ abstract class Job {
   }
 
   static void startall() {
-    if (scheduled) return;
+    if (scheduled) {
+      if (kDebugMode) {
+        debugPrint("Job scheduling is already in progress. Skipping...");
+      }
+      return;
+    }
     scheduled = true;
+
+    if (kDebugMode) {
+      debugPrint(
+        "Starting jobs: Running ${Job.jobs.where((job) => job.running).length}, Max Run $maxrun, Pending ${Job.jobs.where((job) => !job.completed && !job.running).length}",
+      );
+    }
 
     while (Job.jobs.where((job) => job.running).length < maxrun &&
         Job.jobs.any((job) => !job.completed && !job.running)) {
       Job job = jobs.firstWhere((job) => !job.completed && !job.running);
       job.start();
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        "Job scheduling completed: Running ${Job.jobs.where((job) => job.running).length}, Max Run $maxrun, Pending ${Job.jobs.where((job) => !job.completed && !job.running).length}",
+      );
     }
 
     scheduled = false;
@@ -431,42 +464,47 @@ class Watcher {
   Timer? timer;
   bool watching = false;
   bool scanning = false;
-  bool waitingScan = false;
+  Completer<void>? _scanWaiter;
+  bool _rescanQueued = false;
 
   Watcher({required this.remoteDir});
 
   Future<void> scan() async {
     final localDir = Directory(Main.pathFromKey(remoteDir) ?? remoteDir);
 
-    if (waitingScan) {
-      debugPrint(
-        "A Scan is already waiting for a scan already in progress for ${localDir.path}. Skipping...",
-      );
+    if (scanning) {
+      if (_rescanQueued) {
+        if (kDebugMode) {
+          debugPrint("Scan already queued for ${localDir.path}, skipping.");
+        }
+        return;
+      }
+
+      _rescanQueued = true;
+
+      if (_scanWaiter != null) {
+        if (kDebugMode) {
+          debugPrint(
+            "Scan in progress for ${localDir.path}. Queued one rescan.",
+          );
+        }
+        await _scanWaiter!.future;
+      }
       return;
     }
 
-    if (scanning) {
-      waitingScan = true;
-      if (kDebugMode) {
-        debugPrint(
-          "Scan is already in progress for ${localDir.path}. Waiting...",
-        );
-      }
-      while (scanning) {
-        sleep(const Duration(milliseconds: 2000));
-      }
-      if (kDebugMode) {
-        debugPrint("Scan completed for ${localDir.path}. Resuming...");
-      }
-      waitingScan = false;
-    } else {
-      scanning = true;
+    if (kDebugMode) {
+      debugPrint("Starting scan for ${localDir.path}");
     }
+
+    scanning = true;
+    _scanWaiter = Completer<void>();
 
     if (!localDir.existsSync()) {
       if (kDebugMode) {
         debugPrint("Local directory does not exist: ${localDir.path}");
       }
+      scanning = false;
       return;
     }
 
@@ -479,6 +517,9 @@ class Watcher {
       await Main.refreshRemote(dir: remoteDir);
     }
 
+    if (kDebugMode) {
+      debugPrint("Analyzing sync status for ${localDir.path}");
+    }
     final analyzer = SyncAnalyzer(
       localRoot: localDir,
       remoteFiles: Main.remoteFiles
@@ -490,16 +531,21 @@ class Watcher {
           )
           .toList(),
     );
-    final result = analyzer.analyze();
+    final result = await analyzer.analyze();
+    if (kDebugMode) {
+      debugPrint(
+        "Sync analysis completed for ${localDir.path}: New Files: ${result.newFile.length}, Modified Locally: ${result.modifiedLocally.length}, Modified Remotely: ${result.modifiedRemotely.length}, Remote Only: ${result.remoteOnly.length}",
+      );
+    }
 
     for (Job job in Job.jobs.where((job) => !job.completed && !job.running)) {
       job.remove();
     }
 
     for (File file in [...result.newFile, ...result.modifiedLocally]) {
-      if (Job.jobs.any((job) {
-        return job.localFile.path == file.path && !job.completed;
-      })) {
+      if (Job.jobs.any(
+        (job) => job.localFile.path == file.path && !job.completed,
+      )) {
         continue;
       }
       BackupMode mode = Main.backupMode(Main.keyFromPath(file.path) ?? '');
@@ -512,9 +558,7 @@ class Watcher {
     }
 
     for (RemoteFile file in result.modifiedRemotely) {
-      if (Job.jobs.any((job) {
-        return job.remoteKey == file.key;
-      })) {
+      if (Job.jobs.any((job) => job.remoteKey == file.key)) {
         continue;
       }
       BackupMode mode = Main.backupMode(file.key);
@@ -524,9 +568,7 @@ class Watcher {
     }
 
     for (RemoteFile file in result.remoteOnly) {
-      if (Job.jobs.any((job) {
-        return job.remoteKey == file.key;
-      })) {
+      if (Job.jobs.any((job) => job.remoteKey == file.key)) {
         continue;
       }
       if (Main.backupMode(file.key) == BackupMode.sync) {
@@ -534,7 +576,18 @@ class Watcher {
       }
     }
 
+    if (kDebugMode) {
+      debugPrint("Scan completed for ${localDir.path}");
+    }
+
     scanning = false;
+    _scanWaiter?.complete();
+    _scanWaiter = null;
+
+    if (_rescanQueued) {
+      _rescanQueued = false;
+      await scan();
+    }
   }
 
   Future<void> start() async {
@@ -554,11 +607,19 @@ class Watcher {
       subscription = localDir.watch(recursive: true).listen((event) {
         final file = File(event.path);
         if (file.existsSync()) {
+          if (kDebugMode) {
+            debugPrint(
+              "File system event detected: ${event.type} - ${event.path}",
+            );
+          }
           scan();
         }
       });
     } else {
       timer = Timer.periodic(const Duration(seconds: 60), (timer) {
+        if (kDebugMode) {
+          debugPrint("Periodic scan triggered for ${localDir.path}");
+        }
         scan();
       });
     }

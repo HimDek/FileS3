@@ -43,7 +43,7 @@ Future<void> runJob({
     onProgress(totalProgress / runningJobs.length);
   };
   if (Job.jobs.any((job) => !job.completed && !job.running && !job.failed)) {
-    sleep(Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 2));
   }
 }
 
@@ -868,7 +868,7 @@ class _HomeState extends State<Home> {
 
   @override
   void setState(void Function() fn) {
-    Main.setConfig();
+    Main.setConfig(null);
     super.setState(fn);
   }
 

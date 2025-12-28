@@ -1,6 +1,7 @@
 // import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -16,7 +17,14 @@ class S3FileManager {
   late final String _region;
   late final String _bucket;
   late final String _prefix;
+  late final String _host;
   late http.Client _client;
+
+  bool configured = false;
+
+  static const emptySha256 =
+      'e3b0c44298fc1c149afbf4c8996fb924'
+      '27ae41e4649b934ca495991b7852b855';
 
   S3FileManager._(S3Config cfg, http.Client client) {
     _client = client;
@@ -32,12 +40,14 @@ class S3FileManager {
           : cfg.host,
     );
     _bucket = cfg.bucket;
-    _prefix = cfg.prefix[cfg.prefix.length - 1] != '/'
-        ? '${cfg.prefix}/'
-        : cfg.prefix;
+    _prefix = cfg.prefix;
+    _host = cfg.host.isEmpty
+        ? '$_bucket.s3.${cfg.region}.amazonaws.com'
+        : cfg.host;
     _accessKey = cfg.accessKey;
     _secretKey = cfg.secretKey;
     _region = cfg.region;
+    configured = true;
   }
 
   static Future<S3FileManager?> create(
@@ -53,56 +63,37 @@ class S3FileManager {
   }
 
   Future<List<String>> listDirectories({String dir = ''}) async {
+    String prefix = p.posix.join(_prefix, dir);
+    prefix = prefix.endsWith('/') ? prefix : '$prefix/';
     final ListObjectsOutput resp = await _s3.listObjects(
       bucket: _bucket,
-      prefix: '$_prefix$dir',
+      prefix: prefix,
       delimiter: '/',
     );
     final contents = resp.commonPrefixes ?? [];
     return contents
-        .map((item) => item.prefix?.substring(_prefix.length) ?? '')
+        .map((item) => item.prefix?.substring(prefix.length) ?? '')
         .where((p) => p.isNotEmpty)
         .toList();
   }
 
   Future<dynamic> createDirectory(String dir) async {
-    String key = '$_prefix$dir';
+    String key = !dir.endsWith('/') ? '$dir/' : dir;
 
-    if (!key.endsWith('/')) {
-      key = '$key/';
-    }
-
-    final bytes = <int>[];
-    final contentHash = sha256.convert(bytes).toString();
-    final md5hash = md5.convert(bytes).toString();
+    final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
-    final amzDate = _formatAmzDate(now);
-    final shortDate = _formatDate(now);
+    final amzDate = formatAmzDate(now);
+    final shortDate = formatDate(now);
 
-    final headers = _buildSignedHeaders(
+    final headers = buildSignedHeaders(
       key: key,
       method: 'PUT',
       amzDate: amzDate,
       shortDate: shortDate,
       contentHash: contentHash,
-      contentMD5: base64.encode([
-        for (var i = 0; i < md5hash.length; i += 2)
-          int.parse(md5hash.substring(i, i + 2), radix: 16),
-      ]),
-      contentType: 'application/x-directory',
     );
 
-    final request =
-        http.Request(
-            'PUT',
-            Uri(
-              scheme: 'https',
-              host: '$_bucket.s3.$_region.amazonaws.com',
-              path: '/${key.split('/').map(awsEncode).join('/')}',
-            ),
-          )
-          ..headers.addAll(headers)
-          ..bodyBytes = bytes;
+    final request = http.Request('PUT', getUri(key))..headers.addAll(headers);
 
     final response = await _client.send(request);
 
@@ -115,15 +106,17 @@ class S3FileManager {
   }
 
   Future<List<RemoteFile>> listObjects({String dir = ''}) async {
+    String prefix = p.posix.join(_prefix, dir);
+    prefix = prefix.endsWith('/') ? prefix : '$prefix/';
     final ListObjectsOutput resp = await _s3.listObjects(
       bucket: _bucket,
-      prefix: '$_prefix$dir',
+      prefix: prefix,
     );
     final contents = resp.contents ?? [];
     List<RemoteFile> list = contents
         .map(
           (item) => RemoteFile(
-            key: (item.key ?? _prefix).substring(_prefix.length),
+            key: (item.key ?? prefix).substring(prefix.length),
             size: item.size ?? 0,
             etag: item.eTag != null && item.eTag!.isNotEmpty
                 ? item.eTag!.substring(1, item.eTag!.length - 1)
@@ -151,7 +144,7 @@ class S3FileManager {
       for (final part in parts) {
         if (part.isEmpty) continue;
 
-        current = p.join(current, part);
+        current = p.posix.join(current, part);
         final dirPath = '$current/';
 
         if (!existingPaths.contains(dirPath)) {
@@ -172,41 +165,27 @@ class S3FileManager {
   }
 
   Future<dynamic> copyFile(String sourceKey, String destinationKey) async {
-    sourceKey = '$_prefix$sourceKey';
-    destinationKey = '$_prefix$destinationKey';
+    String prefixedSourceKey = p.posix.join(_prefix, sourceKey);
 
     final copySource =
-        '/$_bucket/${sourceKey.split('/').map(awsEncode).join('/')}';
+        '/$_bucket/${prefixedSourceKey.split('/').map(awsEncode).join('/')}';
 
-    final bytes = <int>[];
-    final contentHash = sha256.convert(bytes).toString();
-    final md5hash = md5.convert(bytes).toString();
+    final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
-    final amzDate = _formatAmzDate(now);
-    final shortDate = _formatDate(now);
+    final amzDate = formatAmzDate(now);
+    final shortDate = formatDate(now);
 
-    final headers = _buildSignedHeaders(
+    final headers = buildSignedHeaders(
       key: destinationKey,
       method: 'PUT',
       amzDate: amzDate,
       shortDate: shortDate,
       copySource: copySource,
       contentHash: contentHash,
-      contentMD5: base64.encode([
-        for (var i = 0; i < md5hash.length; i += 2)
-          int.parse(md5hash.substring(i, i + 2), radix: 16),
-      ]),
-      contentType: 'application/octet-stream',
     );
 
-    final request = http.Request(
-      'PUT',
-      Uri(
-        scheme: 'https',
-        host: '$_bucket.s3.$_region.amazonaws.com',
-        path: '/${destinationKey.split('/').map(awsEncode).join('/')}',
-      ),
-    )..headers.addAll(headers);
+    final request = http.Request('PUT', getUri(destinationKey))
+      ..headers.addAll(headers);
 
     final response = await _client.send(request);
 
@@ -219,36 +198,21 @@ class S3FileManager {
   }
 
   Future<dynamic> deleteFile(String key) async {
-    key = '$_prefix$key';
-
-    final bytes = <int>[];
-    final contentHash = sha256.convert(bytes).toString();
-    final md5hash = md5.convert(bytes).toString();
+    final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
-    final amzDate = _formatAmzDate(now);
-    final shortDate = _formatDate(now);
+    final amzDate = formatAmzDate(now);
+    final shortDate = formatDate(now);
 
-    final headers = _buildSignedHeaders(
+    final headers = buildSignedHeaders(
       key: key,
       method: 'DELETE',
       amzDate: amzDate,
       shortDate: shortDate,
       contentHash: contentHash,
-      contentMD5: base64.encode([
-        for (var i = 0; i < md5hash.length; i += 2)
-          int.parse(md5hash.substring(i, i + 2), radix: 16),
-      ]),
-      contentType: 'application/octet-stream',
     );
 
-    final request = http.Request(
-      'DELETE',
-      Uri(
-        scheme: 'https',
-        host: '$_bucket.s3.$_region.amazonaws.com',
-        path: '/${key.split('/').map(awsEncode).join('/')}',
-      ),
-    )..headers.addAll(headers);
+    final request = http.Request('DELETE', getUri(key))
+      ..headers.addAll(headers);
 
     final response = await _client.send(request);
 
@@ -261,16 +225,11 @@ class S3FileManager {
   }
 
   String getUrl(String key, {int? validForSeconds}) {
-    key = '$_prefix$key';
-    final uri = Uri(
-      scheme: 'https',
-      host: '$_bucket.s3.$_region.amazonaws.com',
-      path: '/${key.split('/').map(awsEncode).join('/')}',
-    );
+    final uri = getUri(key);
 
     final now = DateTime.now().toUtc();
-    final amzDate = _formatAmzDate(now);
-    final shortDate = _formatDate(now);
+    final amzDate = formatAmzDate(now);
+    final shortDate = formatDate(now);
 
     final credentialScope = '$shortDate/$_region/s3/aws4_request';
 
@@ -311,7 +270,7 @@ class S3FileManager {
       sha256.convert(utf8.encode(canonicalRequest)).toString(),
     ].join('\n');
 
-    final signingKey = _getSigningKey(_secretKey, shortDate, _region, 's3');
+    final signingKey = getSigningKey(_secretKey, shortDate, _region, 's3');
 
     final signature = Hmac(
       sha256,
@@ -325,7 +284,7 @@ class S3FileManager {
     return presignedUri.toString();
   }
 
-  Map<String, String> _buildSignedHeaders({
+  Map<String, String> buildSignedHeaders({
     required String key,
     required String method,
     required String amzDate,
@@ -358,7 +317,10 @@ class S3FileManager {
 
     // 3. Build canonicalHeaders in sorted order
     final canonicalHeaders = sortedEntries
-        .map((e) => '${e.key.toLowerCase()}:${e.value.trim()}\n')
+        .map(
+          (e) =>
+              '${e.key.toLowerCase()}:${e.value.trim().replaceAll(RegExp(r'\s+'), ' ')}\n',
+        )
         .join();
 
     // 4. Build signedHeadersString from those same sorted keys
@@ -367,7 +329,8 @@ class S3FileManager {
         .join(';');
 
     // 5. Canonical URI (already encoded)
-    final encodedPath = '/${key.split('/').map(awsEncode).join('/')}';
+    final encodedPath =
+        '/${p.join(_prefix, key).split('/').map(awsEncode).join('/')}';
 
     // 6. Assemble canonical request
     final canonicalRequest = [
@@ -393,7 +356,7 @@ class S3FileManager {
     ].join('\n');
 
     // 9. Derive signing key
-    final signingKey = _getSigningKey(_secretKey, shortDate, _region, service);
+    final signingKey = getSigningKey(_secretKey, shortDate, _region, service);
 
     // 10. Compute signature
     final signature = Hmac(
@@ -415,7 +378,7 @@ class S3FileManager {
   List<int> _sign(List<int> key, String data) =>
       Hmac(sha256, key).convert(utf8.encode(data)).bytes;
 
-  List<int> _getSigningKey(
+  List<int> getSigningKey(
     String secret,
     String date,
     String region,
@@ -427,28 +390,36 @@ class S3FileManager {
     return _sign(kService, 'aws4_request');
   }
 
-  String _formatAmzDate(DateTime time) =>
+  String formatAmzDate(DateTime time) =>
       '${time.toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z';
 
-  String _formatDate(DateTime time) =>
+  String formatDate(DateTime time) =>
       time.toIso8601String().split('T').first.replaceAll('-', '');
 
-  // String _guessMime(File f) {
-  //   final ext = f.path.split('.').last.toLowerCase();
-  //   switch (ext) {
-  //     case 'jpg':
-  //     case 'jpeg':
-  //       return 'image/jpeg';
-  //     case 'png':
-  //       return 'image/png';
-  //     case 'pdf':
-  //       return 'application/pdf';
-  //     case 'txt':
-  //       return 'text/plain';
-  //     default:
-  //       return 'application/octet-stream';
-  //   }
-  // }
+  String guessMime(File f) {
+    final ext = f.path.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'pdf':
+        return 'application/pdf';
+      case 'txt':
+        return 'text/plain';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  Uri getUri(String key) {
+    return Uri(
+      scheme: 'https',
+      host: _host,
+      path: '/${p.join(_prefix, key).split('/').map(awsEncode).join('/')}',
+    );
+  }
 
   String encode(String input) {
     return Uri.encodeComponent(
