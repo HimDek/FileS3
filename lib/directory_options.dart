@@ -145,16 +145,19 @@ class DirectoryOptionsState extends State<DirectoryOptions> {
                             height: 200,
                             padding: EdgeInsets.only(top: 16),
                             child: SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  for (final file in removableFiles())
-                                    Text(
-                                      Main.pathFromKey(file.key) ?? file.key,
-                                    ),
-                                  if (removableFiles().isEmpty)
-                                    const Text('No files to delete'),
-                                ],
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    for (final file in removableFiles())
+                                      Text(
+                                        Main.pathFromKey(file.key) ?? file.key,
+                                      ),
+                                    if (removableFiles().isEmpty)
+                                      const Text('No files to delete'),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
