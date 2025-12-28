@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_file/open_file.dart';
+import 'package:s3_drive/services/ini_manager.dart';
 import 'package:s3_drive/services/job.dart';
+import 'package:s3_drive/services/models/backup_mode.dart';
 import 'package:s3_drive/services/models/common.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_selector/file_selector.dart';
@@ -439,8 +441,8 @@ class FileContextOption {
     BuildContext context,
   ) => FileContextOption(
     title: 'Delete Local Copy',
-    icon: Icons.delete_outline,
     subtitle: 'Delete from device only',
+    icon: Icons.delete_outline,
     action: () async {
       final handle = handler.deleteLocal(
         await showDialog<bool>(
@@ -672,8 +674,8 @@ class FilesContextOption {
     Function() clearSelection,
   ) => FilesContextOption(
     title: 'Delete Local Copies',
-    icon: Icons.delete_outline,
     subtitle: 'Delete from device only',
+    icon: Icons.delete_outline,
     action: () async {
       final yes = await showDialog<bool>(
         context: context,
@@ -788,6 +790,18 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     required this.deleteDirectory,
   });
 
+  List<RemoteFile> removableFiles() {
+    return Main.remoteFiles
+        .where(
+          (f) =>
+              p.isWithin(file.key, f.key) &&
+              !f.key.endsWith('/') &&
+              File(Main.pathFromKey(file.key) ?? file.key).existsSync() &&
+              Main.backupMode(file.key) == BackupMode.upload,
+        )
+        .toList();
+  }
+
   bool rootExists() {
     return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
   }
@@ -827,6 +841,20 @@ class DirectoryContextActionHandler extends ContextActionHandler {
       await moveDirectory(key, newKey);
       return 'Renamed to $newName';
     };
+  }
+
+  Future<String> Function()? deleteUploaded(
+    List<RemoteFile> removableFiles,
+    bool? yes,
+  ) {
+    return yes ?? false
+        ? () async {
+            for (final file in removableFiles) {
+              deleteLocalDirectory(file.key);
+            }
+            return 'Deleted local copies of uploaded files in ${p.basename(file.key)}';
+          }
+        : null;
   }
 
   @override
@@ -951,13 +979,82 @@ class DirectoryContextOption {
     },
   );
 
+  static DirectoryContextOption deleteUploaded(
+    BuildContext context,
+    DirectoryContextActionHandler handler,
+  ) => DirectoryContextOption(
+    title: 'Delete Uploaded Files',
+    subtitle: 'Delete local copies of uploaded files only',
+    icon: Icons.delete_sweep,
+    action: handler.removableFiles().isEmpty
+        ? null
+        : () async {
+            bool? yes = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Delete Uploaded Files'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'The following files will be deleted from your local directory:',
+                    ),
+                    Container(
+                      height: 200,
+                      padding: EdgeInsets.only(top: 16),
+                      child: SingleChildScrollView(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final file in handler.removableFiles())
+                                Text(Main.pathFromKey(file.key) ?? file.key),
+                              if (handler.removableFiles().isEmpty)
+                                const Text('No files to delete'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: handler.removableFiles().isNotEmpty
+                        ? () => Navigator.of(context).pop(true)
+                        : null,
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+            if (yes ?? false) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    await handler.deleteUploaded(
+                      handler.removableFiles(),
+                      true,
+                    )!(),
+                  ),
+                ),
+              );
+            }
+          },
+  );
+
   static DirectoryContextOption deleteLocal(
     BuildContext context,
     DirectoryContextActionHandler handler,
   ) => DirectoryContextOption(
     title: 'Delete Local Copy',
-    icon: Icons.folder_delete,
     subtitle: 'Delete from device only',
+    icon: Icons.folder_delete,
     action: () async {
       final yes = await showDialog<bool>(
         context: context,
@@ -1031,9 +1128,12 @@ class DirectoryContextOption {
       open(handler),
       download(handler),
       saveTo(handler, context),
-      cut(handler, cutKey),
-      copy(handler, copyKey),
-      rename(context, handler),
+      if (p.split(handler.file.key).length > 1) ...[
+        cut(handler, cutKey),
+        copy(handler, copyKey),
+        rename(context, handler),
+      ],
+      if (handler.removableFiles().isNotEmpty) deleteUploaded(context, handler),
       deleteLocal(context, handler),
       delete(context, handler),
     ];
@@ -1044,7 +1144,7 @@ class DirectoriesContextOption {
   final String title;
   final IconData icon;
   final String? subtitle;
-  final dynamic Function(BuildContext context)? action;
+  final dynamic Function()? action;
 
   static DirectoriesContextOption downloadAll(
     List<DirectoryContextActionHandler> handlers,
@@ -1059,7 +1159,7 @@ class DirectoriesContextOption {
         ? Icons.file_download_off
         : Icons.file_download_outlined,
     action: handlers.any((handler) => handler.download() != null)
-        ? (BuildContext context) {
+        ? () {
             for (final handler in handlers) {
               if (handler.download() != null) {
                 handler.download();
@@ -1075,7 +1175,7 @@ class DirectoriesContextOption {
   ) => DirectoriesContextOption(
     title: 'Save To...',
     icon: Icons.save_as,
-    action: (BuildContext context) async {
+    action: () async {
       final directory = await getDirectoryPath(canCreateDirectories: true);
       bool saved = false;
       for (final handler in handlers) {
@@ -1097,7 +1197,7 @@ class DirectoriesContextOption {
       DirectoriesContextOption(
         title: 'Move To...',
         icon: Icons.cut,
-        action: (BuildContext context) {
+        action: () {
           cutKey(null);
         },
       );
@@ -1106,10 +1206,95 @@ class DirectoriesContextOption {
       DirectoriesContextOption(
         title: 'Copy To...',
         icon: Icons.folder_copy,
-        action: (BuildContext context) {
+        action: () {
           copyKey(null);
         },
       );
+
+  static DirectoriesContextOption deleteUploaded(
+    List<DirectoryContextActionHandler> handlers,
+    BuildContext context,
+    Function() clearSelection,
+  ) => DirectoriesContextOption(
+    title: 'Delete Uploaded Files',
+    subtitle: 'Delete local copies of uploaded files only',
+    icon: Icons.delete_sweep,
+    action: handlers.any((handler) => handler.removableFiles().isNotEmpty)
+        ? () async {
+            bool? yes = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Delete Uploaded Files'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'The following files will be deleted from your local directories:',
+                    ),
+                    Container(
+                      height: 200,
+                      padding: EdgeInsets.only(top: 16),
+                      child: SingleChildScrollView(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final file
+                                  in handlers
+                                      .expand(
+                                        (handler) => handler.removableFiles(),
+                                      )
+                                      .toSet())
+                                Text(Main.pathFromKey(file.key) ?? file.key),
+                              if (handlers.every(
+                                (handler) => handler.removableFiles().isEmpty,
+                              ))
+                                const Text('No files to delete'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed:
+                        handlers.any(
+                          (handler) => handler.removableFiles().isNotEmpty,
+                        )
+                        ? () => Navigator.of(context).pop(true)
+                        : null,
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+            if (yes ?? false) {
+              for (final handler in handlers) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      await handler.deleteUploaded(
+                        handlers
+                            .expand((handler) => handler.removableFiles())
+                            .toSet()
+                            .toList(),
+                        true,
+                      )!(),
+                    ),
+                  ),
+                );
+              }
+            }
+          }
+        : null,
+  );
 
   static DirectoriesContextOption deleteLocal(
     List<DirectoryContextActionHandler> handlers,
@@ -1117,8 +1302,9 @@ class DirectoriesContextOption {
     Function() clearSelection,
   ) => DirectoriesContextOption(
     title: 'Delete Local Copies',
+    subtitle: 'Delete from device only',
     icon: Icons.delete_outline,
-    action: (BuildContext context) async {
+    action: () async {
       final yes = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1159,7 +1345,7 @@ class DirectoriesContextOption {
   ) => DirectoriesContextOption(
     title: 'Delete Selection',
     icon: Icons.delete_sweep,
-    action: (BuildContext context) async {
+    action: () async {
       final yes = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1205,6 +1391,7 @@ class DirectoriesContextOption {
       saveAllTo(handlers, context),
       cut(cutKey),
       copy(copyKey),
+      deleteUploaded(handlers, context, clearSelection),
       deleteLocal(handlers, context, clearSelection),
       deleteAll(handlers, context, clearSelection),
     ];
@@ -1310,6 +1497,7 @@ class BulkContextOption {
     Function() clearSelection,
   ) => BulkContextOption(
     title: 'Delete Local Copies',
+    subtitle: 'Delete from device only',
     icon: Icons.delete_outline,
     action: (BuildContext context) async {
       final yes = await showDialog<bool>(
@@ -1567,6 +1755,7 @@ Widget buildDirectoryContextMenu(
   (int, int) Function(RemoteFile, {bool recursive}) countContent,
   int Function(RemoteFile) dirSize,
   String Function(RemoteFile) dirModified,
+  Function(String, BackupMode) setBackupMode,
 ) {
   DirectoryContextActionHandler handler = DirectoryContextActionHandler(
     file: file,
@@ -1608,6 +1797,67 @@ Widget buildDirectoryContextMenu(
                   ),
                 ),
               ),
+              if (p.split(file.key).length == 1)
+                ListTile(
+                  leading: const Icon(Icons.drive_folder_upload),
+                  title: const Text('Backup From'),
+                  subtitle: Text(
+                    Main.pathFromKey(file.key) == null
+                        ? 'Not set'
+                        : Main.pathFromKey(file.key)!,
+                  ),
+                  onTap: () async {
+                    final String? directoryPath = await getDirectoryPath();
+                    if (directoryPath != null) {
+                      if (!IniManager.config!.sections().contains(
+                        'directories',
+                      )) {
+                        IniManager.config!.addSection('directories');
+                      }
+                      IniManager.config!.set(
+                        'directories',
+                        file.key,
+                        directoryPath,
+                      );
+                      IniManager.save();
+                      Main.listDirectories();
+                      Navigator.of(context).pop();
+                    }
+                  },
+                ),
+              if (p.isAbsolute(Main.pathFromKey(file.key) ?? file.key) &&
+                  p.split(file.key).length == 1) ...[
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: const Icon(Icons.sync),
+                  title: const Text('Backup Mode'),
+                ),
+                RadioGroup(
+                  groupValue: Main.backupMode(file.key),
+                  onChanged: (s) {
+                    setBackupMode(file.key, s!);
+                    Navigator.of(context).pop();
+                  },
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RadioListTile(
+                        value: BackupMode.upload,
+                        title: Text(BackupMode.upload.name),
+                        subtitle: Text(BackupMode.upload.description),
+                        dense: true,
+                      ),
+                      RadioListTile(
+                        value: BackupMode.sync,
+                        title: Text(BackupMode.sync.name),
+                        subtitle: Text(BackupMode.sync.description),
+                        dense: true,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
             ]
             .followedBy(
               DirectoryContextOption.allOptions(
@@ -1680,7 +1930,7 @@ Widget buildDirectoriesContextMenu(
                     : null,
                 onTap: option.action != null
                     ? () async {
-                        await option.action!(context);
+                        await option.action!();
                         Navigator.of(context).pop();
                       }
                     : null,

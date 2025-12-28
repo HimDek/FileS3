@@ -18,7 +18,6 @@ import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
-import 'directory_options.dart';
 import 'services/job.dart';
 import 'active_jobs.dart';
 import 'completed_jobs.dart';
@@ -787,6 +786,7 @@ class _HomeState extends State<Home> {
               _count,
               _dirSize,
               _dirModified,
+              _setBackupMode,
             )
           : buildFileContextMenu(
               context,
@@ -948,7 +948,7 @@ class _HomeState extends State<Home> {
                       ? Text(
                           _searching
                               ? "${_searchResults.where((item) => item is RemoteFile && item.key.endsWith('/')).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && item.key.endsWith('/')).length} Folders ' : ''}${_searchResults.where((item) => item is RemoteFile && !item.key.endsWith('/')).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && !item.key.endsWith('/')).length} Files ' : ''}found"
-                              : "$_dirCount Folders $_fileCount Files",
+                              : "${_dirCount > 0 ? '$_dirCount Folders ' : ''}${_fileCount > 0 ? '$_fileCount Files' : ''}",
                           style: Theme.of(context).textTheme.bodySmall,
                         )
                       : SizedBox.shrink(),
@@ -1393,17 +1393,28 @@ class _HomeState extends State<Home> {
                               ),
                             ),
                           if (Main.pathFromKey(_driveDir.key) != null)
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: GestureDetector(
-                                child: Text(
-                                  Main.pathFromKey(_driveDir.key) ?? '',
+                            Row(
+                              children: [
+                                Text(
+                                  '${Main.backupMode(_driveDir.key).name}: ',
                                   style: Theme.of(context).textTheme.labelSmall,
                                 ),
-                                onTap: () {
-                                  // TODO: Open file explorer at this location
-                                },
-                              ),
+                                SizedBox(width: 4),
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: GestureDetector(
+                                    child: Text(
+                                      Main.pathFromKey(_driveDir.key) ?? '',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelSmall,
+                                    ),
+                                    onTap: () {
+                                      // TODO: Open file explorer at this location
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
                         ],
                       ),
@@ -1513,21 +1524,22 @@ class _HomeState extends State<Home> {
                                       maxHeight: 800,
                                       maxWidth: 800,
                                     ),
-                                    builder: (context) => DirectoryOptions(
-                                      directory: dir,
-                                      deleteLocal: _deleteLocal,
-                                      onDelete: _deleteS3Directory,
-                                      remoteFiles: Main.remoteFiles
-                                          .where(
-                                            (file) =>
-                                                p.isWithin(dir.key, file.key),
-                                          )
-                                          .toList(),
-                                      setBackupMode: (mode) {
-                                        _setBackupMode(dir.key, mode);
-                                        setState(() {});
-                                      },
-                                    ),
+                                    builder: (context) =>
+                                        buildDirectoryContextMenu(
+                                          context,
+                                          dir,
+                                          _downloadDirectory,
+                                          _saveDirectory,
+                                          _cut,
+                                          _copy,
+                                          _moveDirectory,
+                                          _deleteLocal,
+                                          _deleteDirectory,
+                                          _count,
+                                          _dirSize,
+                                          _dirModified,
+                                          _setBackupMode,
+                                        ),
                                   );
                                 },
                           icon: const Icon(Icons.more_vert),
