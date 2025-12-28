@@ -62,21 +62,6 @@ class S3FileManager {
     }
   }
 
-  Future<List<String>> listDirectories({String dir = ''}) async {
-    String prefix = p.posix.join(_prefix, dir);
-    prefix = prefix.endsWith('/') ? prefix : '$prefix/';
-    final ListObjectsOutput resp = await _s3.listObjects(
-      bucket: _bucket,
-      prefix: prefix,
-      delimiter: '/',
-    );
-    final contents = resp.commonPrefixes ?? [];
-    return contents
-        .map((item) => item.prefix?.substring(prefix.length) ?? '')
-        .where((p) => p.isNotEmpty)
-        .toList();
-  }
-
   Future<dynamic> createDirectory(String dir) async {
     String key = !dir.endsWith('/') ? '$dir/' : dir;
 

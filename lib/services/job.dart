@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:ini/ini.dart';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:s3_drive/services/config_manager.dart';
 import 'package:s3_drive/services/hash_util.dart';
 import 'package:s3_drive/services/ini_manager.dart';
 import 'package:s3_drive/services/models/remote_file.dart';
@@ -13,10 +16,108 @@ import 'models/backup_mode.dart';
 import 'sync_analyzer.dart';
 import 's3_transfer_task.dart';
 
+class DeletionRegistrar {
+  static late File _file;
+  static Config? config;
+
+  static Future<void> init() async {
+    if (Platform.isWindows) {
+      _file = File(
+        '${Platform.environment['APPDATA']}\\S3-Drive\\deletion-register.ini',
+      );
+    } else if (Platform.isLinux) {
+      _file = File('/etc/s3-drive/deletion-register.ini').existsSync()
+          ? File('/etc/s3-drive/deletion-register.ini')
+          : File(
+              '${Platform.environment['HOME']}/.config/s3-drive/deletion-register.ini',
+            );
+    } else if (Platform.isMacOS) {
+      _file = File(
+        '${Platform.environment['HOME']}/Library/Application Support/S3-Drive/deletion-register.ini',
+      );
+    } else if (Platform.isAndroid) {
+      _file = File(
+        '${(await getApplicationDocumentsDirectory()).path}/deletion-register.ini',
+      );
+    }
+
+    if (!_file.existsSync()) {
+      _file.createSync(recursive: true);
+      _file.writeAsStringSync('[register]');
+    }
+
+    config = Config.fromStrings(await _file.readAsLines());
+  }
+
+  static void save() {
+    _file.writeAsStringSync(config.toString());
+  }
+
+  static void logDeletion(String key) {
+    if (!config!.sections().contains('register')) {
+      config!.addSection('register');
+    }
+    config!.set('register', key, DateTime.now().toUtc().toIso8601String());
+    save();
+  }
+
+  static Future<Map<String, DateTime>> pullDeletions() async {
+    if (Main.remoteFiles.any((file) => file.key == 'deletion-register.ini') ==
+        false) {
+      if (kDebugMode) {
+        debugPrint("No remote deletion register found.");
+      }
+      return {};
+    }
+    Job job = DownloadJob(
+      localFile: _file,
+      remoteKey: 'deletion-register.ini',
+      bytes: _file.lengthSync(),
+      md5: () {
+        final file = Main.remoteFiles.firstWhere(
+          (file) => file.key == 'deletion-register.ini',
+        );
+        final hex = file.etag.replaceAll('"', '');
+
+        if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
+          throw StateError('ETag is not a single-part MD5 digest');
+        }
+
+        final bytes = List<int>.generate(
+          16,
+          (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16),
+        );
+
+        return Digest(bytes);
+      }(),
+      onStatus: (job, result) {},
+    );
+    await job.start();
+    Job.completedJobs.remove(job);
+    config = Config.fromStrings(_file.readAsLinesSync());
+    return {
+      for (var entry in config!.options('register')!)
+        entry: DateTime.parse(config!.get('register', entry)!).toUtc(),
+    };
+  }
+
+  static Future<void> pushDeletions() async {
+    Job job = UploadJob(
+      localFile: _file,
+      remoteKey: 'deletion-register.ini',
+      bytes: _file.lengthSync(),
+      onStatus: (job, result) {},
+      md5: await HashUtil(_file).md5Hash(),
+    );
+    await job.start();
+    Job.completedJobs.remove(job);
+  }
+}
+
 abstract class Main {
   static late S3FileManager? s3Manager;
   static final List<Watcher> watchers = <Watcher>[];
-  static final List<RemoteFile> remoteFiles = <RemoteFile>[];
+  static List<RemoteFile> remoteFiles = <RemoteFile>[];
   static http.Client httpClient = http.Client();
   static Function(bool loading)? setLoadingState;
   static Function()? setHomeState;
@@ -102,14 +203,19 @@ abstract class Main {
     final fetchedRemoteFiles = await s3Manager!.listObjects(dir: dir);
     remoteFiles.removeWhere((file) => p.isWithin(dir, file.key));
     remoteFiles.addAll(fetchedRemoteFiles);
+    await ConfigManager.saveRemoteFiles(remoteFiles);
   }
 
   static Future<void> listDirectories({bool background = false}) async {
     await setLoadingState?.call(true);
+
+    if (!background) {
+      remoteFiles = await ConfigManager.loadRemoteFiles();
+    }
+
     while (s3Manager == null || !s3Manager!.configured) {
       await Future.delayed(const Duration(milliseconds: 500));
     }
-    final dirs = await s3Manager!.listDirectories();
 
     await stopWatchers();
 
@@ -117,6 +223,12 @@ abstract class Main {
     watchers.clear();
 
     await refreshRemote();
+    final dirs = remoteFiles
+        .where((dir) => dir.key.endsWith('/'))
+        .map((file) => '${file.key.split('/').first}/')
+        .toSet()
+        .toList();
+
     for (final dir in dirs) {
       await addWatcher(dir, background: background);
     }
@@ -150,14 +262,24 @@ abstract class Main {
     if (!file.existsSync()) {
       return;
     }
+
     if (pathFromKey(key) == file.path) {
-      UploadJob(
-        localFile: file,
-        remoteKey: key,
-        bytes: file.lengthSync(),
-        onStatus: onJobStatus,
-        md5: await HashUtil(file).md5Hash(),
-      ).add();
+      final deleteionLog = await DeletionRegistrar.pullDeletions();
+      if (deleteionLog.containsKey(key) &&
+          file.lastModifiedSync().toUtc().isBefore(deleteionLog[key]!)) {
+        if (kDebugMode) {
+          debugPrint("File deleted remotely, deleting locally: ${file.path}");
+        }
+        file.deleteSync();
+      } else {
+        UploadJob(
+          localFile: file,
+          remoteKey: key,
+          bytes: file.lengthSync(),
+          onStatus: onJobStatus,
+          md5: await HashUtil(file).md5Hash(),
+        ).add();
+      }
     } else if (p.isAbsolute(pathFromKey(key) ?? key)) {
       final newKey = () {
         String base = p.basenameWithoutExtension(key);
@@ -220,6 +342,9 @@ abstract class Main {
   }) async {
     if (IniManager.config == null) {
       await IniManager.init();
+    }
+    if (DeletionRegistrar.config == null) {
+      await DeletionRegistrar.init();
     }
     await setConfig(context);
     Job.onProgressUpdate = () {
@@ -538,7 +663,8 @@ class Watcher {
       );
     }
 
-    for (Job job in Job.jobs.where((job) => !job.completed && !job.running)) {
+    for (Job job
+        in Job.jobs.where((job) => !job.completed && !job.running).toList()) {
       job.remove();
     }
 
@@ -571,6 +697,9 @@ class Watcher {
       if (Job.jobs.any((job) => job.remoteKey == file.key)) {
         continue;
       }
+      print(
+        'Remote only file: ${file.key}, mode: ${Main.backupMode(file.key).value}',
+      );
       if (Main.backupMode(file.key) == BackupMode.sync) {
         Main.downloadFile(file);
       }

@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:s3_drive/main.dart';
 import 'package:s3_drive/services/ini_manager.dart';
 import 'package:s3_drive/services/job.dart';
+import 'package:s3_drive/services/models/remote_file.dart';
 
 final themeController = ThemeController();
 final ultraDarkController = UltraDarkController();
@@ -115,6 +118,21 @@ class ConfigManager {
     IniManager.config!.set("ui", "color_mode", colorModeStr);
     IniManager.config!.set("ui", "ultra_dark", config.ultraDark.toString());
     IniManager.save();
+  }
+
+  static Future<void> saveRemoteFiles(List<RemoteFile> files) async {
+    final String jsonString = jsonEncode(
+      files.map((file) => file.toJson()).toList(),
+    );
+    await _storage.write(key: 'remote_files', value: jsonString);
+  }
+
+  static Future<List<RemoteFile>> loadRemoteFiles() async {
+    final jsonString = await _storage.read(key: 'remote_files') ?? '[]';
+    final List<dynamic> jsonList = jsonDecode(jsonString);
+    return jsonList
+        .map((json) => RemoteFile.fromJson(json as Map<String, dynamic>))
+        .toList();
   }
 }
 

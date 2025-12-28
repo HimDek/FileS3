@@ -14,4 +14,24 @@ class RemoteFile {
   String toString() {
     return key;
   }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'key': key,
+      'size': size,
+      'etag': etag,
+      'lastModified': lastModified?.toIso8601String(),
+    };
+  }
+
+  factory RemoteFile.fromJson(Map<String, dynamic> json) {
+    return RemoteFile(
+      key: json['key'] as String,
+      size: json['size'] as int,
+      etag: json['etag'] as String,
+      lastModified: json['lastModified'] != null
+          ? DateTime.parse(json['lastModified'] as String)
+          : null,
+    );
+  }
 }

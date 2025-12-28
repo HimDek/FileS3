@@ -28,9 +28,8 @@ class IniManager {
       _file.writeAsStringSync('[aws]\n[s3]\n[directories]\n[modes]\n[ui]');
     }
 
-    await _file.readAsLines().then(
-      (lines) => config = Config.fromStrings(lines),
-    );
+    final lines = _file.readAsLinesSync();
+    config = Config.fromStrings(lines);
   }
 
   static void save() {

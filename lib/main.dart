@@ -314,6 +314,9 @@ class _HomeState extends State<Home> {
     );
     _dirCount = counts.$1;
     _fileCount = counts.$2;
+    if (_driveDir.key == '') {
+      _fileCount = 0;
+    }
 
     setState(() {});
   }
@@ -336,6 +339,17 @@ class _HomeState extends State<Home> {
       IniManager.config!.removeOption('modes', key);
     } else {
       IniManager.config!.set('modes', key, mode.value.toString());
+      if (mode == BackupMode.sync && p.split(key).length == 1) {
+        final toremove = <String>[];
+        for (var dir in IniManager.config!.options('modes')!) {
+          if (p.isWithin(key, dir) && dir != key) {
+            toremove.add(dir);
+          }
+        }
+        for (var dir in toremove) {
+          IniManager.config!.removeOption('modes', dir);
+        }
+      }
     }
     IniManager.save();
     setState(() {});
@@ -448,6 +462,9 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading = true;
     });
+    await DeletionRegistrar.pullDeletions();
+    DeletionRegistrar.logDeletion(key);
+    await DeletionRegistrar.pushDeletions();
     await Main.s3Manager!.deleteFile(key);
     if (File(Main.pathFromKey(key) ?? key).existsSync()) {
       File(Main.pathFromKey(key) ?? key).deleteSync();
@@ -1431,7 +1448,11 @@ class _HomeState extends State<Home> {
               ? () {
                   final dirs = Set.from(
                     Main.remoteFiles
-                        .where((file) => p.split(file.key).length == 1)
+                        .where(
+                          (file) =>
+                              p.split(file.key).length == 1 &&
+                              file.key.endsWith('/'),
+                        )
                         .map<RemoteFile>((file) => file),
                   ).toList();
                   return SliverList.builder(
