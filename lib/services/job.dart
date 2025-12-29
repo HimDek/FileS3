@@ -393,21 +393,18 @@ abstract class Main {
     }
   }
 
-  static Future<void> setConfig(BuildContext? context) async {
-    s3Manager = await S3FileManager.create(context, httpClient);
+  static Future<void> setConfig() async {
+    s3Manager = await S3FileManager.create(httpClient);
   }
 
-  static Future<void> init(
-    BuildContext? context, {
-    bool background = false,
-  }) async {
+  static Future<void> init({bool background = false}) async {
     if (IniManager.config == null) {
       await IniManager.init();
     }
     if (DeletionRegistrar.config == null) {
       await DeletionRegistrar.init();
     }
-    await setConfig(context);
+    await setConfig();
     Job.onProgressUpdate = () {
       setHomeState?.call();
     };

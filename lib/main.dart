@@ -29,7 +29,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 Future<void> runJob({
   required void Function(double progress) onProgress,
 }) async {
-  await Main.init(null, background: true);
+  await Main.init(background: true);
   Job.onProgressUpdate = () {
     final runningJobs = Job.jobs.where((job) => job.running).toList();
     if (runningJobs.isEmpty) {
@@ -908,19 +908,36 @@ class _HomeState extends State<Home> {
     setState(() {});
   }
 
+  Future<void> _pushS3ConfigPage() async {
+    if (Main.s3Manager == null) {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (context) => S3ConfigPage()));
+    }
+  }
+
+  Future<void> _setConfig() async {
+    await Main.setConfig();
+    while (Main.s3Manager == null) {
+      await _pushS3ConfigPage();
+      await Main.setConfig();
+    }
+  }
+
   Future<void> _init() async {
     final uiConfig = ConfigManager.loadUiConfig();
     themeController.update(uiConfig.colorMode);
     ultraDarkController.update(uiConfig.ultraDark);
 
-    final androidInfo = await DeviceInfoPlugin().androidInfo;
-    final sdkInt = androidInfo.version.sdkInt;
+    Permission? permission;
 
-    Permission? permission = Platform.isAndroid
-        ? sdkInt >= 30
-              ? Permission.manageExternalStorage
-              : Permission.storage
-        : null;
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
+      permission = sdkInt >= 30
+          ? Permission.manageExternalStorage
+          : Permission.storage;
+    }
 
     if (permission != null) {
       while (await permission.request().isDenied) {
@@ -963,16 +980,22 @@ class _HomeState extends State<Home> {
     Main.setHomeState = () {
       setState(() {});
     };
-    await Main.init(context);
+
+    await Main.init();
     setState(() {
       _loading.value = false;
     });
+
+    if (Main.s3Manager == null) {
+      await _setConfig();
+      await Main.refreshRemote();
+    }
   }
 
   @override
   void initState() {
-    super.initState();
     _init();
+    super.initState();
     _scrollController.addListener(() {
       final direction = _scrollController.position.userScrollDirection;
 
@@ -991,9 +1014,8 @@ class _HomeState extends State<Home> {
   }
 
   @override
-  void setState(void Function() fn) {
+  void setState(void Function() fn) async {
     super.setState(() {
-      Main.setConfig(null);
       Main.ensureDirectoryObjects();
       fn();
       for (RemoteFile item in _selection) {

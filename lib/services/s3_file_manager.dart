@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:files3/services/models/remote_file.dart';
 import 'package:files3/services/config_manager.dart';
 import 'package:crypto/crypto.dart';
@@ -49,12 +48,12 @@ class S3FileManager {
     configured = true;
   }
 
-  static Future<S3FileManager?> create(
-    BuildContext? context,
-    http.Client client,
-  ) async {
-    final cfg = await ConfigManager.loadS3Config(context: context);
-    if (cfg != null) {
+  static Future<S3FileManager?> create(http.Client client) async {
+    final cfg = await ConfigManager.loadS3Config();
+    if (cfg.accessKey.isNotEmpty &&
+        cfg.secretKey.isNotEmpty &&
+        cfg.region.isNotEmpty &&
+        cfg.bucket.isNotEmpty) {
       return S3FileManager._(cfg, client);
     } else {
       return null;

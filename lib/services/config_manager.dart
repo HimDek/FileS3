@@ -37,10 +37,7 @@ class UiConfig {
 class ConfigManager {
   static const _storage = FlutterSecureStorage();
 
-  static Future<S3Config?> loadS3Config({
-    BuildContext? context,
-    bool push = true,
-  }) async {
+  static Future<S3Config> loadS3Config() async {
     final accessKey = await _storage.read(key: 'aws_access_key') ?? '';
     final secretKey = await _storage.read(key: 'aws_secret_key') ?? '';
 
@@ -48,20 +45,6 @@ class ConfigManager {
     final bucket = IniManager.config?.get("s3", "bucket") ?? '';
     final prefix = IniManager.config?.get("s3", "prefix") ?? '';
     final host = IniManager.config?.get("s3", "host") ?? '';
-
-    if ((accessKey.isEmpty ||
-            secretKey.isEmpty ||
-            region.isEmpty ||
-            bucket.isEmpty) &&
-        push) {
-      if (context != null) {
-        await Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (context) => S3ConfigPage()));
-        return await loadS3Config(context: context);
-      }
-      return null;
-    }
 
     return S3Config(
       accessKey: accessKey,
@@ -152,57 +135,38 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   bool _loading = true;
   bool _obscureSecret = true;
 
-  Future<void> _readConfig(BuildContext context) async {
+  Future<void> _readConfig() async {
     setState(() {
       _loading = true;
     });
-    try {
-      final config = await ConfigManager.loadS3Config(
-        context: context,
-        push: false,
-      );
-      setState(() {
-        _accessKey = config!.accessKey;
-        _secretKey = config.secretKey;
-        _region = config.region;
-        _bucket = config.bucket;
-        _prefix = config.prefix;
-        _host = config.host;
-        _loading = false;
-      });
-    } catch (e) {
-      // Handle error, e.g., show a dialog
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading configuration: $e')),
-      );
-    }
+    final config = await ConfigManager.loadS3Config();
+    setState(() {
+      _accessKey = config.accessKey;
+      _secretKey = config.secretKey;
+      _region = config.region;
+      _bucket = config.bucket;
+      _prefix = config.prefix;
+      _host = config.host;
+      _loading = false;
+    });
   }
 
   Future<void> _saveConfig(BuildContext context) async {
     setState(() {
       _loading = true;
     });
-    try {
-      await ConfigManager.saveS3Config(
-        S3Config(
-          accessKey: _accessKey,
-          secretKey: _secretKey,
-          region: _region,
-          bucket: _bucket,
-          prefix: _prefix,
-          host: _host,
-        ),
-      );
-      await _readConfig(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Configuration saved successfully')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error saving configuration: $e')));
-    }
-    await Main.setConfig(null);
+    await ConfigManager.saveS3Config(
+      S3Config(
+        accessKey: _accessKey,
+        secretKey: _secretKey,
+        region: _region,
+        bucket: _bucket,
+        prefix: _prefix,
+        host: _host,
+      ),
+    );
+    await _readConfig();
+    await Main.setConfig();
     await Main.listDirectories();
     setState(() {
       _loading = false;
@@ -212,7 +176,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   @override
   void initState() {
     super.initState();
-    _readConfig(context);
+    _readConfig();
   }
 
   @override
