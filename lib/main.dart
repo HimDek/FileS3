@@ -822,7 +822,7 @@ class _HomeState extends State<Home> {
       context: context,
       enableDrag: true,
       showDragHandle: true,
-      constraints: const BoxConstraints(maxHeight: 800, maxWidth: 800),
+      constraints: const BoxConstraints(maxHeight: 1400, maxWidth: 1400),
       builder: (context) {
         return ValueListenableBuilder<bool>(
           valueListenable: _loading,
@@ -888,6 +888,21 @@ class _HomeState extends State<Home> {
         );
       },
     );
+
+    if (_loading.value) {
+      final completer = Completer<void>();
+      late VoidCallback listener;
+      listener = () {
+        if (!completer.isCompleted) {
+          _loading.removeListener(listener);
+          completer.complete();
+        }
+      };
+
+      _loading.addListener(listener);
+      await completer.future;
+    }
+
     await Main.refreshWatchers();
     setState(() {});
   }

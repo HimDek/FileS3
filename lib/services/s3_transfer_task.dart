@@ -236,6 +236,7 @@ class S3TransferTask {
         localFile.deleteSync();
       }
       tempFile.copySync(localFile.path);
+      tempFile.deleteSync();
       onStatus?.call('Download complete');
     } else {
       throw Exception(

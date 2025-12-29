@@ -66,28 +66,38 @@ class DeletionRegistrar {
 
   static Future<Map<String, DateTime>> pullDeletions() async {
     await Main.refreshRemote(dir: 'deletion-register.ini');
-    if (Main.remoteFiles.every((file) => file.key != 'deletion-register.ini') ||
-        lastPulled.toUtc().isBefore(
-          Main.remoteFiles
-                  .firstWhere((file) => file.key == 'deletion-register.ini')
-                  .lastModified
-                  ?.toUtc() ??
-              DateTime.fromMillisecondsSinceEpoch(0).toUtc(),
-        )) {
+
+    if (Main.remoteFiles.every((file) => file.key != 'deletion-register.ini')) {
       if (kDebugMode) {
-        debugPrint("Remote deletion register is outdated or missing.");
+        debugPrint("Remote deletion register does not exist.");
       }
       return {};
     }
+
+    final remoteFile = Main.remoteFiles.firstWhere(
+      (file) => file.key == 'deletion-register.ini',
+    );
+
+    if (lastPulled.toUtc().isAfter(
+          remoteFile.lastModified?.toUtc() ??
+              DateTime.fromMillisecondsSinceEpoch(0).toUtc(),
+        ) &&
+        _file.existsSync()) {
+      if (kDebugMode) {
+        debugPrint("Local deletion register is up to date.");
+      }
+      return {
+        for (var entry in config!.options('register')!)
+          entry: DateTime.parse(config!.get('register', entry)!).toUtc(),
+      };
+    }
+
     Job job = DownloadJob(
       localFile: _file,
       remoteKey: 'deletion-register.ini',
-      bytes: _file.lengthSync(),
+      bytes: remoteFile.size,
       md5: () {
-        final file = Main.remoteFiles.firstWhere(
-          (file) => file.key == 'deletion-register.ini',
-        );
-        final hex = file.etag.replaceAll('"', '');
+        final hex = remoteFile.etag.replaceAll('"', '');
 
         if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
           throw StateError('ETag is not a single-part MD5 digest');
@@ -102,9 +112,16 @@ class DeletionRegistrar {
       }(),
       onStatus: (job, result) {},
     );
+
     await job.start();
     Job.completedJobs.remove(job);
-    config = Config.fromStrings(_file.readAsLinesSync());
+
+    if (_file.existsSync()) {
+      config = Config.fromStrings(_file.readAsLinesSync());
+    }
+
+    lastPulled = DateTime.now().toUtc();
+
     return {
       for (var entry in config!.options('register')!)
         entry: DateTime.parse(config!.get('register', entry)!).toUtc(),
@@ -291,9 +308,7 @@ abstract class Main {
     }
 
     await refreshRemote();
-    if (background) {
-      await refreshWatchers(background: true);
-    }
+    await refreshWatchers(background: true);
     await setLoadingState?.call(false);
   }
 
@@ -325,7 +340,7 @@ abstract class Main {
       return;
     }
 
-    if (pathFromKey(key) == file.path) {
+    if (p.normalize(pathFromKey(key) ?? key) == p.normalize(file.path)) {
       final deleteionLog = await DeletionRegistrar.pullDeletions();
       if (deleteionLog.containsKey(key) &&
           file.lastModifiedSync().toUtc().isBefore(
