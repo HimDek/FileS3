@@ -297,10 +297,8 @@ class _HomeState extends State<Home> {
   }
 
   void _updateCounts() {
-    setState(() {
-      _dirCount = 0;
-      _fileCount = 0;
-    });
+    _dirCount = 0;
+    _fileCount = 0;
 
     final counts = _count(
       RemoteFile(
@@ -316,8 +314,6 @@ class _HomeState extends State<Home> {
     if (_driveDir.key == '') {
       _fileCount = 0;
     }
-
-    setState(() {});
   }
 
   int _dirSize(RemoteFile dir) {
@@ -362,7 +358,6 @@ class _HomeState extends State<Home> {
             _navIndex = 0;
             _driveDir = dir;
           });
-          _updateCounts();
         };
 
   Future<void> _createDirectory(String dir) async {
@@ -370,7 +365,17 @@ class _HomeState extends State<Home> {
       _loading = true;
     });
     await Main.s3Manager!.createDirectory(dir);
-    await Main.addWatcher(dir);
+    Main.remoteFiles.add(
+      RemoteFile(
+        key: dir.endsWith('/') ? dir : '$dir/',
+        size: 0,
+        etag: '',
+        lastModified: DateTime.now(),
+      ),
+    );
+    if (p.split(dir).length == 1) {
+      await Main.addWatcher(dir);
+    }
     setState(() {
       _loading = false;
     });
@@ -405,9 +410,9 @@ class _HomeState extends State<Home> {
       lastModified: oldFile.lastModified,
     );
 
-    Main.remoteFiles.removeWhere((file) => file.key == oldFile.key);
     Main.remoteFiles.add(newFile);
     if (refresh) {
+      await Main.refreshWatchers();
       setState(() {
         _loading = false;
       });
@@ -422,19 +427,24 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading = true;
     });
-    for (final file in Main.remoteFiles) {
-      if (file.key.startsWith(dir) &&
-          file.key != dir &&
-          !file.key.endsWith('/')) {
-        await _copyFile(
-          file.key,
-          p.join(newDir, p.relative(file.key, from: dir)),
-          refresh: false,
-        );
-      }
+    for (final file
+        in Main.remoteFiles
+            .where(
+              (file) =>
+                  p.isWithin(dir, file.key) &&
+                  file.key != dir &&
+                  !file.key.endsWith('/'),
+            )
+            .toList()) {
+      await _copyFile(
+        file.key,
+        p.join(newDir, p.relative(file.key, from: dir)),
+        refresh: false,
+      );
     }
 
     if (refresh) {
+      await Main.refreshWatchers();
       setState(() {
         _loading = false;
       });
@@ -499,9 +509,10 @@ class _HomeState extends State<Home> {
     DeletionRegistrar.logDeletions(keys);
     await DeletionRegistrar.pushDeletions();
 
-    for (final file in Main.remoteFiles.where(
-      (file) => keys.contains(file.key) && !file.key.endsWith('/'),
-    )) {
+    for (final file
+        in Main.remoteFiles
+            .where((file) => keys.contains(file.key) && !file.key.endsWith('/'))
+            .toList()) {
       await Main.s3Manager!.deleteFile(file.key);
     }
 
@@ -536,9 +547,12 @@ class _HomeState extends State<Home> {
     });
     for (final dir in dirs) {
       final files = Main.remoteFiles
-          .where((file) => file.key.startsWith(dir))
+          .where((file) => p.isWithin(dir, file.key))
           .toList();
-      await _deleteS3(files.map((file) => file.key).toList(), refresh: false);
+      await _deleteS3(
+        files.map((file) => file.key).toList().followedBy([dir]).toList(),
+        refresh: false,
+      );
       if (Directory(Main.pathFromKey(dir) ?? dir).existsSync()) {
         Directory(Main.pathFromKey(dir) ?? dir).deleteSync(recursive: true);
       }
@@ -563,6 +577,7 @@ class _HomeState extends State<Home> {
     }
     await _deleteFiles(keys, refresh: false);
     if (refresh) {
+      await Main.refreshWatchers();
       setState(() {
         _loading = false;
       });
@@ -582,6 +597,7 @@ class _HomeState extends State<Home> {
     }
     await _deleteDirectories(dirs, refresh: false);
     if (refresh) {
+      await Main.refreshWatchers();
       setState(() {
         _loading = false;
       });
@@ -614,22 +630,26 @@ class _HomeState extends State<Home> {
             : BackupMode.sync,
       );
     }
-    for (final file in Main.remoteFiles) {
-      if (file.key.startsWith(dir.key) &&
-          file.key != dir.key &&
-          !file.key.endsWith('/')) {
-        final relativePath = p.relative(file.key, from: dir.key);
-        final localFilePath = p.join(
-          localPath ?? Main.pathFromKey(dir.key) ?? dir.key,
-          relativePath,
-        );
-        final localFileDir = p.dirname(localFilePath);
-        if (!Directory(localFileDir).existsSync()) {
-          Directory(localFileDir).createSync(recursive: true);
-        }
-        if (!File(localFilePath).existsSync()) {
-          Main.downloadFile(file, localPath: localFilePath);
-        }
+    for (final file
+        in Main.remoteFiles
+            .where(
+              (file) =>
+                  p.isWithin(dir.key, file.key) &&
+                  file.key != dir.key &&
+                  !file.key.endsWith('/'),
+            )
+            .toList()) {
+      final relativePath = p.relative(file.key, from: dir.key);
+      final localFilePath = p.join(
+        localPath ?? Main.pathFromKey(dir.key) ?? dir.key,
+        relativePath,
+      );
+      final localFileDir = p.dirname(localFilePath);
+      if (!Directory(localFileDir).existsSync()) {
+        Directory(localFileDir).createSync(recursive: true);
+      }
+      if (!File(localFilePath).existsSync()) {
+        Main.downloadFile(file, localPath: localFilePath);
       }
     }
   }
@@ -665,7 +685,7 @@ class _HomeState extends State<Home> {
                 final file = item;
                 final newKey = p.join(_driveDir.key, p.basename(file.key));
                 await _copyFile(file.key, newKey);
-              } else if (item is String) {
+              } else {
                 final dir = item;
                 final newDir = p.join(_driveDir.key, p.basename(dir.key));
                 await _copyDirectory(dir.key, newDir);
@@ -681,7 +701,6 @@ class _HomeState extends State<Home> {
                   .where((item) => item.key.endsWith('/'))
                   .map((item) => p.join(_driveDir.key, p.basename(item.key)))
                   .toList(),
-              refresh: false,
             );
             _moveFiles(
               selection
@@ -692,7 +711,6 @@ class _HomeState extends State<Home> {
                   .where((item) => !item.key.endsWith('/'))
                   .map((item) => p.join(_driveDir.key, p.basename(item.key)))
                   .toList(),
-              refresh: false,
             );
             _selection.clear();
           }
@@ -804,14 +822,16 @@ class _HomeState extends State<Home> {
               _downloadDirectory,
               _saveFile,
               _saveDirectory,
-              (keys, newKeys) => _moveFiles(keys, newKeys, refresh: true),
-              (dirs, newDirs) => _moveDirectories(dirs, newDirs, refresh: true),
+              (keys, newKeys) async =>
+                  await _moveFiles(keys, newKeys, refresh: true),
+              (dirs, newDirs) async =>
+                  await _moveDirectories(dirs, newDirs, refresh: true),
               _cut,
               _copy,
               _deleteLocal,
               _deleteS3,
-              (keys) => _deleteFiles(keys, refresh: true),
-              (dirs) => _deleteDirectories(dirs, refresh: true),
+              (keys) async => await _deleteFiles(keys, refresh: true),
+              (dirs) async => await _deleteDirectories(dirs, refresh: true),
               () {
                 _selection.clear();
                 setState(() {});
@@ -825,11 +845,12 @@ class _HomeState extends State<Home> {
               _saveDirectory,
               _cut,
               _copy,
-              (List<String> dirs, List<String> newDirs) =>
-                  _moveDirectories(dirs, newDirs, refresh: true),
+              (List<String> dirs, List<String> newDirs) async =>
+                  await _moveDirectories(dirs, newDirs, refresh: true),
               _deleteLocal,
               _deleteS3,
-              (List<String> dirs) => _deleteDirectories(dirs, refresh: true),
+              (List<String> dirs) async =>
+                  await _deleteDirectories(dirs, refresh: true),
               _count,
               _dirSize,
               _dirModified,
@@ -843,10 +864,11 @@ class _HomeState extends State<Home> {
               _saveFile,
               _cut,
               _copy,
-              (List<String> keys, List<String> newKeys) =>
-                  _moveFiles(keys, newKeys, refresh: true),
+              (List<String> keys, List<String> newKeys) async =>
+                  await _moveFiles(keys, newKeys, refresh: true),
               _deleteLocal,
-              (List<String> keys) => _deleteFiles(keys, refresh: true),
+              (List<String> keys) async =>
+                  await _deleteFiles(keys, refresh: true),
             ),
     );
     setState(() {});
@@ -903,7 +925,6 @@ class _HomeState extends State<Home> {
       setState(() {});
     };
     await Main.init(context);
-    _updateCounts();
     setState(() {
       _loading = false;
     });
@@ -932,26 +953,30 @@ class _HomeState extends State<Home> {
 
   @override
   void setState(void Function() fn) {
-    Main.setConfig(null);
-    super.setState(fn);
+    super.setState(() {
+      Main.setConfig(null);
+      Main.ensureDirectoryObjects();
+      fn();
+      for (RemoteFile item in _selection) {
+        if (p.isWithin(item.key, _driveDir.key) || item.key == _driveDir.key) {
+          _driveDir = () {
+            String dir = _driveDir.key;
+            while (p.isWithin(item.key, dir) || item.key == dir) {
+              dir = p.dirname(dir);
+              if (dir == '') {
+                break;
+              }
+            }
+            return Main.remoteFiles.firstWhere((file) => file.key == dir);
+          }();
+        }
+      }
+      _updateCounts();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    for (RemoteFile item in _selection) {
-      if (p.isWithin(item.key, _driveDir.key) || item.key == _driveDir.key) {
-        _driveDir = () {
-          String dir = _driveDir.key;
-          while (p.isWithin(item.key, dir) || item.key == dir) {
-            dir = p.dirname(dir);
-            if (dir == '') {
-              break;
-            }
-          }
-          return Main.remoteFiles.firstWhere((file) => file.key == dir);
-        }();
-      }
-    }
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: CustomScrollView(
@@ -1067,8 +1092,7 @@ class _HomeState extends State<Home> {
                           ),
                           IconButton(
                             onPressed: () async {
-                              await Main.stopWatchers();
-                              _showContextMenu(null);
+                              await _showContextMenu(null);
                             },
                             icon: Icon(Icons.more_vert),
                           ),
@@ -1368,10 +1392,11 @@ class _HomeState extends State<Home> {
                                     <Widget>[
                                           GestureDetector(
                                             onTap:
-                                                _selection.isEmpty &&
+                                                (_selection.isNotEmpty &&
                                                     _selectionAction ==
-                                                        SelectionAction.none
-                                                ? () {
+                                                        SelectionAction.none)
+                                                ? null
+                                                : () {
                                                     setState(() {
                                                       _driveDir = RemoteFile(
                                                         key: '',
@@ -1379,9 +1404,7 @@ class _HomeState extends State<Home> {
                                                         etag: '',
                                                       );
                                                     });
-                                                    _updateCounts();
-                                                  }
-                                                : null,
+                                                  },
                                             child: Text(
                                               'S3 Drive',
                                               style: Theme.of(
@@ -1397,11 +1420,12 @@ class _HomeState extends State<Home> {
                                               .map(
                                                 (dir) => GestureDetector(
                                                   onTap:
-                                                      _selection.isEmpty &&
+                                                      (_selection.isNotEmpty &&
                                                           _selectionAction ==
                                                               SelectionAction
-                                                                  .none
-                                                      ? () {
+                                                                  .none)
+                                                      ? null
+                                                      : () {
                                                           String newPath = '';
                                                           for (final part
                                                               in _driveDir.key
@@ -1427,8 +1451,7 @@ class _HomeState extends State<Home> {
                                                                       ),
                                                                 );
                                                           });
-                                                        }
-                                                      : null,
+                                                        },
                                                   child: Text(
                                                     dir,
                                                     style: Theme.of(
@@ -1503,8 +1526,7 @@ class _HomeState extends State<Home> {
                   changeDirectory: _changeDirectory,
                   select: _select,
                   showContextMenu: (file) async {
-                    await Main.stopWatchers();
-                    _showContextMenu(file);
+                    await _showContextMenu(file);
                   },
                   count: _count,
                   dirSize: _dirSize,
@@ -1533,8 +1555,7 @@ class _HomeState extends State<Home> {
                   changeDirectory: _changeDirectory,
                   select: _select,
                   showContextMenu: (file) async {
-                    await Main.stopWatchers();
-                    _showContextMenu(file);
+                    await _showContextMenu(file);
                   },
                   count: _count,
                   dirSize: _dirSize,
@@ -1573,8 +1594,7 @@ class _HomeState extends State<Home> {
                   changeDirectory: _changeDirectory,
                   select: _select,
                   showContextMenu: (file) async {
-                    await Main.stopWatchers();
-                    _showContextMenu(file);
+                    await _showContextMenu(file);
                   },
                   count: _count,
                   dirSize: _dirSize,
@@ -1730,12 +1750,9 @@ class _HomeState extends State<Home> {
           ],
           currentIndex: _navIndex,
           onTap: (index) async {
-            _navIndex = index;
-            setState(() {});
-            if (index == 0) {
-              _updateCounts();
-            }
-            setState(() {});
+            setState(() {
+              _navIndex = index;
+            });
           },
         ),
       ),

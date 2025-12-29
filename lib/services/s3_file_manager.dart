@@ -110,42 +110,6 @@ class S3FileManager {
           ),
         )
         .toList();
-
-    final existingPaths = list.map((o) => o.key).toSet();
-
-    for (final obj in list.toList()) {
-      final normalized = p.normalize(obj.key);
-      final isDir = normalized.endsWith('/');
-
-      final basePath = isDir
-          ? p.posix.dirname(normalized.substring(0, normalized.length - 1))
-          : p.posix.dirname(normalized);
-
-      if (basePath == '.' || basePath.isEmpty) continue;
-
-      final parts = p.posix.split(basePath);
-
-      String current = '';
-      for (final part in parts) {
-        if (part.isEmpty) continue;
-
-        current = p.posix.join(current, part);
-        final dirPath = '$current/';
-
-        if (!existingPaths.contains(dirPath)) {
-          final dirObject = RemoteFile(
-            key: dirPath,
-            size: 0,
-            etag: '',
-            lastModified: DateTime.now(),
-          );
-
-          list.add(dirObject);
-          existingPaths.add(dirPath);
-        }
-      }
-    }
-
     return list;
   }
 

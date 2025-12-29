@@ -209,11 +209,67 @@ abstract class Main {
     }
   }
 
+  static void ensureDirectoryObjects() {
+    final existingPaths = remoteFiles.map((o) => o.key).toSet();
+
+    for (final obj in remoteFiles.toList()) {
+      final normalized = p.normalize(obj.key);
+      final isDir = normalized.endsWith('/');
+
+      final basePath = isDir
+          ? p.posix.dirname(normalized.substring(0, normalized.length - 1))
+          : p.posix.dirname(normalized);
+
+      if (basePath == '.' || basePath.isEmpty) continue;
+
+      final parts = p.posix.split(basePath);
+
+      String current = '';
+      for (final part in parts) {
+        if (part.isEmpty) continue;
+
+        current = p.posix.join(current, part);
+        final dirPath = '$current/';
+
+        if (!existingPaths.contains(dirPath)) {
+          final dirObject = RemoteFile(
+            key: dirPath,
+            size: 0,
+            etag: '',
+            lastModified: DateTime.now(),
+          );
+
+          remoteFiles.add(dirObject);
+          existingPaths.add(dirPath);
+        }
+      }
+    }
+  }
+
   static Future<void> refreshRemote({String dir = ''}) async {
     final fetchedRemoteFiles = await s3Manager!.listObjects(dir: dir);
     remoteFiles.removeWhere((file) => p.isWithin(dir, file.key));
     remoteFiles.addAll(fetchedRemoteFiles);
+    ensureDirectoryObjects();
     await ConfigManager.saveRemoteFiles(remoteFiles);
+  }
+
+  static Future<void> refreshWatchers({bool background = false}) async {
+    await setLoadingState?.call(true);
+
+    await stopWatchers();
+    watchers.clear();
+
+    final dirs = remoteFiles
+        .where((dir) => dir.key.endsWith('/'))
+        .map((file) => '${file.key.split('/').first}/')
+        .toSet()
+        .toList();
+
+    for (final dir in dirs) {
+      await addWatcher(dir, background: background);
+    }
+    await setLoadingState?.call(false);
   }
 
   static Future<void> listDirectories({bool background = false}) async {
@@ -227,22 +283,8 @@ abstract class Main {
       await Future.delayed(const Duration(milliseconds: 500));
     }
 
-    await stopWatchers();
-
-    Job.clear();
-    watchers.clear();
-
     await refreshRemote();
-    final dirs = remoteFiles
-        .where((dir) => dir.key.endsWith('/'))
-        .map((file) => '${file.key.split('/').first}/')
-        .toSet()
-        .toList();
-
-    for (final dir in dirs) {
-      await addWatcher(dir, background: background);
-    }
-    await setLoadingState?.call(false);
+    await refreshWatchers(background: background);
   }
 
   static void downloadFile(RemoteFile file, {String? localPath}) {

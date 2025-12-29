@@ -192,9 +192,9 @@ class FileContextActionHandler extends ContextActionHandler {
   final String Function(RemoteFile, int?) getLink;
   final Function(RemoteFile) downloadFile;
   final Function(RemoteFile, String) saveFile;
-  final Function(List<String>, List<String>) moveFiles;
+  final Future<void> Function(List<String>, List<String>) moveFiles;
   final Function(String) deleteLocalFile;
-  final Function(List<String>) deleteFiles;
+  final Future<void> Function(List<String>) deleteFiles;
 
   FileContextActionHandler({
     required this.file,
@@ -248,9 +248,9 @@ class FileContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  Future<String> Function() getLinkToCopy(int? seconds) {
-    return () async {
-      return await getLink(file, seconds);
+  String Function() getLinkToCopy(int? seconds) {
+    return () {
+      return getLink(file, seconds);
     };
   }
 
@@ -288,10 +288,10 @@ class FilesContextActionHandler extends ContextActionHandler {
   final String Function(RemoteFile, int?) getLink;
   final Function(RemoteFile) downloadFile;
   final Function(RemoteFile, String) saveFile;
-  final Function(List<String>, List<String>) moveFiles;
+  final Future<void> Function(List<String>, List<String>) moveFiles;
   final Function(String) deleteLocalFile;
-  final Function(List<String>) deleteS3Files;
-  final Function(List<String>) deleteFiles;
+  final Future<void> Function(List<String>) deleteS3Files;
+  final Future<void> Function(List<String>) deleteFiles;
 
   FilesContextActionHandler({
     required this.files,
@@ -382,8 +382,8 @@ class FilesContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  Future<String> Function() getLinksToCopy(int? seconds) {
-    return () async {
+  String Function() getLinksToCopy(int? seconds) {
+    return () {
       String allLinks = '';
       for (final file in files) {
         allLinks += '${getLink(file, seconds)}\n\n';
@@ -448,10 +448,10 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   final RemoteFile file;
   final Function(RemoteFile) downloadDirectory;
   final Function(RemoteFile, String) saveDirectory;
-  final Function(List<String>, List<String>) moveDirectories;
+  final Future<void> Function(List<String>, List<String>) moveDirectories;
   final Function(String) deleteLocalDirectory;
-  final Function(List<String>) deleteS3Directories;
-  final Function(List<String>) deleteDirectories;
+  final Future<void> Function(List<String>) deleteS3Directories;
+  final Future<void> Function(List<String>) deleteDirectories;
 
   DirectoryContextActionHandler({
     required this.file,
@@ -583,10 +583,10 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   final List<RemoteFile> directories;
   final Function(RemoteFile) downloadDirectory;
   final Function(RemoteFile, String) saveDirectory;
-  final Function(List<String>, List<String>) moveDirectories;
+  final Future<void> Function(List<String>, List<String>) moveDirectories;
   final Function(String) deleteLocalDirectory;
-  final Function(List<String>) deleteS3Directories;
-  final Function(List<String>) deleteDirectories;
+  final Future<void> Function(List<String>) deleteS3Directories;
+  final Future<void> Function(List<String>) deleteDirectories;
 
   DirectoriesContextActionHandler({
     required this.directories,
@@ -819,7 +819,7 @@ class FileContextOption {
     action: () async {
       Clipboard.setData(
         ClipboardData(
-          text: await handler.getLinkToCopy(await expiryDialog(context))(),
+          text: handler.getLinkToCopy(await expiryDialog(context))(),
         ),
       );
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1050,7 +1050,7 @@ class FilesContextOption {
     icon: Icons.link,
     action: () async {
       int? seconds = await expiryDialog(context);
-      String allLinks = await handler.getLinksToCopy(seconds)();
+      String allLinks = handler.getLinksToCopy(seconds)();
       if (allLinks.isNotEmpty) {
         Clipboard.setData(ClipboardData(text: allLinks));
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2177,9 +2177,9 @@ Widget buildFileContextMenu(
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile) cut,
   Function(RemoteFile) copy,
-  Function(List<String>, List<String>) moveFiles,
+  Future<void> Function(List<String>, List<String>) moveFiles,
   Function(String) deleteLocal,
-  Function(List<String>) deleteFiles,
+  Future<void> Function(List<String>) deleteFiles,
 ) {
   FileContextActionHandler handler = FileContextActionHandler(
     file: item,
@@ -2257,10 +2257,10 @@ Widget buildFilesContextMenu(
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
-  Function(List<String>, List<String>) moveFiles,
+  Future<void> Function(List<String>, List<String>) moveFiles,
   Function(String) deleteLocal,
-  Function(List<String>) deleteS3Files,
-  Function(List<String>) deleteFiles,
+  Future<void> Function(List<String>) deleteS3Files,
+  Future<void> Function(List<String>) deleteFiles,
   Function() clearSelection,
 ) {
   FilesContextActionHandler handler = FilesContextActionHandler(
@@ -2308,10 +2308,10 @@ Widget buildDirectoryContextMenu(
   Function(RemoteFile, String) saveDirectory,
   Function(RemoteFile) cut,
   Function(RemoteFile) copy,
-  Function(List<String>, List<String>) moveDirectories,
+  Future<void> Function(List<String>, List<String>) moveDirectories,
   Function(String) deleteLocal,
-  Function(List<String>) deleteS3,
-  Function(List<String>) deleteDirectories,
+  Future<void> Function(List<String>) deleteS3,
+  Future<void> Function(List<String>) deleteDirectories,
   (int, int) Function(RemoteFile, {bool recursive}) countContent,
   int Function(RemoteFile) dirSize,
   String Function(RemoteFile) dirModified,
@@ -2456,10 +2456,10 @@ Widget buildDirectoriesContextMenu(
   Function(RemoteFile, String) saveDirectory,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
-  Function(List<String>, List<String>) moveDirectories,
+  Future<void> Function(List<String>, List<String>) moveDirectories,
   Function(String) deleteLocal,
-  Function(List<String>) deleteS3,
-  Function(List<String>) deleteDirectories,
+  Future<void> Function(List<String>) deleteS3,
+  Future<void> Function(List<String>) deleteDirectories,
   Function() clearSelection,
 ) {
   DirectoriesContextActionHandler handler = DirectoriesContextActionHandler(
@@ -2507,14 +2507,14 @@ Widget buildBulkContextMenu(
   Function(RemoteFile) downloadDirectory,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile, String) saveDirectory,
-  Function(List<String>, List<String>) moveFiles,
-  Function(List<String>, List<String>) moveDirectories,
+  Future<void> Function(List<String>, List<String>) moveFiles,
+  Future<void> Function(List<String>, List<String>) moveDirectories,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
   Function(String) deleteLocal,
-  Function(List<String>) deleteS3,
-  Function(List<String>) deleteFiles,
-  Function(List<String>) deleteDirectories,
+  Future<void> Function(List<String>) deleteS3,
+  Future<void> Function(List<String>) deleteFiles,
+  Future<void> Function(List<String>) deleteDirectories,
   Function() clearSelection,
 ) {
   if (!items.any((item) => item.key.endsWith('/'))) {
