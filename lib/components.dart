@@ -183,7 +183,6 @@ abstract class ContextActionHandler {
 
   void Function()? download();
   String Function()? saveAs(String? path);
-  Future<String> Function() rename(String newName);
   Future<String> Function()? deleteLocal(bool? yes);
   Future<String> Function()? delete(bool? yes);
 }
@@ -193,18 +192,18 @@ class FileContextActionHandler extends ContextActionHandler {
   final String Function(RemoteFile, int?) getLink;
   final Function(RemoteFile) downloadFile;
   final Function(RemoteFile, String) saveFile;
-  final Function(String, String) moveFile;
+  final Function(List<String>, List<String>) moveFiles;
   final Function(String) deleteLocalFile;
-  final Function(String) deleteFile;
+  final Function(List<String>) deleteFiles;
 
   FileContextActionHandler({
     required this.file,
     required this.getLink,
     required this.downloadFile,
     required this.saveFile,
-    required this.moveFile,
+    required this.moveFiles,
     required this.deleteLocalFile,
-    required this.deleteFile,
+    required this.deleteFiles,
   });
 
   bool rootExists() {
@@ -235,7 +234,7 @@ class FileContextActionHandler extends ContextActionHandler {
   String Function()? saveAs(String? path) {
     return path != null
         ? () {
-            saveFile(file, Main.pathFromKey(file.key) ?? file.key);
+            saveFile(file, path);
             return 'Saving to $path';
           }
         : null;
@@ -255,11 +254,10 @@ class FileContextActionHandler extends ContextActionHandler {
     };
   }
 
-  @override
   Future<String> Function() rename(String newName) {
     return () async {
       final newKey = p.join(p.dirname(file.key), newName.replaceAll('/', '_'));
-      await moveFile(file.key, newKey);
+      await moveFiles([file.key], [newKey]);
       return 'Renamed to $newName';
     };
   }
@@ -278,8 +276,449 @@ class FileContextActionHandler extends ContextActionHandler {
   Future<String> Function()? delete(bool? yes) {
     return yes ?? false
         ? () async {
-            await deleteFile(file.key);
+            await deleteFiles([file.key]);
             return 'Deleted ${file.key.split('/').last}';
+          }
+        : null;
+  }
+}
+
+class FilesContextActionHandler extends ContextActionHandler {
+  final List<RemoteFile> files;
+  final String Function(RemoteFile, int?) getLink;
+  final Function(RemoteFile) downloadFile;
+  final Function(RemoteFile, String) saveFile;
+  final Function(List<String>, List<String>) moveFiles;
+  final Function(String) deleteLocalFile;
+  final Function(List<String>) deleteS3Files;
+  final Function(List<String>) deleteFiles;
+
+  FilesContextActionHandler({
+    required this.files,
+    required this.getLink,
+    required this.downloadFile,
+    required this.saveFile,
+    required this.moveFiles,
+    required this.deleteLocalFile,
+    required this.deleteS3Files,
+    required this.deleteFiles,
+  });
+
+  List<bool> rootExists() {
+    return files
+        .map((file) => p.isAbsolute(Main.pathFromKey(file.key) ?? file.key))
+        .toList();
+  }
+
+  List<bool> downloaded() {
+    return files
+        .map(
+          (file) => File(Main.pathFromKey(file.key) ?? file.key).existsSync(),
+        )
+        .toList();
+  }
+
+  List<RemoteFile> cloudDeletable() {
+    return files
+        .where(
+          (file) =>
+              Main.backupMode(file.key) == BackupMode.upload &&
+              !File(Main.pathFromKey(file.key) ?? file.key).existsSync(),
+        )
+        .toList();
+  }
+
+  List<RemoteFile> removableFiles() {
+    return files
+        .where(
+          (f) =>
+              !f.key.endsWith('/') &&
+              File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
+              Main.backupMode(f.key) == BackupMode.upload,
+        )
+        .toList();
+  }
+
+  @override
+  void Function()? download() {
+    return downloaded().every((exists) => exists) ||
+            rootExists().every((exists) => !exists)
+        ? null
+        : () {
+            files
+                .where(
+                  (file) => !File(
+                    Main.pathFromKey(file.key) ?? file.key,
+                  ).existsSync(),
+                )
+                .map(downloadFile);
+          };
+  }
+
+  @override
+  String Function()? saveAs(String? path) {
+    return path != null
+        ? () {
+            for (final file in files) {
+              saveFile(file, p.join(path, file.key.split('/').last));
+            }
+            return 'Saving to $path';
+          }
+        : null;
+  }
+
+  List<XFile> Function()? getXFiles() {
+    return downloaded().any((exists) => exists)
+        ? () {
+            return files
+                .where(
+                  (file) => File(
+                    (Main.pathFromKey(file.key) ?? file.key),
+                  ).existsSync(),
+                )
+                .map((file) => XFile(Main.pathFromKey(file.key) ?? file.key))
+                .toList();
+          }
+        : null;
+  }
+
+  Future<String> Function() getLinksToCopy(int? seconds) {
+    return () async {
+      String allLinks = '';
+      for (final file in files) {
+        allLinks += '${getLink(file, seconds)}\n\n';
+      }
+      return allLinks;
+    };
+  }
+
+  Future<String> Function()? deleteUploaded(
+    List<RemoteFile> removableFiles,
+    bool? yes,
+  ) {
+    return yes ?? false
+        ? () async {
+            for (final file in removableFiles) {
+              await deleteLocalFile(file.key);
+            }
+            return 'Deleted local copies of ${removableFiles.length} uploaded files';
+          }
+        : null;
+  }
+
+  @override
+  Future<String> Function()? deleteLocal(bool? yes) {
+    return yes ?? false
+        ? () async {
+            for (final file in files.where(
+              (file) =>
+                  File(Main.pathFromKey(file.key) ?? file.key).existsSync(),
+            )) {
+              await deleteLocalFile(file.key);
+            }
+            return 'Deleted local copies of ${files.length} files';
+          }
+        : null;
+  }
+
+  Future<String> Function()? deleteS3(
+    List<RemoteFile> cloudDeletable,
+    bool? yes,
+  ) {
+    return yes ?? false
+        ? () async {
+            await deleteS3Files(cloudDeletable.map((f) => f.key).toList());
+            return 'Deleted ${cloudDeletable.length} files from S3';
+          }
+        : null;
+  }
+
+  @override
+  Future<String> Function()? delete(bool? yes) {
+    return yes ?? false
+        ? () async {
+            await deleteFiles(files.map((f) => f.key).toList());
+            return 'Deleted ${files.length} files';
+          }
+        : null;
+  }
+}
+
+class DirectoryContextActionHandler extends ContextActionHandler {
+  final RemoteFile file;
+  final Function(RemoteFile) downloadDirectory;
+  final Function(RemoteFile, String) saveDirectory;
+  final Function(List<String>, List<String>) moveDirectories;
+  final Function(String) deleteLocalDirectory;
+  final Function(List<String>) deleteS3Directories;
+  final Function(List<String>) deleteDirectories;
+
+  DirectoryContextActionHandler({
+    required this.file,
+    required this.downloadDirectory,
+    required this.saveDirectory,
+    required this.moveDirectories,
+    required this.deleteLocalDirectory,
+    required this.deleteS3Directories,
+    required this.deleteDirectories,
+  });
+
+  List<RemoteFile> removableFiles() {
+    return Main.remoteFiles
+        .where(
+          (f) =>
+              p.isWithin(file.key, f.key) &&
+              !f.key.endsWith('/') &&
+              File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
+              Main.backupMode(f.key) == BackupMode.upload,
+        )
+        .toList();
+  }
+
+  List<RemoteFile> cloudDeletable() {
+    return p.split(file.key).length > 1
+        ? Main.remoteFiles
+              .where(
+                (f) =>
+                    p.isWithin(file.key, f.key) &&
+                    Main.backupMode(f.key) == BackupMode.upload &&
+                    !File(Main.pathFromKey(f.key) ?? f.key).existsSync(),
+              )
+              .toList()
+        : Main.remoteFiles.where((f) => p.isWithin(file.key, f.key)).toList();
+  }
+
+  bool rootExists() {
+    return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
+  }
+
+  void Function()? open() {
+    return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync()
+        ? () {
+            OpenFile.open(Main.pathFromKey(file.key));
+          }
+        : null;
+  }
+
+  @override
+  void Function()? download() {
+    return !rootExists()
+        ? null
+        : () {
+            downloadDirectory(file);
+          };
+  }
+
+  @override
+  String Function()? saveAs(String? path) {
+    return path == null
+        ? null
+        : () {
+            saveDirectory(file, path);
+            return 'Saving to $path';
+          };
+  }
+
+  Future<String> Function() rename(String newName) {
+    return () async {
+      final key = file.key.endsWith('/') ? file.key : '${file.key}/';
+      final newKey = '${p.dirname(key)}/${newName.replaceAll('/', '_')}/';
+      await moveDirectories([key], [newKey]);
+      return 'Renamed to $newName';
+    };
+  }
+
+  Future<String> Function()? deleteUploaded(
+    List<RemoteFile> removableFiles,
+    bool? yes,
+  ) {
+    return yes ?? false
+        ? () async {
+            for (final file in removableFiles) {
+              deleteLocalDirectory(file.key);
+            }
+            return 'Deleted local copies of uploaded files in ${p.basename(file.key)}';
+          }
+        : null;
+  }
+
+  @override
+  Future<String> Function()? deleteLocal(bool? yes) {
+    return yes ?? false
+        ? () async {
+            final key = file.key.endsWith('/') ? file.key : '${file.key}/';
+            deleteLocalDirectory(key);
+            return 'Deleted local copy of ${p.basename(key)}';
+          }
+        : null;
+  }
+
+  Future<String> Function()? deleteS3(
+    List<RemoteFile> cloudDeletable,
+    bool? yes,
+  ) {
+    return yes ?? false
+        ? () async {
+            await deleteS3Directories(
+              cloudDeletable.map((f) => f.key).toList(),
+            );
+            return 'Deleted ${cloudDeletable.length} files from S3';
+          }
+        : null;
+  }
+
+  @override
+  Future<String> Function()? delete(bool? yes) {
+    return yes ?? false
+        ? () async {
+            final key = file.key.endsWith('/') ? file.key : '${file.key}/';
+            deleteDirectories([key]);
+            return 'Deleted ${p.basename(key)}';
+          }
+        : null;
+  }
+}
+
+class DirectoriesContextActionHandler extends ContextActionHandler {
+  final List<RemoteFile> directories;
+  final Function(RemoteFile) downloadDirectory;
+  final Function(RemoteFile, String) saveDirectory;
+  final Function(List<String>, List<String>) moveDirectories;
+  final Function(String) deleteLocalDirectory;
+  final Function(List<String>) deleteS3Directories;
+  final Function(List<String>) deleteDirectories;
+
+  DirectoriesContextActionHandler({
+    required this.directories,
+    required this.downloadDirectory,
+    required this.saveDirectory,
+    required this.moveDirectories,
+    required this.deleteLocalDirectory,
+    required this.deleteS3Directories,
+    required this.deleteDirectories,
+  });
+
+  List<bool> rootExists() {
+    return directories
+        .map((dir) => p.isAbsolute(Main.pathFromKey(dir.key) ?? dir.key))
+        .toList();
+  }
+
+  List<RemoteFile> removableFiles() {
+    return Main.remoteFiles
+        .where(
+          (f) =>
+              directories.any((dir) => p.isWithin(dir.key, f.key)) &&
+              !f.key.endsWith('/') &&
+              File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
+              Main.backupMode(f.key) == BackupMode.upload,
+        )
+        .toList();
+  }
+
+  List<RemoteFile> cloudDeletable() {
+    List<RemoteFile> deletable = [];
+    for (final dir in directories) {
+      deletable.addAll(
+        p.split(dir.key).length > 1
+            ? Main.remoteFiles
+                  .where(
+                    (f) =>
+                        p.isWithin(dir.key, f.key) &&
+                        Main.backupMode(f.key) == BackupMode.upload &&
+                        !File(Main.pathFromKey(f.key) ?? f.key).existsSync(),
+                  )
+                  .toList()
+            : Main.remoteFiles
+                  .where((f) => p.isWithin(dir.key, f.key))
+                  .toList(),
+      );
+    }
+    return deletable;
+  }
+
+  @override
+  void Function()? download() {
+    return rootExists().every((exists) => !exists)
+        ? null
+        : () {
+            directories
+                .where(
+                  (dir) => Directory(
+                    Main.pathFromKey(dir.key) ?? dir.key,
+                  ).existsSync(),
+                )
+                .map(downloadDirectory);
+          };
+  }
+
+  @override
+  String Function()? saveAs(String? path) {
+    return path != null
+        ? () {
+            for (final dir in directories) {
+              saveDirectory(dir, p.join(path, p.basename(dir.key)));
+            }
+            return 'Saving to $path';
+          }
+        : null;
+  }
+
+  Future<String> Function()? deleteUploaded(
+    List<RemoteFile> removableFiles,
+    bool? yes,
+  ) {
+    return yes ?? false
+        ? () async {
+            for (final dir in directories) {
+              final key = dir.key.endsWith('/') ? dir.key : '${dir.key}/';
+              for (final file in removableFiles) {
+                if (p.isWithin(key, file.key)) {
+                  deleteLocalDirectory(file.key);
+                }
+              }
+            }
+            return 'Deleted local copies of uploaded files in ${directories.length} directories';
+          }
+        : null;
+  }
+
+  @override
+  Future<String> Function()? deleteLocal(bool? yes) {
+    return yes ?? false
+        ? () async {
+            for (final dir in directories) {
+              final key = dir.key.endsWith('/') ? dir.key : '${dir.key}/';
+              deleteLocalDirectory(key);
+            }
+            return 'Deleted local copies of ${directories.length} directories';
+          }
+        : null;
+  }
+
+  Future<String> Function()? deleteS3(
+    List<RemoteFile> cloudDeletable,
+    bool? yes,
+  ) {
+    return yes ?? false
+        ? () async {
+            await deleteS3Directories(
+              cloudDeletable.map((f) => f.key).toList(),
+            );
+            return 'Deleted ${cloudDeletable.length} files from S3';
+          }
+        : null;
+  }
+
+  @override
+  Future<String> Function()? delete(bool? yes) {
+    return yes ?? false
+        ? () async {
+            final keys = directories
+                .map((dir) => dir.key.endsWith('/') ? dir.key : '${dir.key}/')
+                .toList();
+            await deleteDirectories(keys);
+            return 'Deleted ${directories.length} directories';
           }
         : null;
   }
@@ -515,7 +954,6 @@ class FileContextOption {
     FileContextActionHandler handler,
     Function(RemoteFile) cutKey,
     Function(RemoteFile) copyKey,
-    Function(String) deleteFile,
   ) {
     return [
       open(handler),
@@ -545,56 +983,38 @@ class FilesContextOption {
     this.action,
   });
 
-  static FilesContextOption downloadAll(
-    List<FileContextActionHandler> handlers,
-  ) => FilesContextOption(
-    title: handlers.every((handler) => handler.download() == null)
-        ? handlers.every((handler) => handler.rootExists())
-              ? 'Downloaded'
-              : 'Cannot Download'
-        : 'Download',
-    subtitle: handlers.every((handler) => handler.download() == null)
-        ? handlers.every((handler) => handler.rootExists())
-              ? null
-              : 'Set backup directory to enable downloads'
-        : 'Only missing files will be downloaded',
-    icon: handlers.every((handler) => handler.download() == null)
-        ? handlers.every((handler) => handler.rootExists())
-              ? Icons.file_download_done_rounded
-              : Icons.file_download_off
-        : Icons.file_download_outlined,
-    action: handlers.every((handler) => handler.download() != null)
-        ? () {
-            for (final handler in handlers) {
-              if (handler.download() != null) {
-                handler.download()!();
-              }
-            }
-          }
-        : null,
-  );
+  static FilesContextOption downloadAll(FilesContextActionHandler handler) =>
+      FilesContextOption(
+        title: handler.download() != null
+            ? 'Download'
+            : handler.downloaded().every((downloaded) => downloaded)
+            ? 'Downloaded'
+            : 'Cannot Download',
+        subtitle: handler.download() != null
+            ? null
+            : handler.downloaded().every((downloaded) => downloaded)
+            ? null
+            : 'Backup directory must be set to enable downloads',
+        icon: handler.download() != null
+            ? Icons.file_download_outlined
+            : handler.downloaded().every((downloaded) => downloaded)
+            ? Icons.file_download_done_rounded
+            : Icons.file_download_off,
+        action: handler.download(),
+      );
 
   static FilesContextOption saveAllTo(
     BuildContext context,
-    List<FileContextActionHandler> handlers,
+    FilesContextActionHandler handler,
   ) => FilesContextOption(
     title: 'Save To...',
     icon: Icons.save_as,
     action: () async {
       final directory = await getDirectoryPath(canCreateDirectories: true);
       bool saved = false;
-      for (final handler in handlers) {
-        FileSaveLocation savePath = await Future.value(
-          directory == null
-              ? null
-              : FileSaveLocation(
-                  p.join(directory, handler.file.key.split('/').last),
-                ),
-        );
-        if (handler.saveAs(savePath.path) != null) {
-          handler.saveAs(savePath.path)!();
-          saved = true;
-        }
+      if (handler.saveAs(directory) != null) {
+        handler.saveAs(directory)!();
+        saved = true;
       }
       if (saved) {
         ScaffoldMessenger.of(
@@ -604,26 +1024,19 @@ class FilesContextOption {
     },
   );
 
-  static FilesContextOption shareAll(List<FileContextActionHandler> handlers) =>
+  static FilesContextOption shareAll(FilesContextActionHandler handler) =>
       FilesContextOption(
-        title: handlers.any((handler) => handler.getXFile() != null)
-            ? 'Share'
-            : 'Cannot Share',
+        title: handler.getXFiles() == null ? 'Cannot Share' : 'Share All',
         icon: Icons.share,
-        subtitle: handlers.every((handler) => handler.getXFile() != null)
+        subtitle: handler.getXFiles() == null
+            ? 'No downloaded files to share'
+            : handler.downloaded().every((d) => d)
             ? null
-            : handlers.any((handler) => handler.getXFile() != null)
-            ? 'Only downloaded files will be shared'
-            : 'No downloaded files to share',
-        action: handlers.any((handler) => handler.getXFile() != null)
+            : 'Only downloaded files will be shared',
+        action: handler.getXFiles() != null
             ? () {
                 SharePlus.instance.share(
-                  ShareParams(
-                    files: handlers
-                        .where((handler) => handler.getXFile() != null)
-                        .map((handler) => handler.getXFile()!())
-                        .toList(),
-                  ),
+                  ShareParams(files: handler.getXFiles()!()),
                 );
               }
             : null,
@@ -631,16 +1044,13 @@ class FilesContextOption {
 
   static FilesContextOption copyAllLinks(
     BuildContext context,
-    List<FileContextActionHandler> handlers,
+    FilesContextActionHandler handler,
   ) => FilesContextOption(
     title: 'Copy Links',
     icon: Icons.link,
     action: () async {
-      String allLinks = '';
       int? seconds = await expiryDialog(context);
-      for (final handler in handlers) {
-        allLinks += '${await handler.getLinkToCopy(seconds)()}\n\n';
-      }
+      String allLinks = await handler.getLinksToCopy(seconds)();
       if (allLinks.isNotEmpty) {
         Clipboard.setData(ClipboardData(text: allLinks));
         ScaffoldMessenger.of(context).showSnackBar(
@@ -668,10 +1078,47 @@ class FilesContextOption {
         },
       );
 
+  static FilesContextOption deleteUploaded(
+    BuildContext context,
+    FilesContextActionHandler handler,
+  ) => FilesContextOption(
+    title: 'Delete Uploaded Copies',
+    subtitle: 'Delete local copies of uploaded files only',
+    icon: Icons.delete_forever_outlined,
+    action: () async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Uploaded Copies'),
+          content: const Text(
+            'Are you sure you want to delete the local copies of the uploaded files? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        handler.deleteUploaded(handler.removableFiles(), true)!.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Local copies of uploaded files deleted'),
+          ),
+        );
+      }
+    },
+  );
+
   static FilesContextOption deleteLocalAll(
     BuildContext context,
-    List<FileContextActionHandler> handlers,
-    Function() clearSelection,
+    FilesContextActionHandler handler,
   ) => FilesContextOption(
     title: 'Delete Local Copies',
     subtitle: 'Delete from device only',
@@ -697,10 +1144,7 @@ class FilesContextOption {
         ),
       );
       if (yes ?? false) {
-        for (final handler in handlers) {
-          handler.deleteLocal(true)!.call();
-        }
-        clearSelection();
+        handler.deleteLocal(true)!.call();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Local copies of selected files deleted'),
@@ -710,9 +1154,65 @@ class FilesContextOption {
     },
   );
 
+  static FilesContextOption deleteS3All(
+    BuildContext context,
+    FilesContextActionHandler handler,
+  ) => FilesContextOption(
+    title: 'Delete from S3',
+    subtitle: 'Delete from S3 only',
+    icon: Icons.cloud_off,
+    action: () async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete from S3'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Are you sure you want to delete the selected files from S3? This action cannot be undone.',
+              ),
+              SingleChildScrollView(
+                child: Column(
+                  children: handler.cloudDeletable().map((file) {
+                    return Text(file.key);
+                  }).toList(),
+                ),
+              ),
+              if (handler.cloudDeletable().isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 16.0),
+                  child: Text(
+                    'Note: None of the selected files can be deleted from S3 because they either have local copies or are not set to be backed up.',
+                    style: TextStyle(fontStyle: FontStyle.italic),
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        handler.deleteS3(handler.cloudDeletable(), true)!.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selected files deleted from S3')),
+        );
+      }
+    },
+  );
+
   static FilesContextOption deleteAll(
     BuildContext context,
-    List<FileContextActionHandler> handlers,
+    FilesContextActionHandler handler,
     Function() clearSelection,
   ) => FilesContextOption(
     title: 'Delete Selection',
@@ -739,9 +1239,7 @@ class FilesContextOption {
         ),
       );
       if (yes ?? false) {
-        for (final handler in handlers) {
-          handler.delete(true)!.call();
-        }
+        handler.delete(true)!.call();
         clearSelection();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -754,129 +1252,22 @@ class FilesContextOption {
 
   static List<FilesContextOption> allOptions(
     BuildContext context,
-    List<FileContextActionHandler> handlers,
+    FilesContextActionHandler handler,
     Function(RemoteFile?) cutKey,
     Function(RemoteFile?) copyKey,
-    Function(String) deleteFile,
     Function() clearSelection,
   ) {
     return [
-      downloadAll(handlers),
-      saveAllTo(context, handlers),
-      shareAll(handlers),
-      copyAllLinks(context, handlers),
+      downloadAll(handler),
+      saveAllTo(context, handler),
+      shareAll(handler),
+      copyAllLinks(context, handler),
       cut(cutKey),
       copy(copyKey),
-      deleteLocalAll(context, handlers, clearSelection),
-      deleteAll(context, handlers, clearSelection),
+      deleteUploaded(context, handler),
+      deleteLocalAll(context, handler),
+      deleteAll(context, handler, clearSelection),
     ];
-  }
-}
-
-class DirectoryContextActionHandler extends ContextActionHandler {
-  final RemoteFile file;
-  final Function(RemoteFile) downloadDirectory;
-  final Function(RemoteFile, String) saveDirectory;
-  final Function(String, String) moveDirectory;
-  final Function(String) deleteLocalDirectory;
-  final Function(String) deleteDirectory;
-
-  DirectoryContextActionHandler({
-    required this.file,
-    required this.downloadDirectory,
-    required this.saveDirectory,
-    required this.moveDirectory,
-    required this.deleteLocalDirectory,
-    required this.deleteDirectory,
-  });
-
-  List<RemoteFile> removableFiles() {
-    return Main.remoteFiles
-        .where(
-          (f) =>
-              p.isWithin(file.key, f.key) &&
-              !f.key.endsWith('/') &&
-              File(Main.pathFromKey(file.key) ?? file.key).existsSync() &&
-              Main.backupMode(file.key) == BackupMode.upload,
-        )
-        .toList();
-  }
-
-  bool rootExists() {
-    return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
-  }
-
-  void Function()? open() {
-    return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync()
-        ? () {
-            OpenFile.open(Main.pathFromKey(file.key));
-          }
-        : null;
-  }
-
-  @override
-  void Function()? download() {
-    return !rootExists()
-        ? null
-        : () {
-            downloadDirectory(file);
-          };
-  }
-
-  @override
-  String Function()? saveAs(String? path) {
-    return path == null
-        ? null
-        : () {
-            saveDirectory(file, Main.pathFromKey(file.key) ?? file.key);
-            return 'Saving to $path';
-          };
-  }
-
-  @override
-  Future<String> Function() rename(String newName) {
-    return () async {
-      final key = file.key.endsWith('/') ? file.key : '${file.key}/';
-      final newKey = '${p.dirname(key)}/${newName.replaceAll('/', '_')}/';
-      await moveDirectory(key, newKey);
-      return 'Renamed to $newName';
-    };
-  }
-
-  Future<String> Function()? deleteUploaded(
-    List<RemoteFile> removableFiles,
-    bool? yes,
-  ) {
-    return yes ?? false
-        ? () async {
-            for (final file in removableFiles) {
-              deleteLocalDirectory(file.key);
-            }
-            return 'Deleted local copies of uploaded files in ${p.basename(file.key)}';
-          }
-        : null;
-  }
-
-  @override
-  Future<String> Function()? deleteLocal(bool? yes) {
-    return yes ?? false
-        ? () async {
-            final key = file.key.endsWith('/') ? file.key : '${file.key}/';
-            deleteLocalDirectory(key);
-            return 'Deleted local copy of ${p.basename(key)}';
-          }
-        : null;
-  }
-
-  @override
-  Future<String> Function()? delete(bool? yes) {
-    return yes ?? false
-        ? () async {
-            final key = file.key.endsWith('/') ? file.key : '${file.key}/';
-            deleteDirectory(key);
-            return 'Deleted ${p.basename(key)}';
-          }
-        : null;
   }
 }
 
@@ -1083,6 +1474,65 @@ class DirectoryContextOption {
     },
   );
 
+  static DirectoryContextOption deleteS3(
+    BuildContext context,
+    DirectoryContextActionHandler handler,
+  ) => DirectoryContextOption(
+    title: 'Delete from S3',
+    subtitle: 'Delete from S3 only',
+    icon: Icons.cloud_off,
+    action: () async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete from S3'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Are you sure you want to delete ${p.basename(handler.file.key)} from S3? This action cannot be undone.',
+              ),
+              SingleChildScrollView(
+                child: Column(
+                  children: handler.cloudDeletable().map((file) {
+                    return Text(file.key);
+                  }).toList(),
+                ),
+              ),
+              if (handler.cloudDeletable().isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 16.0),
+                  child: Text(
+                    'Note: This directory cannot be deleted from S3 because it either has local copies or its files are not set to be backed up.',
+                    style: TextStyle(fontStyle: FontStyle.italic),
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              await handler.deleteS3(handler.cloudDeletable(), true)!(),
+            ),
+          ),
+        );
+      }
+    },
+  );
+
   static DirectoryContextOption delete(
     BuildContext context,
     DirectoryContextActionHandler handler,
@@ -1128,11 +1578,12 @@ class DirectoryContextOption {
       open(handler),
       download(handler),
       saveTo(handler, context),
-      if (p.split(handler.file.key).length > 1) ...[
-        cut(handler, cutKey),
-        copy(handler, copyKey),
-        rename(context, handler),
-      ],
+      cut(handler, cutKey),
+      copy(handler, copyKey),
+      rename(context, handler),
+      if (p.split(handler.file.key).length == 1 ||
+          Main.backupMode(handler.file.key) == BackupMode.upload)
+        deleteS3(context, handler),
       if (handler.removableFiles().isNotEmpty) deleteUploaded(context, handler),
       deleteLocal(context, handler),
       delete(context, handler),
@@ -1147,30 +1598,24 @@ class DirectoriesContextOption {
   final dynamic Function()? action;
 
   static DirectoriesContextOption downloadAll(
-    List<DirectoryContextActionHandler> handlers,
+    DirectoriesContextActionHandler handler,
   ) => DirectoriesContextOption(
-    title: handlers.any((handler) => handler.download() == null)
-        ? 'Cannot Download'
-        : 'Download',
-    subtitle: handlers.any((handler) => handler.download() == null)
+    title: handler.download() == null ? 'Cannot Download' : 'Download',
+    subtitle: handler.download() == null
         ? 'Set backup directory to enable downloads'
-        : 'Only missing files will be downloaded',
-    icon: handlers.any((handler) => handler.download() == null)
+        : 'Only missing files with backup directory set will be downloaded',
+    icon: handler.download() == null
         ? Icons.file_download_off
         : Icons.file_download_outlined,
-    action: handlers.any((handler) => handler.download() != null)
-        ? () {
-            for (final handler in handlers) {
-              if (handler.download() != null) {
-                handler.download();
-              }
-            }
-          }
-        : null,
+    action: handler.download() == null
+        ? null
+        : () {
+            handler.download();
+          },
   );
 
   static DirectoriesContextOption saveAllTo(
-    List<DirectoryContextActionHandler> handlers,
+    DirectoriesContextActionHandler handler,
     BuildContext context,
   ) => DirectoriesContextOption(
     title: 'Save To...',
@@ -1178,12 +1623,10 @@ class DirectoriesContextOption {
     action: () async {
       final directory = await getDirectoryPath(canCreateDirectories: true);
       bool saved = false;
-      for (final handler in handlers) {
-        final handle = handler.saveAs(directory);
-        if (handle != null) {
-          handle();
-          saved = true;
-        }
+      final handle = handler.saveAs(directory);
+      if (handle != null) {
+        handle();
+        saved = true;
       }
       if (saved) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1212,14 +1655,13 @@ class DirectoriesContextOption {
       );
 
   static DirectoriesContextOption deleteUploaded(
-    List<DirectoryContextActionHandler> handlers,
+    DirectoriesContextActionHandler handler,
     BuildContext context,
-    Function() clearSelection,
   ) => DirectoriesContextOption(
     title: 'Delete Uploaded Files',
     subtitle: 'Delete local copies of uploaded files only',
     icon: Icons.delete_sweep,
-    action: handlers.any((handler) => handler.removableFiles().isNotEmpty)
+    action: handler.removableFiles().isNotEmpty
         ? () async {
             bool? yes = await showDialog<bool>(
               context: context,
@@ -1240,16 +1682,9 @@ class DirectoriesContextOption {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              for (final file
-                                  in handlers
-                                      .expand(
-                                        (handler) => handler.removableFiles(),
-                                      )
-                                      .toSet())
+                              for (final file in handler.removableFiles())
                                 Text(Main.pathFromKey(file.key) ?? file.key),
-                              if (handlers.every(
-                                (handler) => handler.removableFiles().isEmpty,
-                              ))
+                              if (handler.removableFiles().isEmpty)
                                 const Text('No files to delete'),
                             ],
                           ),
@@ -1264,10 +1699,7 @@ class DirectoriesContextOption {
                     child: const Text('Cancel'),
                   ),
                   TextButton(
-                    onPressed:
-                        handlers.any(
-                          (handler) => handler.removableFiles().isNotEmpty,
-                        )
+                    onPressed: handler.removableFiles().isNotEmpty
                         ? () => Navigator.of(context).pop(true)
                         : null,
                     child: const Text('Delete'),
@@ -1276,30 +1708,24 @@ class DirectoriesContextOption {
               ),
             );
             if (yes ?? false) {
-              for (final handler in handlers) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      await handler.deleteUploaded(
-                        handlers
-                            .expand((handler) => handler.removableFiles())
-                            .toSet()
-                            .toList(),
-                        true,
-                      )!(),
-                    ),
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    await handler.deleteUploaded(
+                      handler.removableFiles(),
+                      true,
+                    )!(),
                   ),
-                );
-              }
+                ),
+              );
             }
           }
         : null,
   );
 
   static DirectoriesContextOption deleteLocal(
-    List<DirectoryContextActionHandler> handlers,
+    DirectoriesContextActionHandler handler,
     BuildContext context,
-    Function() clearSelection,
   ) => DirectoriesContextOption(
     title: 'Delete Local Copies',
     subtitle: 'Delete from device only',
@@ -1325,10 +1751,7 @@ class DirectoriesContextOption {
         ),
       );
       if (yes ?? false) {
-        for (final handler in handlers) {
-          handler.deleteLocal(true)!.call();
-        }
-        clearSelection();
+        handler.deleteLocal(true)!.call();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Local copies of selected directories deleted'),
@@ -1338,8 +1761,64 @@ class DirectoriesContextOption {
     },
   );
 
+  static DirectoriesContextOption deleteS3(
+    DirectoriesContextActionHandler handler,
+    BuildContext context,
+  ) => DirectoriesContextOption(
+    title: 'Delete from S3',
+    subtitle: 'Delete from S3 only',
+    icon: Icons.cloud_off,
+    action: () async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete from S3'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Are you sure you want to delete the selected directories from S3? This action cannot be undone.',
+              ),
+              SingleChildScrollView(
+                child: Column(
+                  children: handler.cloudDeletable().map((file) {
+                    return Text(file.key);
+                  }).toList(),
+                ),
+              ),
+              if (handler.cloudDeletable().isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 16.0),
+                  child: Text(
+                    'Note: None of the selected directories can be deleted from S3 because they either have local copies or their files are not set to be backed up.',
+                    style: TextStyle(fontStyle: FontStyle.italic),
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        handler.deleteS3(handler.cloudDeletable(), true)!.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selected directories deleted from S3')),
+        );
+      }
+    },
+  );
+
   static DirectoriesContextOption deleteAll(
-    List<DirectoryContextActionHandler> handlers,
+    DirectoriesContextActionHandler handler,
     BuildContext context,
     Function() clearSelection,
   ) => DirectoriesContextOption(
@@ -1366,9 +1845,7 @@ class DirectoriesContextOption {
         ),
       );
       if (yes ?? false) {
-        for (final handler in handlers) {
-          handler.delete(true)!.call();
-        }
+        handler.delete(true)!.call();
         clearSelection();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1381,19 +1858,25 @@ class DirectoriesContextOption {
 
   static List<DirectoriesContextOption> allOptions(
     BuildContext context,
-    List<DirectoryContextActionHandler> handlers,
+    DirectoriesContextActionHandler handler,
     Function(RemoteFile?) cutKey,
     Function(RemoteFile?) copyKey,
     Function() clearSelection,
   ) {
     return [
-      downloadAll(handlers),
-      saveAllTo(handlers, context),
+      downloadAll(handler),
+      saveAllTo(handler, context),
       cut(cutKey),
       copy(copyKey),
-      deleteUploaded(handlers, context, clearSelection),
-      deleteLocal(handlers, context, clearSelection),
-      deleteAll(handlers, context, clearSelection),
+      if (handler.removableFiles().isNotEmpty) deleteUploaded(handler, context),
+      if (handler.directories.every(
+        (dir) =>
+            p.split(dir.key).length == 1 ||
+            Main.backupMode(dir.key) == BackupMode.upload,
+      ))
+        deleteS3(handler, context),
+      deleteLocal(handler, context),
+      deleteAll(handler, context, clearSelection),
     ];
   }
 
@@ -1411,28 +1894,38 @@ class BulkContextOption {
   final String? subtitle;
   final dynamic Function(BuildContext context)? action;
 
-  static BulkContextOption downloadAll(List<ContextActionHandler> handlers) =>
-      BulkContextOption(
-        title: handlers.every((handler) => handler.download() == null)
-            ? 'Cannot Download'
-            : 'Download',
-        subtitle: handlers.every((handler) => handler.download() == null)
-            ? 'Set backup directory to enable downloads'
-            : 'Only missing items will be downloaded',
-        icon: handlers.every((handler) => handler.download() == null)
-            ? Icons.file_download_off
-            : Icons.file_download_outlined,
-        action: handlers.any((handler) => handler.download() != null)
-            ? (BuildContext context) {
-                for (final handler in handlers) {
-                  handler.download()!();
-                }
-              }
-            : null,
-      );
+  static BulkContextOption downloadAll(
+    DirectoriesContextActionHandler directoriesHandler,
+    FilesContextActionHandler filesHandler,
+  ) => BulkContextOption(
+    title:
+        directoriesHandler.download() != null || filesHandler.download() != null
+        ? 'Download'
+        : 'Cannot Download',
+    subtitle:
+        directoriesHandler.download() == null && filesHandler.download() == null
+        ? 'Set backup directory to enable downloads'
+        : 'Only missing files with backup directory set will be downloaded',
+    icon:
+        directoriesHandler.download() == null && filesHandler.download() == null
+        ? Icons.file_download_off
+        : Icons.file_download_outlined,
+    action:
+        directoriesHandler.download() != null || filesHandler.download() != null
+        ? (BuildContext context) {
+            if (directoriesHandler.download() != null) {
+              directoriesHandler.download()!();
+            }
+            if (filesHandler.download() != null) {
+              filesHandler.download()!();
+            }
+          }
+        : null,
+  );
 
   static BulkContextOption saveAllTo(
-    List<ContextActionHandler> handlers,
+    DirectoriesContextActionHandler directoriesHandler,
+    FilesContextActionHandler filesHandler,
     BuildContext context,
   ) => BulkContextOption(
     title: 'Save To...',
@@ -1440,7 +1933,7 @@ class BulkContextOption {
     action: (BuildContext context) async {
       final directory = await getDirectoryPath(canCreateDirectories: true);
       bool saved = false;
-      for (final handler in handlers) {
+      for (final handler in [directoriesHandler, filesHandler]) {
         late String Function()? handle;
         if (handler is FileContextActionHandler) {
           handle = handler.saveAs(
@@ -1491,10 +1984,81 @@ class BulkContextOption {
         },
       );
 
-  static BulkContextOption deleteLocalAll(
-    List<ContextActionHandler> handlers,
+  static BulkContextOption deleteUploaded(
+    DirectoriesContextActionHandler directoriesHandler,
+    FilesContextActionHandler filesHandler,
     BuildContext context,
-    Function() clearSelection,
+  ) => BulkContextOption(
+    title: 'Delete Uploaded Copies',
+    subtitle: 'Delete local copies of uploaded items only',
+    icon: Icons.delete_sweep,
+    action: (BuildContext context) async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Uploaded Copies'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Are you sure you want to delete the local copies of the uploaded items? This action cannot be undone.',
+              ),
+              Container(
+                height: 200,
+                padding: EdgeInsets.only(top: 16),
+                child: SingleChildScrollView(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final file in [
+                          ...directoriesHandler.removableFiles(),
+                          ...filesHandler.removableFiles(),
+                        ])
+                          Text(Main.pathFromKey(file.key) ?? file.key),
+                        if (directoriesHandler.removableFiles().isEmpty &&
+                            filesHandler.removableFiles().isEmpty)
+                          const Text('No files to delete'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        directoriesHandler
+            .deleteUploaded(directoriesHandler.removableFiles(), true)!
+            .call();
+        filesHandler
+            .deleteUploaded(filesHandler.removableFiles(), true)!
+            .call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Local copies of uploaded items deleted'),
+          ),
+        );
+      }
+    },
+  );
+
+  static BulkContextOption deleteLocalAll(
+    DirectoriesContextActionHandler directoriesHandler,
+    FilesContextActionHandler filesHandler,
+    BuildContext context,
   ) => BulkContextOption(
     title: 'Delete Local Copies',
     subtitle: 'Delete from device only',
@@ -1520,10 +2084,9 @@ class BulkContextOption {
         ),
       );
       if (yes ?? false) {
-        for (final handler in handlers) {
+        for (final handler in [directoriesHandler, filesHandler]) {
           handler.deleteLocal(true)!.call();
         }
-        clearSelection();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Local copies of selected items deleted'),
@@ -1534,7 +2097,8 @@ class BulkContextOption {
   );
 
   static BulkContextOption deleteAll(
-    List<ContextActionHandler> handlers,
+    DirectoriesContextActionHandler directoriesHandler,
+    FilesContextActionHandler filesHandler,
     BuildContext context,
     Function() clearSelection,
   ) => BulkContextOption(
@@ -1563,7 +2127,7 @@ class BulkContextOption {
           ) ??
           false;
       if (yes) {
-        for (final handler in handlers) {
+        for (final handler in [directoriesHandler, filesHandler]) {
           handler.delete(true)!.call();
         }
         clearSelection();
@@ -1579,17 +2143,21 @@ class BulkContextOption {
   static List<BulkContextOption> allOptions(
     Function(RemoteFile?) cutKey,
     Function(RemoteFile?) copyKey,
-    List<ContextActionHandler> handlers,
+    DirectoriesContextActionHandler directoriesHandler,
+    FilesContextActionHandler filesHandler,
     BuildContext context,
     Function() clearSelection,
   ) {
     return [
-      downloadAll(handlers),
-      saveAllTo(handlers, context),
+      downloadAll(directoriesHandler, filesHandler),
+      saveAllTo(directoriesHandler, filesHandler, context),
       cut(cutKey),
       copy(copyKey),
-      deleteLocalAll(handlers, context, clearSelection),
-      deleteAll(handlers, context, clearSelection),
+      if (directoriesHandler.removableFiles().isNotEmpty ||
+          filesHandler.removableFiles().isNotEmpty)
+        deleteUploaded(directoriesHandler, filesHandler, context),
+      deleteLocalAll(directoriesHandler, filesHandler, context),
+      deleteAll(directoriesHandler, filesHandler, context, clearSelection),
     ];
   }
 
@@ -1609,18 +2177,18 @@ Widget buildFileContextMenu(
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile) cut,
   Function(RemoteFile) copy,
-  Function(String, String) moveFile,
+  Function(List<String>, List<String>) moveFiles,
   Function(String) deleteLocal,
-  Function(String) deleteFile,
+  Function(List<String>) deleteFiles,
 ) {
   FileContextActionHandler handler = FileContextActionHandler(
     file: item,
     getLink: getLink,
     downloadFile: downloadFile,
     saveFile: saveFile,
-    moveFile: moveFile,
+    moveFiles: moveFiles,
     deleteLocalFile: deleteLocal,
-    deleteFile: deleteFile,
+    deleteFiles: deleteFiles,
   );
   return ListView(
     children:
@@ -1657,13 +2225,7 @@ Widget buildFileContextMenu(
               ),
             ]
             .followedBy(
-              FileContextOption.allOptions(
-                context,
-                handler,
-                cut,
-                copy,
-                deleteFile,
-              ).map(
+              FileContextOption.allOptions(context, handler, cut, copy).map(
                 (option) => ListTile(
                   visualDensity: VisualDensity.comfortable,
                   leading: Icon(option.icon),
@@ -1695,32 +2257,29 @@ Widget buildFilesContextMenu(
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
-  Function(String, String) moveFile,
+  Function(List<String>, List<String>) moveFiles,
   Function(String) deleteLocal,
-  Function(String) deleteFile,
+  Function(List<String>) deleteS3Files,
+  Function(List<String>) deleteFiles,
   Function() clearSelection,
 ) {
-  List<FileContextActionHandler> handlers = items
-      .map(
-        (item) => FileContextActionHandler(
-          file: item,
-          getLink: getLink,
-          downloadFile: downloadFile,
-          saveFile: saveFile,
-          moveFile: moveFile,
-          deleteLocalFile: deleteLocal,
-          deleteFile: deleteFile,
-        ),
-      )
-      .toList();
+  FilesContextActionHandler handler = FilesContextActionHandler(
+    files: items,
+    getLink: getLink,
+    downloadFile: downloadFile,
+    saveFile: saveFile,
+    moveFiles: moveFiles,
+    deleteLocalFile: deleteLocal,
+    deleteS3Files: deleteS3Files,
+    deleteFiles: deleteFiles,
+  );
   return ListView(
     children:
         FilesContextOption.allOptions(
               context,
-              handlers,
+              handler,
               cut,
               copy,
-              deleteFile,
               clearSelection,
             )
             .map(
@@ -1749,9 +2308,10 @@ Widget buildDirectoryContextMenu(
   Function(RemoteFile, String) saveDirectory,
   Function(RemoteFile) cut,
   Function(RemoteFile) copy,
-  Function(String, String) moveDirectory,
+  Function(List<String>, List<String>) moveDirectories,
   Function(String) deleteLocal,
-  Function(String) deleteDirectory,
+  Function(List<String>) deleteS3,
+  Function(List<String>) deleteDirectories,
   (int, int) Function(RemoteFile, {bool recursive}) countContent,
   int Function(RemoteFile) dirSize,
   String Function(RemoteFile) dirModified,
@@ -1761,9 +2321,10 @@ Widget buildDirectoryContextMenu(
     file: file,
     downloadDirectory: downloadDirectory,
     saveDirectory: saveDirectory,
-    moveDirectory: moveDirectory,
+    moveDirectories: moveDirectories,
     deleteLocalDirectory: deleteLocal,
-    deleteDirectory: deleteDirectory,
+    deleteS3Directories: deleteS3,
+    deleteDirectories: deleteDirectories,
   );
   return ListView(
     children:
@@ -1895,28 +2456,26 @@ Widget buildDirectoriesContextMenu(
   Function(RemoteFile, String) saveDirectory,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
-  Function(String, String) moveDirectory,
+  Function(List<String>, List<String>) moveDirectories,
   Function(String) deleteLocal,
-  Function(String) deleteDirectory,
+  Function(List<String>) deleteS3,
+  Function(List<String>) deleteDirectories,
   Function() clearSelection,
 ) {
-  List<DirectoryContextActionHandler> handlers = dirs
-      .map(
-        (dir) => DirectoryContextActionHandler(
-          file: dir,
-          downloadDirectory: downloadDirectory,
-          saveDirectory: saveDirectory,
-          moveDirectory: moveDirectory,
-          deleteLocalDirectory: deleteLocal,
-          deleteDirectory: deleteDirectory,
-        ),
-      )
-      .toList();
+  DirectoriesContextActionHandler handler = DirectoriesContextActionHandler(
+    directories: dirs,
+    downloadDirectory: downloadDirectory,
+    saveDirectory: saveDirectory,
+    moveDirectories: moveDirectories,
+    deleteLocalDirectory: deleteLocal,
+    deleteS3Directories: deleteS3,
+    deleteDirectories: deleteDirectories,
+  );
   return ListView(
     children:
         DirectoriesContextOption.allOptions(
               context,
-              handlers,
+              handler,
               cut,
               copy,
               clearSelection,
@@ -1948,13 +2507,14 @@ Widget buildBulkContextMenu(
   Function(RemoteFile) downloadDirectory,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile, String) saveDirectory,
-  Function(String, String) moveFile,
-  Function(String, String) moveDirectory,
+  Function(List<String>, List<String>) moveFiles,
+  Function(List<String>, List<String>) moveDirectories,
   Function(RemoteFile?) cut,
   Function(RemoteFile?) copy,
   Function(String) deleteLocal,
-  Function(String) deleteFile,
-  Function(String) deleteDirectory,
+  Function(List<String>) deleteS3,
+  Function(List<String>) deleteFiles,
+  Function(List<String>) deleteDirectories,
   Function() clearSelection,
 ) {
   if (!items.any((item) => item.key.endsWith('/'))) {
@@ -1966,9 +2526,10 @@ Widget buildBulkContextMenu(
       saveFile,
       cut,
       copy,
-      moveFile,
+      moveFiles,
       deleteLocal,
-      deleteFile,
+      deleteS3,
+      deleteFiles,
       clearSelection,
     );
   } else if (items.every((item) => item.key.endsWith('/'))) {
@@ -1979,40 +2540,40 @@ Widget buildBulkContextMenu(
       saveDirectory,
       cut,
       copy,
-      moveDirectory,
+      moveDirectories,
       deleteLocal,
-      deleteDirectory,
+      deleteS3,
+      deleteDirectories,
       clearSelection,
     );
   } else {
-    List<ContextActionHandler> handlers = items.map((item) {
-      if (!item.key.endsWith('/')) {
-        return FileContextActionHandler(
-          file: item,
-          getLink: getLink,
-          downloadFile: downloadFile,
-          saveFile: saveFile,
-          moveFile: moveFile,
-          deleteLocalFile: deleteLocal,
-          deleteFile: deleteFile,
-        );
-      } else {
-        return DirectoryContextActionHandler(
-          file: item,
+    DirectoriesContextActionHandler dirHandler =
+        DirectoriesContextActionHandler(
+          directories: items.where((item) => item.key.endsWith('/')).toList(),
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
-          moveDirectory: moveDirectory,
+          moveDirectories: moveDirectories,
           deleteLocalDirectory: deleteLocal,
-          deleteDirectory: deleteDirectory,
+          deleteS3Directories: deleteS3,
+          deleteDirectories: deleteDirectories,
         );
-      }
-    }).toList();
+    FilesContextActionHandler fileHandler = FilesContextActionHandler(
+      files: items.where((item) => !item.key.endsWith('/')).toList(),
+      getLink: getLink,
+      downloadFile: downloadFile,
+      saveFile: saveFile,
+      moveFiles: moveFiles,
+      deleteLocalFile: deleteLocal,
+      deleteS3Files: deleteS3,
+      deleteFiles: deleteFiles,
+    );
     return ListView(
       children:
           BulkContextOption.allOptions(
                 cut,
                 copy,
-                handlers,
+                dirHandler,
+                fileHandler,
                 context,
                 clearSelection,
               )

@@ -354,6 +354,17 @@ class _HomeState extends State<Home> {
     setState(() {});
   }
 
+  Function()? _changeDirectory(RemoteFile dir) =>
+      _selection.any((s) => p.isWithin(s.key, dir.key) || s.key == dir.key)
+      ? null
+      : () {
+          setState(() {
+            _navIndex = 0;
+            _driveDir = dir;
+          });
+          _updateCounts();
+        };
+
   Future<void> _createDirectory(String dir) async {
     setState(() {
       _loading = true;
@@ -374,7 +385,8 @@ class _HomeState extends State<Home> {
       _loading = true;
     });
     await Main.s3Manager!.copyFile(key, newKey);
-    if (File(Main.pathFromKey(key) ?? key).existsSync()) {
+    if (File(Main.pathFromKey(key) ?? key).existsSync() &&
+        Main.pathFromKey(newKey) != null) {
       if (!File(Main.pathFromKey(newKey) ?? newKey).parent.existsSync()) {
         File(
           Main.pathFromKey(newKey) ?? newKey,
@@ -457,18 +469,20 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _deleteFile(String key, {bool refresh = true}) async {
+  Future<void> _deleteFiles(List<String> keys, {bool refresh = true}) async {
     setState(() {
       _loading = true;
     });
     await DeletionRegistrar.pullDeletions();
-    DeletionRegistrar.logDeletion(key);
+    DeletionRegistrar.logDeletions(keys);
     await DeletionRegistrar.pushDeletions();
-    await Main.s3Manager!.deleteFile(key);
-    if (File(Main.pathFromKey(key) ?? key).existsSync()) {
-      File(Main.pathFromKey(key) ?? key).deleteSync();
+    for (final key in keys) {
+      await Main.s3Manager!.deleteFile(key);
+      if (File(Main.pathFromKey(key) ?? key).existsSync()) {
+        File(Main.pathFromKey(key) ?? key).deleteSync();
+      }
     }
-    Main.remoteFiles.removeWhere((file) => file.key == key);
+    Main.remoteFiles.removeWhere((file) => keys.contains(file.key));
     if (refresh) {
       setState(() {
         _loading = false;
@@ -476,41 +490,36 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _deleteS3Directory(String dir, {bool refresh = true}) async {
+  Future<void> _deleteS3(List<String> keys, {bool refresh = true}) async {
     setState(() {
       _loading = true;
     });
-    for (final file in Main.remoteFiles) {
-      if (p.isWithin(dir, file.key) &&
-          file.key != dir &&
-          !file.key.endsWith('/')) {
-        await Main.s3Manager!.deleteFile(file.key);
-        Main.remoteFiles.removeWhere(
-          (file) =>
-              p.isWithin(dir, file.key) &&
-              file.key != dir &&
-              !file.key.endsWith('/'),
-        );
-      }
 
-      for (final file in Main.remoteFiles) {
-        if (p.isWithin(dir, file.key) &&
-            file.key != dir &&
-            file.key.endsWith('/')) {
-          await Main.s3Manager!.deleteFile(file.key);
-          Main.remoteFiles.removeWhere(
-            (file) =>
-                p.isWithin(dir, file.key) &&
-                file.key != dir &&
-                file.key.endsWith('/'),
-          );
-        }
-      }
+    await DeletionRegistrar.pullDeletions();
+    DeletionRegistrar.logDeletions(keys);
+    await DeletionRegistrar.pushDeletions();
+
+    for (final file in Main.remoteFiles.where(
+      (file) => keys.contains(file.key) && !file.key.endsWith('/'),
+    )) {
+      await Main.s3Manager!.deleteFile(file.key);
     }
-    await Main.s3Manager!.deleteFile(dir);
+
     Main.remoteFiles.removeWhere(
-      (file) => p.isWithin(dir, file.key) || file.key == dir,
+      (file) => keys.contains(file.key) && !file.key.endsWith('/'),
     );
+
+    final dirs = Main.remoteFiles
+        .where((file) => keys.contains(file.key) && file.key.endsWith('/'))
+        .toList();
+    dirs.sort((a, b) => b.key.length.compareTo(a.key.length));
+
+    for (final file in dirs) {
+      await Main.s3Manager!.deleteFile(file.key);
+    }
+
+    await Main.refreshRemote();
+
     if (refresh) {
       setState(() {
         _loading = false;
@@ -518,31 +527,22 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _deleteDirectory(String dir, {bool refresh = true}) async {
-    setState(() {
-      _loading = true;
-    });
-    await _deleteS3Directory(dir, refresh: false);
-    if (Directory(Main.pathFromKey(dir) ?? dir).existsSync()) {
-      Directory(Main.pathFromKey(dir) ?? dir).deleteSync(recursive: true);
-    }
-    if (refresh) {
-      setState(() {
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _moveFile(
-    String key,
-    String newKey, {
+  Future<void> _deleteDirectories(
+    List<String> dirs, {
     bool refresh = true,
   }) async {
     setState(() {
       _loading = true;
     });
-    await _copyFile(key, newKey, refresh: false);
-    await _deleteFile(key, refresh: false);
+    for (final dir in dirs) {
+      final files = Main.remoteFiles
+          .where((file) => file.key.startsWith(dir))
+          .toList();
+      await _deleteS3(files.map((file) => file.key).toList(), refresh: false);
+      if (Directory(Main.pathFromKey(dir) ?? dir).existsSync()) {
+        Directory(Main.pathFromKey(dir) ?? dir).deleteSync(recursive: true);
+      }
+    }
     if (refresh) {
       setState(() {
         _loading = false;
@@ -550,16 +550,37 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _moveDirectory(
-    String dir,
-    String newDir, {
+  Future<void> _moveFiles(
+    List<String> keys,
+    List<String> newKeys, {
     bool refresh = true,
   }) async {
     setState(() {
       _loading = true;
     });
-    await _copyDirectory(dir, newDir, refresh: false);
-    await _deleteDirectory(dir, refresh: false);
+    for (int i = 0; i < keys.length; i++) {
+      await _copyFile(keys[i], newKeys[i], refresh: false);
+    }
+    await _deleteFiles(keys, refresh: false);
+    if (refresh) {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _moveDirectories(
+    List<String> dirs,
+    List<String> newDirs, {
+    bool refresh = true,
+  }) async {
+    setState(() {
+      _loading = true;
+    });
+    for (int i = 0; i < dirs.length; i++) {
+      await _copyDirectory(dirs[i], newDirs[i], refresh: false);
+    }
+    await _deleteDirectories(dirs, refresh: false);
     if (refresh) {
       setState(() {
         _loading = false;
@@ -629,30 +650,54 @@ class _HomeState extends State<Home> {
     setState(() {});
   }
 
-  Future<void> _paste() async {
-    final selection = _selection.toList();
-    for (final item in selection) {
-      if (!item.key.endsWith('/')) {
-        final file = item;
-        final newKey = p.join(_driveDir.key, p.basename(file.key));
-        if (_selectionAction == SelectionAction.copy) {
-          await _copyFile(file.key, newKey);
-        } else if (_selectionAction == SelectionAction.cut) {
-          await _moveFile(file.key, newKey);
-        }
-      } else if (item is String) {
-        final dir = item;
-        final newDir = p.join(_driveDir.key, p.basename(dir.key));
-        if (_selectionAction == SelectionAction.copy) {
-          await _copyDirectory(dir.key, newDir);
-        } else if (_selectionAction == SelectionAction.cut) {
-          await _moveDirectory(dir.key, newDir);
-        }
-      }
-    }
-    _selection.clear();
-    _selectionAction = SelectionAction.none;
-  }
+  Future<void> Function()? _paste() =>
+      (_selectionAction == SelectionAction.none ||
+          _selection.isEmpty ||
+          _navIndex != 0 ||
+          (_driveDir.key.isEmpty &&
+              _selection.any((item) => !item.key.endsWith('/'))))
+      ? null
+      : () async {
+          final selection = _selection.toList();
+          if (_selectionAction == SelectionAction.copy) {
+            for (final item in selection) {
+              if (!item.key.endsWith('/')) {
+                final file = item;
+                final newKey = p.join(_driveDir.key, p.basename(file.key));
+                await _copyFile(file.key, newKey);
+              } else if (item is String) {
+                final dir = item;
+                final newDir = p.join(_driveDir.key, p.basename(dir.key));
+                await _copyDirectory(dir.key, newDir);
+              }
+            }
+          } else {
+            _moveDirectories(
+              selection
+                  .where((item) => item.key.endsWith('/'))
+                  .map((item) => item.key)
+                  .toList(),
+              selection
+                  .where((item) => item.key.endsWith('/'))
+                  .map((item) => p.join(_driveDir.key, p.basename(item.key)))
+                  .toList(),
+              refresh: false,
+            );
+            _moveFiles(
+              selection
+                  .where((item) => !item.key.endsWith('/'))
+                  .map((item) => item.key)
+                  .toList(),
+              selection
+                  .where((item) => !item.key.endsWith('/'))
+                  .map((item) => p.join(_driveDir.key, p.basename(item.key)))
+                  .toList(),
+              refresh: false,
+            );
+            _selection.clear();
+          }
+          _selectionAction = SelectionAction.none;
+        };
 
   void _saveFile(RemoteFile file, String savePath) {
     if (File(savePath).existsSync()) {
@@ -759,13 +804,14 @@ class _HomeState extends State<Home> {
               _downloadDirectory,
               _saveFile,
               _saveDirectory,
-              (dir, newDir) => _copyDirectory(dir, newDir, refresh: true),
-              (key, newKey) => _moveFile(key, newKey, refresh: true),
+              (keys, newKeys) => _moveFiles(keys, newKeys, refresh: true),
+              (dirs, newDirs) => _moveDirectories(dirs, newDirs, refresh: true),
               _cut,
               _copy,
               _deleteLocal,
-              (key) => _deleteFile(key, refresh: true),
-              (dir) => _deleteDirectory(dir, refresh: true),
+              _deleteS3,
+              (keys) => _deleteFiles(keys, refresh: true),
+              (dirs) => _deleteDirectories(dirs, refresh: true),
               () {
                 _selection.clear();
                 setState(() {});
@@ -779,10 +825,11 @@ class _HomeState extends State<Home> {
               _saveDirectory,
               _cut,
               _copy,
-              (String dir, String newDir) =>
-                  _moveDirectory(dir, newDir, refresh: true),
+              (List<String> dirs, List<String> newDirs) =>
+                  _moveDirectories(dirs, newDirs, refresh: true),
               _deleteLocal,
-              (String dir) => _deleteDirectory(dir, refresh: true),
+              _deleteS3,
+              (List<String> dirs) => _deleteDirectories(dirs, refresh: true),
               _count,
               _dirSize,
               _dirModified,
@@ -796,10 +843,10 @@ class _HomeState extends State<Home> {
               _saveFile,
               _cut,
               _copy,
-              (String key, String newKey) =>
-                  _moveFile(key, newKey, refresh: true),
+              (List<String> keys, List<String> newKeys) =>
+                  _moveFiles(keys, newKeys, refresh: true),
               _deleteLocal,
-              (String key) => _deleteFile(key, refresh: true),
+              (List<String> keys) => _deleteFiles(keys, refresh: true),
             ),
     );
     setState(() {});
@@ -891,6 +938,20 @@ class _HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
+    for (RemoteFile item in _selection) {
+      if (p.isWithin(item.key, _driveDir.key) || item.key == _driveDir.key) {
+        _driveDir = () {
+          String dir = _driveDir.key;
+          while (p.isWithin(item.key, dir) || item.key == dir) {
+            dir = p.dirname(dir);
+            if (dir == '') {
+              break;
+            }
+          }
+          return Main.remoteFiles.firstWhere((file) => file.key == dir);
+        }();
+      }
+    }
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: CustomScrollView(
@@ -1013,11 +1074,10 @@ class _HomeState extends State<Home> {
                           ),
                         ]
                       : [
-                          if (_driveDir.key != '' && _navIndex == 0)
-                            IconButton(
-                              onPressed: _paste,
-                              icon: const Icon(Icons.paste),
-                            ),
+                          IconButton(
+                            onPressed: _paste(),
+                            icon: const Icon(Icons.paste),
+                          ),
                           IconButton(
                             onPressed: () {
                               _selectionAction = SelectionAction.none;
@@ -1400,18 +1460,20 @@ class _HomeState extends State<Home> {
                                   style: Theme.of(context).textTheme.labelSmall,
                                 ),
                                 SizedBox(width: 4),
-                                SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: GestureDetector(
-                                    child: Text(
-                                      Main.pathFromKey(_driveDir.key) ?? '',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.labelSmall,
+                                Expanded(
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: GestureDetector(
+                                      child: Text(
+                                        Main.pathFromKey(_driveDir.key) ?? '',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.labelSmall,
+                                      ),
+                                      onTap: () {
+                                        // TODO: Open file explorer at this location
+                                      },
                                     ),
-                                    onTap: () {
-                                      // TODO: Open file explorer at this location
-                                    },
                                   ),
                                 ),
                               ],
@@ -1438,13 +1500,7 @@ class _HomeState extends State<Home> {
                   onUpdate: () {
                     setState(() {});
                   },
-                  onChangeDirectory: (RemoteFile newDir) {
-                    setState(() {
-                      _navIndex = 0;
-                      _driveDir = newDir;
-                    });
-                    _updateCounts();
-                  },
+                  changeDirectory: _changeDirectory,
                   select: _select,
                   showContextMenu: (file) async {
                     await Main.stopWatchers();
@@ -1456,8 +1512,8 @@ class _HomeState extends State<Home> {
                   getLink: _getLink,
                 )
               : _driveDir.key == '' && _navIndex == 0
-              ? () {
-                  final dirs = Set.from(
+              ? ListFiles(
+                  files: Set<RemoteFile>.from(
                     Main.remoteFiles
                         .where(
                           (file) =>
@@ -1465,95 +1521,26 @@ class _HomeState extends State<Home> {
                               file.key.endsWith('/'),
                         )
                         .map<RemoteFile>((file) => file),
-                  ).toList();
-                  return SliverList.builder(
-                    itemCount: dirs.length,
-                    itemBuilder: (context, index) {
-                      final dir = dirs.elementAt(index);
-                      return ListTile(
-                        dense: MediaQuery.of(context).size.width < 600
-                            ? true
-                            : false,
-                        visualDensity: MediaQuery.of(context).size.width < 600
-                            ? VisualDensity.compact
-                            : VisualDensity.standard,
-                        leading: Icon(Icons.folder),
-                        title: Text(dir.key),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  Text(_dirModified(dir)),
-                                  SizedBox(width: 8),
-                                  Text(bytesToReadable(_dirSize(dir))),
-                                  SizedBox(width: 8),
-                                  Text(() {
-                                    final count = _count(dir, recursive: true);
-                                    if (count.$1 == 0) {
-                                      return '${count.$2} files';
-                                    }
-                                    if (count.$2 == 0) {
-                                      return '${count.$1} subfolders';
-                                    }
-                                    return '${count.$2} files in ${count.$1} subfolders';
-                                  }()),
-                                ],
-                              ),
-                            ),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Text(
-                                '${Main.backupMode(dir.key).name}: ${Main.pathFromKey(dir.key) ?? 'Not set'}',
-                                style: Theme.of(context).textTheme.labelSmall,
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          onPressed: _loading
-                              ? null
-                              : () {
-                                  showModalBottomSheet(
-                                    context: context,
-                                    enableDrag: true,
-                                    showDragHandle: true,
-                                    constraints: const BoxConstraints(
-                                      maxHeight: 800,
-                                      maxWidth: 800,
-                                    ),
-                                    builder: (context) =>
-                                        buildDirectoryContextMenu(
-                                          context,
-                                          dir,
-                                          _downloadDirectory,
-                                          _saveDirectory,
-                                          _cut,
-                                          _copy,
-                                          _moveDirectory,
-                                          _deleteLocal,
-                                          _deleteDirectory,
-                                          _count,
-                                          _dirSize,
-                                          _dirModified,
-                                          _setBackupMode,
-                                        ),
-                                  );
-                                },
-                          icon: const Icon(Icons.more_vert),
-                        ),
-                        onTap: () {
-                          setState(() {
-                            _driveDir = dir;
-                          });
-                          _updateCounts();
-                        },
-                      );
-                    },
-                  );
-                }()
+                  ).toList(),
+                  sortMode: _sortMode,
+                  foldersFirst: _foldersFirst,
+                  relativeto: _driveDir,
+                  selection: _selection,
+                  selectionAction: _selectionAction,
+                  onUpdate: () {
+                    setState(() {});
+                  },
+                  changeDirectory: _changeDirectory,
+                  select: _select,
+                  showContextMenu: (file) async {
+                    await Main.stopWatchers();
+                    _showContextMenu(file);
+                  },
+                  count: _count,
+                  dirSize: _dirSize,
+                  dirModified: _dirModified,
+                  getLink: _getLink,
+                )
               : _driveDir.key != '' && _navIndex == 0
               ? ListFiles(
                   files: () {
@@ -1583,13 +1570,7 @@ class _HomeState extends State<Home> {
                   onUpdate: () {
                     setState(() {});
                   },
-                  onChangeDirectory: (RemoteFile newDir) {
-                    setState(() {
-                      _navIndex = 0;
-                      _driveDir = newDir;
-                    });
-                    _updateCounts();
-                  },
+                  changeDirectory: _changeDirectory,
                   select: _select,
                   showContextMenu: (file) async {
                     await Main.stopWatchers();

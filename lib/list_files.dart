@@ -17,7 +17,7 @@ class ListFiles extends StatelessWidget {
   final Set<RemoteFile> selection;
   final SelectionAction selectionAction;
   final Function() onUpdate;
-  final Function(RemoteFile) onChangeDirectory;
+  final Function()? Function(RemoteFile) changeDirectory;
   final Function(RemoteFile) select;
   final Function(RemoteFile) showContextMenu;
   final (int, int) Function(RemoteFile, {bool recursive}) count;
@@ -34,7 +34,7 @@ class ListFiles extends StatelessWidget {
     required this.selection,
     required this.selectionAction,
     required this.onUpdate,
-    required this.onChangeDirectory,
+    required this.changeDirectory,
     required this.select,
     required this.showContextMenu,
     required this.count,
@@ -85,26 +85,47 @@ class ListFiles extends StatelessWidget {
                       ? "${p.relative(item.key, from: relativeto.key)}/"
                       : "${item.key}/",
                 ),
-                subtitle: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      Text(dirModified(item.file!)),
-                      SizedBox(width: 8),
-                      Text(bytesToReadable(dirSize(item.file!))),
-                      SizedBox(width: 8),
-                      Text(() {
-                        final count = this.count(item.file!, recursive: true);
-                        if (count.$1 == 0) {
-                          return '${count.$2} files';
-                        }
-                        if (count.$2 == 0) {
-                          return '${count.$1} subfolders';
-                        }
-                        return '${count.$2} files in ${count.$1} subfolders';
-                      }()),
-                    ],
-                  ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          Text(dirModified(item.file!)),
+                          SizedBox(width: 8),
+                          Text(bytesToReadable(dirSize(item.file!))),
+                          SizedBox(width: 8),
+                          Text(() {
+                            final count = this.count(
+                              item.file!,
+                              recursive: true,
+                            );
+                            if (count.$1 == 0) {
+                              return '${count.$2} files';
+                            }
+                            if (count.$2 == 0) {
+                              return '${count.$1} subfolders';
+                            }
+                            return '${count.$2} files in ${count.$1} subfolders';
+                          }()),
+                        ],
+                      ),
+                    ),
+                    if (relativeto.key != '${p.dirname(item.file!.key)}/')
+                      Row(
+                        children: [
+                          Text('${Main.backupMode(item.file!.key).name}:'),
+                          SizedBox(width: 4),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Text(
+                              Main.pathFromKey(item.file!.key) ?? 'Not set',
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
                 ),
                 onTap:
                     selection.isNotEmpty &&
@@ -112,9 +133,11 @@ class ListFiles extends StatelessWidget {
                     ? () {
                         select(item.file!);
                       }
-                    : () {
-                        onChangeDirectory(item.file!);
-                      },
+                    : selection.any(
+                        (s) => p.isWithin(s.key, item.key) || s.key == item.key,
+                      )
+                    ? null
+                    : changeDirectory(item.file!),
                 onLongPress: selectionAction == SelectionAction.none
                     ? () {
                         select(item.file!);

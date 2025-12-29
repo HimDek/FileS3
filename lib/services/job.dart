@@ -19,6 +19,7 @@ import 's3_transfer_task.dart';
 class DeletionRegistrar {
   static late File _file;
   static Config? config;
+  static DateTime lastPulled = DateTime.fromMillisecondsSinceEpoch(0).toUtc();
 
   static Future<void> init() async {
     if (Platform.isWindows) {
@@ -53,19 +54,28 @@ class DeletionRegistrar {
     _file.writeAsStringSync(config.toString());
   }
 
-  static void logDeletion(String key) {
+  static void logDeletions(List<String> keys) {
     if (!config!.sections().contains('register')) {
       config!.addSection('register');
     }
-    config!.set('register', key, DateTime.now().toUtc().toIso8601String());
+    for (String key in keys) {
+      config!.set('register', key, DateTime.now().toUtc().toIso8601String());
+    }
     save();
   }
 
   static Future<Map<String, DateTime>> pullDeletions() async {
-    if (Main.remoteFiles.any((file) => file.key == 'deletion-register.ini') ==
-        false) {
+    await Main.refreshRemote(dir: 'deletion-register.ini');
+    if (Main.remoteFiles.every((file) => file.key != 'deletion-register.ini') ||
+        lastPulled.toUtc().isBefore(
+          Main.remoteFiles
+                  .firstWhere((file) => file.key == 'deletion-register.ini')
+                  .lastModified
+                  ?.toUtc() ??
+              DateTime.fromMillisecondsSinceEpoch(0).toUtc(),
+        )) {
       if (kDebugMode) {
-        debugPrint("No remote deletion register found.");
+        debugPrint("Remote deletion register is outdated or missing.");
       }
       return {};
     }
