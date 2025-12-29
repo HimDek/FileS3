@@ -611,8 +611,10 @@ abstract class Job {
     }
 
     while (Job.jobs.where((job) => job.running).length < maxrun &&
-        Job.jobs.any((job) => !job.completed && !job.running)) {
-      Job job = jobs.firstWhere((job) => !job.completed && !job.running);
+        Job.jobs.any((job) => !job.completed && !job.running && !job.failed)) {
+      Job job = jobs.firstWhere(
+        (job) => !job.completed && !job.running && !job.failed,
+      );
       job.start();
     }
 
