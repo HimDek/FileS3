@@ -1,11 +1,10 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
+import 'package:files3/services/models/remote_file.dart';
+import 'package:files3/services/ini_manager.dart';
+import 'package:files3/services/job.dart';
+import 'package:files3/main.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:s3_drive/main.dart';
-import 'package:s3_drive/services/ini_manager.dart';
-import 'package:s3_drive/services/job.dart';
-import 'package:s3_drive/services/models/remote_file.dart';
 
 final themeController = ThemeController();
 final ultraDarkController = UltraDarkController();

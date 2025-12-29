@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:s3_drive/job_view.dart';
-import 'services/job.dart';
+import 'package:files3/job_view.dart';
+import 'package:files3/services/job.dart';
 
 class ActiveJobs extends StatefulWidget {
   final List<Job> jobs;

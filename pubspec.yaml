@@ -1,5 +1,5 @@
-name: s3_drive
-description: "A new Flutter project."
+name: files3
+description: "A S3 compatible BYOC cloud storage drive application."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -45,6 +45,7 @@ dependencies:
   path_provider:  
   file_selector:
   cupertino_icons:
+  device_info_plus:
   percent_indicator:
   shared_preferences:
   permission_handler:

@@ -16,7 +16,7 @@
 
 
     <application
-        android:label="S3 Drive"
+        android:label="FileS3"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity

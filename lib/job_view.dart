@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:percent_indicator/percent_indicator.dart';
-import 'package:s3_drive/services/models/remote_file.dart';
+import 'package:files3/services/models/remote_file.dart';
+import 'package:files3/services/job.dart';
 import 'package:path/path.dart' as p;
-import 'services/job.dart';
+import 'package:percent_indicator/percent_indicator.dart';
 
 class JobView extends StatefulWidget {
   final Job job;

@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:files3/services/models/remote_file.dart';
+import 'package:files3/services/file_sync_status.dart';
 import 'package:path/path.dart' as p;
-import 'models/remote_file.dart';
-import 'file_sync_status.dart';
 
 class SyncAnalysisResult {
   final List<File> newFile;

@@ -1,26 +1,27 @@
 import 'dart:io';
 import 'dart:async';
-import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:s3_drive/components.dart';
-import 'package:s3_drive/list_files.dart';
-import 'package:s3_drive/services/config_manager.dart';
-import 'package:s3_drive/services/ini_manager.dart';
-import 'package:s3_drive/services/models/backup_mode.dart';
-import 'package:s3_drive/services/models/common.dart';
-import 'package:s3_drive/services/models/remote_file.dart';
-import 'package:s3_drive/settings.dart';
-import 'package:file_selector/file_selector.dart';
+import 'package:files3/components.dart';
+import 'package:files3/list_files.dart';
+import 'package:files3/services/ini_manager.dart';
+import 'package:files3/services/config_manager.dart';
+import 'package:files3/services/models/common.dart';
+import 'package:files3/services/models/backup_mode.dart';
+import 'package:files3/services/models/remote_file.dart';
+import 'package:files3/services/job.dart';
+import 'package:files3/completed_jobs.dart';
+import 'package:files3/active_jobs.dart';
+import 'package:files3/settings.dart';
 import 'package:path/path.dart' as p;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
-import 'services/job.dart';
-import 'active_jobs.dart';
-import 'completed_jobs.dart';
+import 'package:dynamic_color/dynamic_color.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 /// ===============================
 /// SHARED ASYNC JOB
@@ -203,7 +204,7 @@ class MainApp extends StatelessWidget {
         return DynamicColorBuilder(
           builder: (lightScheme, darkScheme) {
             return MaterialApp(
-              title: 'S3 Drive',
+              title: 'FileS3',
               theme: themeController.themeMode == ThemeMode.dark
                   ? getDarkTheme(darkScheme)
                   : getLightTheme(lightScheme),
@@ -912,8 +913,13 @@ class _HomeState extends State<Home> {
     themeController.update(uiConfig.colorMode);
     ultraDarkController.update(uiConfig.ultraDark);
 
-    Permission? permission = Platform.isAndroid || Platform.isIOS
-        ? Permission.manageExternalStorage
+    final androidInfo = await DeviceInfoPlugin().androidInfo;
+    final sdkInt = androidInfo.version.sdkInt;
+
+    Permission? permission = Platform.isAndroid
+        ? sdkInt >= 30
+              ? Permission.manageExternalStorage
+              : Permission.storage
         : null;
 
     if (permission != null) {
@@ -1046,7 +1052,7 @@ class _HomeState extends State<Home> {
                       ),
                     )
                   else
-                    const Text('S3 Drive')
+                    const Text('FileS3')
                 else if (_navIndex == 1)
                   const Text("Completed Jobs")
                 else
@@ -1440,7 +1446,7 @@ class _HomeState extends State<Home> {
                                                     });
                                                   },
                                             child: Text(
-                                              'S3 Drive',
+                                              'FileS3',
                                               style: Theme.of(
                                                 context,
                                               ).textTheme.bodyLarge,

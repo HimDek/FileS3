@@ -1,20 +1,20 @@
 import 'dart:io';
 import 'dart:async';
-import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:files3/services/models/backup_mode.dart';
+import 'package:files3/services/models/remote_file.dart';
+import 'package:files3/services/s3_transfer_task.dart';
+import 'package:files3/services/s3_file_manager.dart';
+import 'package:files3/services/config_manager.dart';
+import 'package:files3/services/sync_analyzer.dart';
+import 'package:files3/services/ini_manager.dart';
+import 'package:files3/services/hash_util.dart';
 import 'package:ini/ini.dart';
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
-import 'package:s3_drive/services/config_manager.dart';
-import 'package:s3_drive/services/hash_util.dart';
-import 'package:s3_drive/services/ini_manager.dart';
-import 'package:s3_drive/services/models/remote_file.dart';
-import 'package:s3_drive/services/s3_file_manager.dart';
-import 'models/backup_mode.dart';
-import 'sync_analyzer.dart';
-import 's3_transfer_task.dart';
 
 class DeletionRegistrar {
   static late File _file;
@@ -24,17 +24,17 @@ class DeletionRegistrar {
   static Future<void> init() async {
     if (Platform.isWindows) {
       _file = File(
-        '${Platform.environment['APPDATA']}\\S3-Drive\\deletion-register.ini',
+        '${Platform.environment['APPDATA']}\\FileS3\\deletion-register.ini',
       );
     } else if (Platform.isLinux) {
-      _file = File('/etc/s3-drive/deletion-register.ini').existsSync()
-          ? File('/etc/s3-drive/deletion-register.ini')
+      _file = File('/etc/files3/deletion-register.ini').existsSync()
+          ? File('/etc/files3/deletion-register.ini')
           : File(
-              '${Platform.environment['HOME']}/.config/s3-drive/deletion-register.ini',
+              '${Platform.environment['HOME']}/.config/files3/deletion-register.ini',
             );
     } else if (Platform.isMacOS) {
       _file = File(
-        '${Platform.environment['HOME']}/Library/Application Support/S3-Drive/deletion-register.ini',
+        '${Platform.environment['HOME']}/Library/Application Support/FileS3/deletion-register.ini',
       );
     } else if (Platform.isAndroid) {
       _file = File(

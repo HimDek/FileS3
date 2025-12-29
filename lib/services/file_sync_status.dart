@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'models/remote_file.dart';
-import 'hash_util.dart';
+import 'package:files3/services/models/remote_file.dart';
+import 'package:files3/services/hash_util.dart';
 
 enum FileSyncStatus {
   uploaded,

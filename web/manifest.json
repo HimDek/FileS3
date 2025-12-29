@@ -1,6 +1,6 @@
 {
-    "name": "S3 Drive",
-    "short_name": "S3 Drive",
+    "name": "FileS3",
+    "short_name": "FileS3",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#ffffff",

@@ -8,14 +8,14 @@ class IniManager {
 
   static Future<void> init() async {
     if (Platform.isWindows) {
-      _file = File('${Platform.environment['APPDATA']}\\S3-Drive\\config.ini');
+      _file = File('${Platform.environment['APPDATA']}\\FileS3\\config.ini');
     } else if (Platform.isLinux) {
-      _file = File('/etc/s3-drive/config.ini').existsSync()
-          ? File('/etc/s3-drive/config.ini')
-          : File('${Platform.environment['HOME']}/.config/s3-drive/config.ini');
+      _file = File('/etc/files3/config.ini').existsSync()
+          ? File('/etc/files3/config.ini')
+          : File('${Platform.environment['HOME']}/.config/files3/config.ini');
     } else if (Platform.isMacOS) {
       _file = File(
-        '${Platform.environment['HOME']}/Library/Application Support/S3-Drive/config.ini',
+        '${Platform.environment['HOME']}/Library/Application Support/FileS3/config.ini',
       );
     } else if (Platform.isAndroid) {
       _file = File(

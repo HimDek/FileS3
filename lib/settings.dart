@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:s3_drive/services/config_manager.dart';
+import 'package:files3/services/config_manager.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});

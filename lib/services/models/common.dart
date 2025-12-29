@@ -1,5 +1,5 @@
-import 'package:s3_drive/services/job.dart';
-import 'package:s3_drive/services/models/remote_file.dart';
+import 'package:files3/services/models/remote_file.dart';
+import 'package:files3/services/job.dart';
 
 class FileProps {
   final String key;
@@ -7,12 +7,7 @@ class FileProps {
   final RemoteFile? file;
   final Job? job;
 
-  FileProps({
-    required this.key,
-    required this.size,
-    this.file,
-    this.job,
-  });
+  FileProps({required this.key, required this.size, this.file, this.job});
 }
 
 enum SelectionAction { copy, cut, none }
@@ -25,5 +20,5 @@ enum SortMode {
   sizeAsc,
   sizeDesc,
   typeAsc,
-  typeDesc
+  typeDesc,
 }

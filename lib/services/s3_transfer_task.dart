@@ -1,11 +1,11 @@
+import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'package:crypto/crypto.dart';
+import 'package:files3/services/s3_file_manager.dart';
+import 'package:files3/services/hash_util.dart';
+import 'package:files3/components.dart';
 import 'package:http/http.dart' as http;
-import 'package:s3_drive/components.dart';
-import 'package:s3_drive/services/s3_file_manager.dart';
-import 'hash_util.dart';
+import 'package:crypto/crypto.dart';
 
 typedef ProgressCallback = void Function(int bytesTransferred, int totalBytes);
 typedef StatusCallback = void Function(String status);
