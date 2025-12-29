@@ -27,6 +27,8 @@ class S3TransferTask {
 
   late final http.Client _client;
 
+  static DateTime lastcallbackTime = DateTime.fromMicrosecondsSinceEpoch(0);
+
   S3TransferTask({
     required this.key,
     required this.localFile,
@@ -123,6 +125,11 @@ class S3TransferTask {
         }
         request.sink.add(chunk);
         uploaded += chunk.length;
+        if (DateTime.now().difference(lastcallbackTime).inMilliseconds < 100 &&
+            uploaded < totalBytes) {
+          return;
+        }
+        lastcallbackTime = DateTime.now();
         onProgress?.call(uploaded, totalBytes);
         onStatus?.call(
           'Uploading... ${bytesToReadable(uploaded)} / ${bytesToReadable(totalBytes)}',
@@ -196,6 +203,12 @@ class S3TransferTask {
               }
               fileSink.add(chunk);
               received += chunk.length;
+              if (DateTime.now().difference(lastcallbackTime).inMilliseconds <
+                      100 &&
+                  received < total) {
+                return;
+              }
+              lastcallbackTime = DateTime.now();
               onProgress?.call(received, total);
               onStatus?.call(
                 'Downloading... ${bytesToReadable(received)} / ${bytesToReadable(total)}',

@@ -185,7 +185,15 @@ class ListFiles extends StatelessWidget {
                       Text(timeToReadable(item.file!.lastModified!)),
                       SizedBox(width: 8),
                       Text(bytesToReadable(item.size)),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
+                      File(Main.pathFromKey(item.key) ?? item.key).existsSync()
+                          ? Icon(Icons.download_done, size: 16)
+                          : Icon(
+                              Icons.cloud_download,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 16,
+                            ),
+                      SizedBox(width: 8),
                       Text(
                         item.key.split('.').length > 1
                             ? '.${item.key.split('.').last}'

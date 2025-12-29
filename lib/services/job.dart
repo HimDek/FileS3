@@ -126,7 +126,7 @@ class DeletionRegistrar {
 
 abstract class Main {
   static late S3FileManager? s3Manager;
-  static final List<Watcher> watchers = <Watcher>[];
+  static final Map<String, Watcher> watcherMap = <String, Watcher>{};
   static List<RemoteFile> remoteFiles = <RemoteFile>[];
   static http.Client httpClient = http.Client();
   static Function(bool loading)? setLoadingState;
@@ -163,6 +163,11 @@ abstract class Main {
     return null;
   }
 
+  static Watcher? watcherFromKey(String key) {
+    final dirKey = '${key.split('/').first}/';
+    return watcherMap[dirKey];
+  }
+
   static Future<void> onJobStatus(Job job, dynamic result) async {
     if (job is UploadJob && job.completed && !job.running) {
       remoteFiles.removeWhere((file) => file.key == job.remoteKey);
@@ -172,7 +177,10 @@ abstract class Main {
   }
 
   static Future<void> stopWatchers() async {
-    for (final watcher in watchers) {
+    if (kDebugMode) {
+      debugPrint("Stopping all watchers...");
+    }
+    for (final watcher in watcherMap.values) {
       await watcher.stop();
     }
   }
@@ -194,7 +202,7 @@ abstract class Main {
         Directory(localDir).existsSync()) {
       Watcher watcher = Watcher(remoteDir: dir);
 
-      watchers.add(watcher);
+      watcherMap[dir] = watcher;
       if (background) {
         if (kDebugMode) {
           debugPrint("Performing background scan for $localDir");
@@ -255,10 +263,9 @@ abstract class Main {
   }
 
   static Future<void> refreshWatchers({bool background = false}) async {
-    await setLoadingState?.call(true);
-
+    setLoadingState?.call(true);
     await stopWatchers();
-    watchers.clear();
+    watcherMap.clear();
 
     final dirs = remoteFiles
         .where((dir) => dir.key.endsWith('/'))
@@ -269,7 +276,7 @@ abstract class Main {
     for (final dir in dirs) {
       await addWatcher(dir, background: background);
     }
-    await setLoadingState?.call(false);
+    setLoadingState?.call(false);
   }
 
   static Future<void> listDirectories({bool background = false}) async {
@@ -284,7 +291,10 @@ abstract class Main {
     }
 
     await refreshRemote();
-    await refreshWatchers(background: background);
+    if (background) {
+      await refreshWatchers(background: true);
+    }
+    await setLoadingState?.call(false);
   }
 
   static void downloadFile(RemoteFile file, {String? localPath}) {
@@ -318,7 +328,9 @@ abstract class Main {
     if (pathFromKey(key) == file.path) {
       final deleteionLog = await DeletionRegistrar.pullDeletions();
       if (deleteionLog.containsKey(key) &&
-          file.lastModifiedSync().toUtc().isBefore(deleteionLog[key]!)) {
+          file.lastModifiedSync().toUtc().isBefore(
+            deleteionLog[key]!.toUtc(),
+          )) {
         if (kDebugMode) {
           debugPrint("File deleted remotely, deleting locally: ${file.path}");
         }
@@ -356,9 +368,7 @@ abstract class Main {
           "File copied to monitored directory: ${pathFromKey(newKey) ?? newKey}",
         );
       }
-      watchers
-          .firstWhere((watcher) => p.isWithin(watcher.remoteDir, newKey))
-          .scan();
+      watcherFromKey(newKey)?.scan();
     } else {
       final newKey = () {
         String base = p.basenameWithoutExtension(key);

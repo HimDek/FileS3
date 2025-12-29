@@ -231,6 +231,7 @@ class _HomeState extends State<Home> {
   final List<RemoteFile> _allSelectableItems = [];
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
+  final _loading = ValueNotifier<bool>(true);
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
   List<Object> _searchResults = [];
   bool _foldersFirst = true;
@@ -239,7 +240,6 @@ class _HomeState extends State<Home> {
   int _dirCount = 0;
   int _fileCount = 0;
   int _navIndex = 0;
-  bool _loading = true;
   bool _searching = false;
   bool _controlsVisible = true;
 
@@ -362,7 +362,7 @@ class _HomeState extends State<Home> {
 
   Future<void> _createDirectory(String dir) async {
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
     await Main.s3Manager!.createDirectory(dir);
     Main.remoteFiles.add(
@@ -377,7 +377,7 @@ class _HomeState extends State<Home> {
       await Main.addWatcher(dir);
     }
     setState(() {
-      _loading = false;
+      _loading.value = false;
     });
   }
 
@@ -387,7 +387,7 @@ class _HomeState extends State<Home> {
     bool refresh = true,
   }) async {
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
     await Main.s3Manager!.copyFile(key, newKey);
     if (File(Main.pathFromKey(key) ?? key).existsSync() &&
@@ -412,9 +412,8 @@ class _HomeState extends State<Home> {
 
     Main.remoteFiles.add(newFile);
     if (refresh) {
-      await Main.refreshWatchers();
       setState(() {
-        _loading = false;
+        _loading.value = false;
       });
     }
   }
@@ -425,7 +424,7 @@ class _HomeState extends State<Home> {
     bool refresh = true,
   }) async {
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
     for (final file
         in Main.remoteFiles
@@ -444,9 +443,8 @@ class _HomeState extends State<Home> {
     }
 
     if (refresh) {
-      await Main.refreshWatchers();
       setState(() {
-        _loading = false;
+        _loading.value = false;
       });
     }
   }
@@ -481,7 +479,7 @@ class _HomeState extends State<Home> {
 
   Future<void> _deleteFiles(List<String> keys, {bool refresh = true}) async {
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
     await DeletionRegistrar.pullDeletions();
     DeletionRegistrar.logDeletions(keys);
@@ -495,14 +493,14 @@ class _HomeState extends State<Home> {
     Main.remoteFiles.removeWhere((file) => keys.contains(file.key));
     if (refresh) {
       setState(() {
-        _loading = false;
+        _loading.value = false;
       });
     }
   }
 
   Future<void> _deleteS3(List<String> keys, {bool refresh = true}) async {
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
 
     await DeletionRegistrar.pullDeletions();
@@ -533,7 +531,7 @@ class _HomeState extends State<Home> {
 
     if (refresh) {
       setState(() {
-        _loading = false;
+        _loading.value = false;
       });
     }
   }
@@ -543,7 +541,7 @@ class _HomeState extends State<Home> {
     bool refresh = true,
   }) async {
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
     for (final dir in dirs) {
       final files = Main.remoteFiles
@@ -559,7 +557,7 @@ class _HomeState extends State<Home> {
     }
     if (refresh) {
       setState(() {
-        _loading = false;
+        _loading.value = false;
       });
     }
   }
@@ -570,16 +568,15 @@ class _HomeState extends State<Home> {
     bool refresh = true,
   }) async {
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
     for (int i = 0; i < keys.length; i++) {
       await _copyFile(keys[i], newKeys[i], refresh: false);
     }
     await _deleteFiles(keys, refresh: false);
     if (refresh) {
-      await Main.refreshWatchers();
       setState(() {
-        _loading = false;
+        _loading.value = false;
       });
     }
   }
@@ -590,16 +587,15 @@ class _HomeState extends State<Home> {
     bool refresh = true,
   }) async {
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
     for (int i = 0; i < dirs.length; i++) {
       await _copyDirectory(dirs[i], newDirs[i], refresh: false);
     }
     await _deleteDirectories(dirs, refresh: false);
     if (refresh) {
-      await Main.refreshWatchers();
       setState(() {
-        _loading = false;
+        _loading.value = false;
       });
     }
   }
@@ -680,37 +676,51 @@ class _HomeState extends State<Home> {
       : () async {
           final selection = _selection.toList();
           if (_selectionAction == SelectionAction.copy) {
-            for (final item in selection) {
+            for (final item in selection.where(
+              (item) =>
+                  p.normalize(p.dirname(item.key)) !=
+                  p.normalize(_driveDir.key),
+            )) {
+              final newKey = p.join(_driveDir.key, p.basename(item.key));
+              if (item.key == newKey) {
+                continue;
+              }
               if (!item.key.endsWith('/')) {
-                final file = item;
-                final newKey = p.join(_driveDir.key, p.basename(file.key));
-                await _copyFile(file.key, newKey);
+                await _copyFile(item.key, newKey);
               } else {
-                final dir = item;
-                final newDir = p.join(_driveDir.key, p.basename(dir.key));
-                await _copyDirectory(dir.key, newDir);
+                await _copyDirectory(item.key, newKey);
               }
             }
           } else {
+            final dirs = selection
+                .where(
+                  (item) =>
+                      item.key.endsWith('/') &&
+                      p.normalize(p.dirname(item.key)) !=
+                          p.normalize(_driveDir.key),
+                )
+                .toList();
+            final files = selection
+                .where(
+                  (item) =>
+                      !item.key.endsWith('/') &&
+                      p.normalize(p.dirname(item.key)) !=
+                          p.normalize(_driveDir.key),
+                )
+                .toList();
+            final dirsDestinations = dirs
+                .map((item) => p.join(_driveDir.key, p.basename(item.key)))
+                .toList();
+            final filesDestinations = files
+                .map((item) => p.join(_driveDir.key, p.basename(item.key)))
+                .toList();
             _moveDirectories(
-              selection
-                  .where((item) => item.key.endsWith('/'))
-                  .map((item) => item.key)
-                  .toList(),
-              selection
-                  .where((item) => item.key.endsWith('/'))
-                  .map((item) => p.join(_driveDir.key, p.basename(item.key)))
-                  .toList(),
+              dirs.map((item) => item.key).toList(),
+              dirsDestinations,
             );
             _moveFiles(
-              selection
-                  .where((item) => !item.key.endsWith('/'))
-                  .map((item) => item.key)
-                  .toList(),
-              selection
-                  .where((item) => !item.key.endsWith('/'))
-                  .map((item) => p.join(_driveDir.key, p.basename(item.key)))
-                  .toList(),
+              files.map((item) => item.key).toList(),
+              filesDestinations,
             );
             _selection.clear();
           }
@@ -772,7 +782,7 @@ class _HomeState extends State<Home> {
 
   Future<void> _search() async {
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
 
     _searchResults =
@@ -802,7 +812,7 @@ class _HomeState extends State<Home> {
         }).toList();
 
     setState(() {
-      _loading = false;
+      _loading.value = false;
     });
   }
 
@@ -813,64 +823,72 @@ class _HomeState extends State<Home> {
       enableDrag: true,
       showDragHandle: true,
       constraints: const BoxConstraints(maxHeight: 800, maxWidth: 800),
-      builder: (context) => file == null
-          ? buildBulkContextMenu(
-              context,
-              _selection.toList(),
-              _getLink,
-              _downloadFile,
-              _downloadDirectory,
-              _saveFile,
-              _saveDirectory,
-              (keys, newKeys) async =>
-                  await _moveFiles(keys, newKeys, refresh: true),
-              (dirs, newDirs) async =>
-                  await _moveDirectories(dirs, newDirs, refresh: true),
-              _cut,
-              _copy,
-              _deleteLocal,
-              _deleteS3,
-              (keys) async => await _deleteFiles(keys, refresh: true),
-              (dirs) async => await _deleteDirectories(dirs, refresh: true),
-              () {
-                _selection.clear();
-                setState(() {});
-              },
-            )
-          : file.key.endsWith('/')
-          ? buildDirectoryContextMenu(
-              context,
-              file,
-              _downloadDirectory,
-              _saveDirectory,
-              _cut,
-              _copy,
-              (List<String> dirs, List<String> newDirs) async =>
-                  await _moveDirectories(dirs, newDirs, refresh: true),
-              _deleteLocal,
-              _deleteS3,
-              (List<String> dirs) async =>
-                  await _deleteDirectories(dirs, refresh: true),
-              _count,
-              _dirSize,
-              _dirModified,
-              _setBackupMode,
-            )
-          : buildFileContextMenu(
-              context,
-              file,
-              _getLink,
-              _downloadFile,
-              _saveFile,
-              _cut,
-              _copy,
-              (List<String> keys, List<String> newKeys) async =>
-                  await _moveFiles(keys, newKeys, refresh: true),
-              _deleteLocal,
-              (List<String> keys) async =>
-                  await _deleteFiles(keys, refresh: true),
-            ),
+      builder: (context) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: _loading,
+          builder: (context, value, _) => value
+              ? const Center(child: CircularProgressIndicator())
+              : file == null
+              ? buildBulkContextMenu(
+                  context,
+                  _selection.toList(),
+                  _getLink,
+                  _downloadFile,
+                  _downloadDirectory,
+                  _saveFile,
+                  _saveDirectory,
+                  (keys, newKeys) async =>
+                      await _moveFiles(keys, newKeys, refresh: true),
+                  (dirs, newDirs) async =>
+                      await _moveDirectories(dirs, newDirs, refresh: true),
+                  _cut,
+                  _copy,
+                  _deleteLocal,
+                  _deleteS3,
+                  (keys) async => await _deleteFiles(keys, refresh: true),
+                  (dirs) async => await _deleteDirectories(dirs, refresh: true),
+                  () {
+                    _selection.clear();
+                    setState(() {});
+                  },
+                )
+              : file.key.endsWith('/')
+              ? buildDirectoryContextMenu(
+                  context,
+                  file,
+                  _downloadDirectory,
+                  _saveDirectory,
+                  _cut,
+                  _copy,
+                  (List<String> dirs, List<String> newDirs) async =>
+                      await _moveDirectories(dirs, newDirs, refresh: true),
+                  _deleteLocal,
+                  _deleteS3,
+                  (List<String> dirs) async =>
+                      await _deleteDirectories(dirs, refresh: true),
+                  _count,
+                  _dirSize,
+                  _dirModified,
+                  _setBackupMode,
+                )
+              : buildFileContextMenu(
+                  context,
+                  file,
+                  _getLink,
+                  _downloadFile,
+                  _saveFile,
+                  _cut,
+                  _copy,
+                  (List<String> keys, List<String> newKeys) async =>
+                      await _moveFiles(keys, newKeys, refresh: true),
+                  _deleteLocal,
+                  (List<String> keys) async =>
+                      await _deleteFiles(keys, refresh: true),
+                ),
+        );
+      },
     );
+    await Main.refreshWatchers();
     setState(() {});
   }
 
@@ -914,11 +932,11 @@ class _HomeState extends State<Home> {
     }
 
     setState(() {
-      _loading = true;
+      _loading.value = true;
     });
     Main.setLoadingState = (bool loading) {
       setState(() {
-        _loading = loading;
+        _loading.value = loading;
       });
     };
     Main.setHomeState = () {
@@ -926,7 +944,7 @@ class _HomeState extends State<Home> {
     };
     await Main.init(context);
     setState(() {
-      _loading = false;
+      _loading.value = false;
     });
   }
 
@@ -1070,7 +1088,7 @@ class _HomeState extends State<Home> {
                               icon: Icon(Icons.start),
                             ),
                   ]
-                : _loading
+                : _loading.value
                 ? [const CircularProgressIndicator()]
                 : _selection.isNotEmpty
                 ? _selectionAction == SelectionAction.none
@@ -1092,6 +1110,7 @@ class _HomeState extends State<Home> {
                           ),
                           IconButton(
                             onPressed: () async {
+                              await Main.stopWatchers();
                               await _showContextMenu(null);
                             },
                             icon: Icon(Icons.more_vert),
@@ -1152,7 +1171,7 @@ class _HomeState extends State<Home> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   SizedBox(height: 0, width: 128),
-                                  if (!_loading && !_searching) ...[
+                                  if (!_loading.value && !_searching) ...[
                                     ListTile(
                                       dense: true,
                                       visualDensity: VisualDensity.compact,
@@ -1526,6 +1545,7 @@ class _HomeState extends State<Home> {
                   changeDirectory: _changeDirectory,
                   select: _select,
                   showContextMenu: (file) async {
+                    await Main.stopWatchers();
                     await _showContextMenu(file);
                   },
                   count: _count,
@@ -1555,6 +1575,7 @@ class _HomeState extends State<Home> {
                   changeDirectory: _changeDirectory,
                   select: _select,
                   showContextMenu: (file) async {
+                    await Main.stopWatchers();
                     await _showContextMenu(file);
                   },
                   count: _count,
@@ -1594,6 +1615,7 @@ class _HomeState extends State<Home> {
                   changeDirectory: _changeDirectory,
                   select: _select,
                   showContextMenu: (file) async {
+                    await Main.stopWatchers();
                     await _showContextMenu(file);
                   },
                   count: _count,
@@ -1622,7 +1644,7 @@ class _HomeState extends State<Home> {
         duration: const Duration(milliseconds: 300),
         offset:
             _navIndex == 0 &&
-                !_loading &&
+                !_loading.value &&
                 _selection.isEmpty &&
                 _controlsVisible
             ? Offset.zero
@@ -1631,7 +1653,7 @@ class _HomeState extends State<Home> {
           duration: const Duration(milliseconds: 300),
           scale:
               _navIndex == 0 &&
-                  !_loading &&
+                  !_loading.value &&
                   _selection.isEmpty &&
                   _controlsVisible
               ? 1
