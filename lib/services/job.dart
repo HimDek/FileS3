@@ -22,25 +22,9 @@ class DeletionRegistrar {
   static DateTime lastPulled = DateTime.fromMillisecondsSinceEpoch(0).toUtc();
 
   static Future<void> init() async {
-    if (Platform.isWindows) {
-      _file = File(
-        '${Platform.environment['APPDATA']}\\FileS3\\deletion-register.ini',
-      );
-    } else if (Platform.isLinux) {
-      _file = File('/etc/files3/deletion-register.ini').existsSync()
-          ? File('/etc/files3/deletion-register.ini')
-          : File(
-              '${Platform.environment['HOME']}/.config/files3/deletion-register.ini',
-            );
-    } else if (Platform.isMacOS) {
-      _file = File(
-        '${Platform.environment['HOME']}/Library/Application Support/FileS3/deletion-register.ini',
-      );
-    } else if (Platform.isAndroid) {
-      _file = File(
-        '${(await getApplicationDocumentsDirectory()).path}/deletion-register.ini',
-      );
-    }
+    _file = File(
+      '${(await getApplicationDocumentsDirectory()).path}/deletion-register.ini',
+    );
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
