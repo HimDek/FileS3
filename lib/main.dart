@@ -916,14 +916,6 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _setConfig() async {
-    await Main.setConfig();
-    while (Main.s3Manager == null) {
-      await _pushS3ConfigPage();
-      await Main.setConfig();
-    }
-  }
-
   Future<void> _init() async {
     final uiConfig = ConfigManager.loadUiConfig();
     themeController.update(uiConfig.colorMode);
@@ -980,16 +972,12 @@ class _HomeState extends State<Home> {
     Main.setHomeState = () {
       setState(() {});
     };
+    Main.pushS3ConfigPage = _pushS3ConfigPage;
 
     await Main.init();
     setState(() {
       _loading.value = false;
     });
-
-    if (Main.s3Manager == null) {
-      await _setConfig();
-      await Main.refreshRemote();
-    }
   }
 
   @override
@@ -1375,9 +1363,8 @@ class _HomeState extends State<Home> {
                                     ).textTheme.bodyMedium,
                                     title: Text('Settings', maxLines: 1),
                                     trailing: Icon(Icons.settings),
-                                    onTap: () {
-                                      Navigator.of(context).pop();
-                                      Navigator.of(context).push(
+                                    onTap: () async {
+                                      await Navigator.of(context).push(
                                         MaterialPageRoute(
                                           builder: (context) => SettingsPage(),
                                         ),

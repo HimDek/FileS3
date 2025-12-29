@@ -130,6 +130,7 @@ abstract class Main {
   static final Map<String, Watcher> watcherMap = <String, Watcher>{};
   static List<RemoteFile> remoteFiles = <RemoteFile>[];
   static http.Client httpClient = http.Client();
+  static Future<void> Function()? pushS3ConfigPage;
   static Function(bool loading)? setLoadingState;
   static Function()? setHomeState;
 
@@ -395,6 +396,10 @@ abstract class Main {
 
   static Future<void> setConfig() async {
     s3Manager = await S3FileManager.create(httpClient);
+    while (s3Manager == null) {
+      await pushS3ConfigPage?.call();
+      s3Manager = await S3FileManager.create(httpClient);
+    }
   }
 
   static Future<void> init({bool background = false}) async {

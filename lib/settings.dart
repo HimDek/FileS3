@@ -21,7 +21,7 @@ class SettingsPageState extends State<SettingsPage> {
             subtitle: Text(
               "Configure AWS S3 access key, secret key, region, bucket, host etc.",
             ),
-            onTap: () => Navigator.of(
+            onTap: () async => await Navigator.of(
               context,
             ).push(MaterialPageRoute(builder: (context) => S3ConfigPage())),
           ),
@@ -31,7 +31,7 @@ class SettingsPageState extends State<SettingsPage> {
             subtitle: Text(
               "Configure UI settings like theme, colors, font size etc.",
             ),
-            onTap: () => Navigator.of(
+            onTap: () async => await Navigator.of(
               context,
             ).push(MaterialPageRoute(builder: (context) => UiSettingsPage())),
           ),

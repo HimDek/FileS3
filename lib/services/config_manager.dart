@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:files3/services/models/remote_file.dart';
@@ -126,51 +127,58 @@ class S3ConfigPage extends StatefulWidget {
 }
 
 class S3ConfigPageState extends State<S3ConfigPage> {
-  String _accessKey = '';
-  String _secretKey = '';
-  String _region = '';
-  String _bucket = '';
-  String _prefix = '';
-  String _host = '';
   bool _loading = true;
   bool _obscureSecret = true;
+  S3Config? _s3Config;
+  final FocusNode _accessFocusNode = FocusNode();
+  final FocusNode _secretFocusNode = FocusNode();
+  final FocusNode _regionFocusNode = FocusNode();
+  final FocusNode _bucketFocusNode = FocusNode();
+  final FocusNode _prefixFocusNode = FocusNode();
+  final FocusNode _hostFocusNode = FocusNode();
+  final TextEditingController _accessKeyController = TextEditingController();
+  final TextEditingController _secretKeyController = TextEditingController();
+  final TextEditingController _regionController = TextEditingController();
+  final TextEditingController _bucketController = TextEditingController();
+  final TextEditingController _prefixController = TextEditingController();
+  final TextEditingController _hostController = TextEditingController();
 
   Future<void> _readConfig() async {
     setState(() {
       _loading = true;
     });
-    final config = await ConfigManager.loadS3Config();
+    _s3Config = await ConfigManager.loadS3Config();
     setState(() {
-      _accessKey = config.accessKey;
-      _secretKey = config.secretKey;
-      _region = config.region;
-      _bucket = config.bucket;
-      _prefix = config.prefix;
-      _host = config.host;
+      _accessKeyController.text = _s3Config!.accessKey;
+      _secretKeyController.text = _s3Config!.secretKey;
+      _regionController.text = _s3Config!.region;
+      _bucketController.text = _s3Config!.bucket;
+      _prefixController.text = _s3Config!.prefix;
+      _hostController.text = _s3Config!.host;
       _loading = false;
     });
   }
 
-  Future<void> _saveConfig(BuildContext context) async {
+  Future<void> _saveConfig() async {
     setState(() {
       _loading = true;
     });
     await ConfigManager.saveS3Config(
       S3Config(
-        accessKey: _accessKey,
-        secretKey: _secretKey,
-        region: _region,
-        bucket: _bucket,
-        prefix: _prefix,
-        host: _host,
+        accessKey: _accessKeyController.text,
+        secretKey: _secretKeyController.text,
+        region: _regionController.text,
+        bucket: _bucketController.text,
+        prefix: _prefixController.text,
+        host: _hostController.text,
       ),
     );
     await _readConfig();
+  }
+
+  Future<void> _setConfig() async {
     await Main.setConfig();
     await Main.listDirectories();
-    setState(() {
-      _loading = false;
-    });
   }
 
   @override
@@ -181,134 +189,176 @@ class S3ConfigPageState extends State<S3ConfigPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('AWS S3 Config'),
-        actions: [
-          IconButton(
-            onPressed: _loading ? null : () => _saveConfig(context),
-            icon: _loading
-                ? CircularProgressIndicator(padding: EdgeInsets.all(12))
-                : Icon(Icons.save),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          TextField(
-            decoration: InputDecoration(
-              prefixIcon: Icon(Icons.vpn_key),
-              labelText: 'Access Key',
-              hintText: 'Your AWS access key ID',
+    return PopScope(
+      canPop:
+          !_loading &&
+          _s3Config?.accessKey.isNotEmpty == true &&
+          _s3Config?.secretKey.isNotEmpty == true &&
+          _s3Config?.region.isNotEmpty == true &&
+          _s3Config?.bucket.isNotEmpty == true,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) {
+          await _setConfig();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('AWS S3 Config'),
+          actions: [
+            IconButton(
+              onPressed:
+                  _loading ||
+                      _accessKeyController.text.isEmpty ||
+                      _secretKeyController.text.isEmpty ||
+                      _regionController.text.isEmpty ||
+                      _bucketController.text.isEmpty
+                  ? null
+                  : _saveConfig,
+              icon: Icon(Icons.save),
+              tooltip: 'Save Configuration',
             ),
-            controller: TextEditingController(text: _accessKey),
-            onChanged: (value) => _accessKey = value,
-            enabled: !_loading,
-          ),
-          SizedBox(height: 8),
-          TextField(
-            decoration: InputDecoration(
-              prefixIcon: Icon(Icons.lock),
-              labelText: 'Secret Key',
-              hintText: 'Your AWS secret access key',
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscureSecret ? Icons.visibility : Icons.visibility_off,
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            TextField(
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.vpn_key),
+                labelText: 'Access Key',
+                hintText: 'Your AWS access key ID',
+              ),
+              focusNode: _accessFocusNode,
+              controller: _accessKeyController,
+              onChanged: (value) {
+                setState(() {});
+              },
+              enabled: !_loading,
+            ),
+            SizedBox(height: 8),
+            TextField(
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.lock),
+                labelText: 'Secret Key',
+                hintText: 'Your AWS secret access key',
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscureSecret ? Icons.visibility : Icons.visibility_off,
+                  ),
+                  onPressed: _loading
+                      ? null
+                      : () {
+                          setState(() {
+                            _obscureSecret = !_obscureSecret;
+                          });
+                        },
                 ),
-                onPressed: _loading
-                    ? null
-                    : () {
-                        setState(() {
-                          _obscureSecret = !_obscureSecret;
-                        });
-                      },
+              ),
+              focusNode: _secretFocusNode,
+              controller: _secretKeyController,
+              obscureText: _obscureSecret,
+              onChanged: (value) {
+                setState(() {});
+              },
+              enabled: !_loading,
+            ),
+            SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.public),
+                labelText: 'Region',
+                hintText: 'e.g. us-east-1',
+                helperText: 'AWS region where your S3 bucket is located',
+              ),
+              focusNode: _regionFocusNode,
+              controller: _regionController,
+              onChanged: (value) {
+                setState(() {});
+              },
+              enabled: !_loading,
+            ),
+            SizedBox(height: 8),
+            TextField(
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.storage),
+                labelText: 'Bucket Name',
+                helperText:
+                    'Name of the S3 bucket to use. The bucket must exist',
+              ),
+              focusNode: _bucketFocusNode,
+              controller: _bucketController,
+              onChanged: (value) {
+                setState(() {});
+              },
+              enabled: !_loading,
+            ),
+            SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.folder),
+                labelText: 'Prefix (optional)',
+                hintText: 'e.g. myfolder/',
+                helperText:
+                    'Folder prefix within the bucket will be used as root',
+              ),
+              focusNode: _prefixFocusNode,
+              controller: _prefixController,
+              onChanged: (value) {
+                setState(() {});
+              },
+              enabled: !_loading,
+            ),
+            SizedBox(height: 8),
+            TextField(
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.link),
+                labelText: 'Host (optional)',
+                hintText: 'e.g. https://s3.custom-endpoint.com',
+                helperText: 'Custom S3-compatible endpoint (if any)',
+              ),
+              focusNode: _hostFocusNode,
+              controller: _hostController,
+              onChanged: (value) {
+                setState(() {});
+              },
+              enabled: !_loading,
+            ),
+            SizedBox(height: 16),
+            ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              title: Text('Note:'),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Make sure the provided AWS credentials have s3:ListBucket, s3:GetObject, s3:PutObject, s3:DeleteObject permissions on the specified S3 bucket and prefix.',
+                  ),
+                ],
               ),
             ),
-            controller: TextEditingController(text: _secretKey),
-            obscureText: _obscureSecret,
-            onChanged: (value) => _secretKey = value,
-            enabled: !_loading,
-          ),
-          SizedBox(height: 16),
-          TextField(
-            decoration: InputDecoration(
-              prefixIcon: Icon(Icons.public),
-              labelText: 'Region',
-              hintText: 'e.g. us-east-1',
-              helperText: 'AWS region where your S3 bucket is located',
+            ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              title: Text(
+                '["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]',
+              ),
+              subtitle: Text(
+                'Minimum required S3 permissions for the app to function properly.',
+              ),
             ),
-            controller: TextEditingController(text: _region),
-            onChanged: (value) => _region = value,
-            enabled: !_loading,
-          ),
-          SizedBox(height: 8),
-          TextField(
-            decoration: InputDecoration(
-              prefixIcon: Icon(Icons.storage),
-              labelText: 'Bucket Name',
-              helperText: 'Name of the S3 bucket to use. The bucket must exist',
+            ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              title: Text(
+                'arn:aws:s3:::${_bucketController.text}/${_prefixController.text}*',
+              ),
+              subtitle: Text(
+                'Resource ARN for the specified bucket and prefix.',
+              ),
             ),
-            controller: TextEditingController(text: _bucket),
-            onChanged: (value) => _bucket = value,
-            enabled: !_loading,
-          ),
-          SizedBox(height: 16),
-          TextField(
-            decoration: InputDecoration(
-              prefixIcon: Icon(Icons.folder),
-              labelText: 'Prefix (optional)',
-              hintText: 'e.g. myfolder/',
-              helperText:
-                  'Folder prefix within the bucket will be used as root',
-            ),
-            controller: TextEditingController(text: _prefix),
-            onChanged: (value) => _prefix = value.isEmpty ? '' : value,
-            enabled: !_loading,
-          ),
-          SizedBox(height: 8),
-          TextField(
-            decoration: InputDecoration(
-              prefixIcon: Icon(Icons.link),
-              labelText: 'Host (optional)',
-              hintText: 'e.g. https://s3.custom-endpoint.com',
-              helperText: 'Custom S3-compatible endpoint (if any)',
-            ),
-            controller: TextEditingController(text: _host),
-            onChanged: (value) => _host = value,
-            enabled: !_loading,
-          ),
-          SizedBox(height: 16),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            title: Text('Note:'),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Make sure the provided AWS credentials have s3:ListBucket, s3:GetObject, s3:PutObject, s3:DeleteObject permissions on the specified S3 bucket and prefix.',
-                ),
-              ],
-            ),
-          ),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            title: Text(
-              '["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]',
-            ),
-            subtitle: Text(
-              'Minimum required S3 permissions for the app to function properly.',
-            ),
-          ),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            title: Text('arn:aws:s3:::${_bucket}/${_prefix}*'),
-            subtitle: Text('Resource ARN for the specified bucket and prefix.'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
