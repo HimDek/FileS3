@@ -23,7 +23,7 @@ class ListFiles extends StatelessWidget {
   final (int, int) Function(RemoteFile, {bool recursive}) count;
   final int Function(RemoteFile) dirSize;
   final String Function(RemoteFile) dirModified;
-  final String Function(RemoteFile, int?) getLink;
+  final String? Function(RemoteFile, int?) getLink;
 
   const ListFiles({
     super.key,
@@ -228,14 +228,22 @@ class ListFiles extends StatelessWidget {
                         OpenFile.open(Main.pathFromKey(item.key) ?? item.key);
                       }
                     : () {
-                        launchUrl(
-                          Uri.parse(
-                            getLink(
-                              item.file!,
-                              Duration(minutes: 60).inSeconds,
+                        try {
+                          launchUrl(
+                            Uri.parse(
+                              getLink(
+                                item.file!,
+                                Duration(minutes: 60).inSeconds,
+                              )!,
                             ),
-                          ),
-                        );
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error generating link: $e'),
+                            ),
+                          );
+                        }
                       },
                 onLongPress: selectionAction == SelectionAction.none
                     ? () {

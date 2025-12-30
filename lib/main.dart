@@ -229,8 +229,12 @@ class _HomeState extends State<Home> {
     _allSelectableItems.addAll(items.whereType<RemoteFile>());
   }
 
-  String _getLink(RemoteFile file, int? seconds) {
-    return Main.s3Manager!.getUrl(file.key, validForSeconds: seconds);
+  String? _getLink(RemoteFile file, int? seconds) {
+    try {
+      return Main.s3Manager!.getUrl(file.key, validForSeconds: seconds);
+    } catch (e) {
+      return null;
+    }
   }
 
   String _dirModified(RemoteFile dir) {
@@ -332,17 +336,23 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading.value = true;
     });
-    await Main.s3Manager!.createDirectory(dir);
-    Main.remoteFiles.add(
-      RemoteFile(
-        key: dir.endsWith('/') ? dir : '$dir/',
-        size: 0,
-        etag: '',
-        lastModified: DateTime.now(),
-      ),
-    );
-    if (p.split(dir).length == 1) {
-      await Main.addWatcher(dir);
+    try {
+      await Main.s3Manager!.createDirectory(dir);
+      Main.remoteFiles.add(
+        RemoteFile(
+          key: dir.endsWith('/') ? dir : '$dir/',
+          size: 0,
+          etag: '',
+          lastModified: DateTime.now(),
+        ),
+      );
+      if (p.split(dir).length == 1) {
+        await Main.addWatcher(dir);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error creating directory: $e')));
     }
     setState(() {
       _loading.value = false;
@@ -642,57 +652,63 @@ class _HomeState extends State<Home> {
               _selection.any((item) => !item.key.endsWith('/'))))
       ? null
       : () async {
-          final selection = _selection.toList();
-          if (_selectionAction == SelectionAction.copy) {
-            for (final item in selection.where(
-              (item) =>
-                  p.normalize(p.dirname(item.key)) !=
-                  p.normalize(_driveDir.key),
-            )) {
-              final newKey = p.join(_driveDir.key, p.basename(item.key));
-              if (item.key == newKey) {
-                continue;
+          try {
+            final selection = _selection.toList();
+            if (_selectionAction == SelectionAction.copy) {
+              for (final item in selection.where(
+                (item) =>
+                    p.normalize(p.dirname(item.key)) !=
+                    p.normalize(_driveDir.key),
+              )) {
+                final newKey = p.join(_driveDir.key, p.basename(item.key));
+                if (item.key == newKey) {
+                  continue;
+                }
+                if (!item.key.endsWith('/')) {
+                  await _copyFile(item.key, newKey);
+                } else {
+                  await _copyDirectory(item.key, newKey);
+                }
               }
-              if (!item.key.endsWith('/')) {
-                await _copyFile(item.key, newKey);
-              } else {
-                await _copyDirectory(item.key, newKey);
-              }
+            } else {
+              final dirs = selection
+                  .where(
+                    (item) =>
+                        item.key.endsWith('/') &&
+                        p.normalize(p.dirname(item.key)) !=
+                            p.normalize(_driveDir.key),
+                  )
+                  .toList();
+              final files = selection
+                  .where(
+                    (item) =>
+                        !item.key.endsWith('/') &&
+                        p.normalize(p.dirname(item.key)) !=
+                            p.normalize(_driveDir.key),
+                  )
+                  .toList();
+              final dirsDestinations = dirs
+                  .map((item) => p.join(_driveDir.key, p.basename(item.key)))
+                  .toList();
+              final filesDestinations = files
+                  .map((item) => p.join(_driveDir.key, p.basename(item.key)))
+                  .toList();
+              _moveDirectories(
+                dirs.map((item) => item.key).toList(),
+                dirsDestinations,
+              );
+              _moveFiles(
+                files.map((item) => item.key).toList(),
+                filesDestinations,
+              );
+              _selection.clear();
             }
-          } else {
-            final dirs = selection
-                .where(
-                  (item) =>
-                      item.key.endsWith('/') &&
-                      p.normalize(p.dirname(item.key)) !=
-                          p.normalize(_driveDir.key),
-                )
-                .toList();
-            final files = selection
-                .where(
-                  (item) =>
-                      !item.key.endsWith('/') &&
-                      p.normalize(p.dirname(item.key)) !=
-                          p.normalize(_driveDir.key),
-                )
-                .toList();
-            final dirsDestinations = dirs
-                .map((item) => p.join(_driveDir.key, p.basename(item.key)))
-                .toList();
-            final filesDestinations = files
-                .map((item) => p.join(_driveDir.key, p.basename(item.key)))
-                .toList();
-            _moveDirectories(
-              dirs.map((item) => item.key).toList(),
-              dirsDestinations,
-            );
-            _moveFiles(
-              files.map((item) => item.key).toList(),
-              filesDestinations,
-            );
-            _selection.clear();
+            _selectionAction = SelectionAction.none;
+          } catch (e) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('Error pasting items: $e')));
           }
-          _selectionAction = SelectionAction.none;
         };
 
   void _saveFile(RemoteFile file, String savePath) {
@@ -786,76 +802,81 @@ class _HomeState extends State<Home> {
 
   Future<void> _showContextMenu(RemoteFile? file) async {
     setState(() {});
-    await showModalBottomSheet(
-      context: context,
-      enableDrag: true,
-      showDragHandle: true,
-      constraints: const BoxConstraints(maxHeight: 1400, maxWidth: 1400),
-      builder: (context) {
-        return ValueListenableBuilder<bool>(
-          valueListenable: _loading,
-          builder: (context, value, _) => value
-              ? const Center(child: CircularProgressIndicator())
-              : file == null
-              ? buildBulkContextMenu(
-                  context,
-                  _selection.toList(),
-                  _getLink,
-                  _downloadFile,
-                  _downloadDirectory,
-                  _saveFile,
-                  _saveDirectory,
-                  (keys, newKeys) async =>
-                      await _moveFiles(keys, newKeys, refresh: true),
-                  (dirs, newDirs) async =>
-                      await _moveDirectories(dirs, newDirs, refresh: true),
-                  _cut,
-                  _copy,
-                  _deleteLocal,
-                  _deleteS3,
-                  (keys) async => await _deleteFiles(keys, refresh: true),
-                  (dirs) async => await _deleteDirectories(dirs, refresh: true),
-                  () {
-                    _selection.clear();
-                    setState(() {});
-                  },
-                )
-              : file.key.endsWith('/')
-              ? buildDirectoryContextMenu(
-                  context,
-                  file,
-                  _downloadDirectory,
-                  _saveDirectory,
-                  _cut,
-                  _copy,
-                  (List<String> dirs, List<String> newDirs) async =>
-                      await _moveDirectories(dirs, newDirs, refresh: true),
-                  _deleteLocal,
-                  _deleteS3,
-                  (List<String> dirs) async =>
-                      await _deleteDirectories(dirs, refresh: true),
-                  _count,
-                  _dirSize,
-                  _dirModified,
-                  _setBackupMode,
-                )
-              : buildFileContextMenu(
-                  context,
-                  file,
-                  _getLink,
-                  _downloadFile,
-                  _saveFile,
-                  _cut,
-                  _copy,
-                  (List<String> keys, List<String> newKeys) async =>
-                      await _moveFiles(keys, newKeys, refresh: true),
-                  _deleteLocal,
-                  (List<String> keys) async =>
-                      await _deleteFiles(keys, refresh: true),
-                ),
-        );
-      },
-    );
+    try {
+      await showModalBottomSheet(
+        context: context,
+        enableDrag: true,
+        showDragHandle: true,
+        constraints: const BoxConstraints(maxHeight: 1400, maxWidth: 1400),
+        builder: (context) {
+          return ValueListenableBuilder<bool>(
+            valueListenable: _loading,
+            builder: (context, value, _) => value
+                ? const Center(child: CircularProgressIndicator())
+                : file == null
+                ? buildBulkContextMenu(
+                    context,
+                    _selection.toList(),
+                    _getLink,
+                    _downloadFile,
+                    _downloadDirectory,
+                    _saveFile,
+                    _saveDirectory,
+                    (keys, newKeys) async =>
+                        await _moveFiles(keys, newKeys, refresh: true),
+                    (dirs, newDirs) async =>
+                        await _moveDirectories(dirs, newDirs, refresh: true),
+                    _cut,
+                    _copy,
+                    _deleteLocal,
+                    _deleteS3,
+                    (keys) async => await _deleteFiles(keys, refresh: true),
+                    (dirs) async =>
+                        await _deleteDirectories(dirs, refresh: true),
+                    () {
+                      _selection.clear();
+                      setState(() {});
+                    },
+                  )
+                : file.key.endsWith('/')
+                ? buildDirectoryContextMenu(
+                    context,
+                    file,
+                    _downloadDirectory,
+                    _saveDirectory,
+                    _cut,
+                    _copy,
+                    (List<String> dirs, List<String> newDirs) async =>
+                        await _moveDirectories(dirs, newDirs, refresh: true),
+                    _deleteLocal,
+                    _deleteS3,
+                    (List<String> dirs) async =>
+                        await _deleteDirectories(dirs, refresh: true),
+                    _count,
+                    _dirSize,
+                    _dirModified,
+                    _setBackupMode,
+                  )
+                : buildFileContextMenu(
+                    context,
+                    file,
+                    _getLink,
+                    _downloadFile,
+                    _saveFile,
+                    _cut,
+                    _copy,
+                    (List<String> keys, List<String> newKeys) async =>
+                        await _moveFiles(keys, newKeys, refresh: true),
+                    _deleteLocal,
+                    (List<String> keys) async =>
+                        await _deleteFiles(keys, refresh: true),
+                  ),
+          );
+        },
+      );
+    } catch (e) {
+      await Main.refreshRemote();
+    }
 
     if (_loading.value) {
       final completer = Completer<void>();
@@ -969,25 +990,36 @@ class _HomeState extends State<Home> {
 
   @override
   void setState(void Function() fn) async {
-    super.setState(() {
-      Main.ensureDirectoryObjects();
-      fn();
-      for (RemoteFile item in _selection) {
-        if (p.isWithin(item.key, _driveDir.key) || item.key == _driveDir.key) {
-          _driveDir = () {
-            String dir = _driveDir.key;
-            while (p.isWithin(item.key, dir) || item.key == dir) {
-              dir = p.dirname(dir);
-              if (dir == '') {
-                break;
+    if (mounted) {
+      super.setState(() {
+        Main.ensureDirectoryObjects();
+        fn();
+        for (RemoteFile item in _selection) {
+          if (p.isWithin(item.key, _driveDir.key) ||
+              item.key == _driveDir.key) {
+            _driveDir = () {
+              String dir = _driveDir.key;
+              while (p.isWithin(item.key, dir) || item.key == dir) {
+                dir = p.dirname(dir);
+                if (dir == '') {
+                  break;
+                }
               }
-            }
-            return Main.remoteFiles.firstWhere((file) => file.key == dir);
-          }();
+              return Main.remoteFiles.firstWhere((file) => file.key == dir);
+            }();
+          }
         }
-      }
-      _updateCounts();
-    });
+        _updateCounts();
+      });
+    }
+    if (!Main.accessible) {
+      () async {
+        await Future.delayed(const Duration(seconds: 5));
+        if (mounted && !Main.accessible) {
+          await Main.listDirectories();
+        }
+      }();
+    }
   }
 
   @override
@@ -1085,8 +1117,6 @@ class _HomeState extends State<Home> {
                               icon: Icon(Icons.start),
                             ),
                   ]
-                : _loading.value
-                ? [const CircularProgressIndicator()]
                 : _selection.isNotEmpty
                 ? _selectionAction == SelectionAction.none
                       ? [
@@ -1105,19 +1135,21 @@ class _HomeState extends State<Home> {
                             },
                             icon: Icon(Icons.close),
                           ),
-                          IconButton(
-                            onPressed: () async {
-                              await Main.stopWatchers();
-                              await _showContextMenu(null);
-                            },
-                            icon: Icon(Icons.more_vert),
-                          ),
+                          if (!_loading.value)
+                            IconButton(
+                              onPressed: () async {
+                                await Main.stopWatchers();
+                                await _showContextMenu(null);
+                              },
+                              icon: Icon(Icons.more_vert),
+                            ),
                         ]
                       : [
-                          IconButton(
-                            onPressed: _paste(),
-                            icon: const Icon(Icons.paste),
-                          ),
+                          if (!_loading.value)
+                            IconButton(
+                              onPressed: _paste(),
+                              icon: const Icon(Icons.paste),
+                            ),
                           IconButton(
                             onPressed: () {
                               _selectionAction = SelectionAction.none;
@@ -1127,32 +1159,35 @@ class _HomeState extends State<Home> {
                           ),
                         ]
                 : [
-                    if (!_searching || _searchController.text.trim().isNotEmpty)
-                      IconButton(
-                        icon: _searching
-                            ? Icon(Icons.backspace)
-                            : Icon(Icons.search),
-                        onPressed: _searching
-                            ? () {
-                                _selection.clear();
-                                _searchController.clear();
-                                setState(() {});
-                              }
-                            : () async {
-                                _selection.clear();
-                                _searching = true;
-                                _search();
-                              },
-                      ),
-                    if (_searching)
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () {
-                          _searching = false;
-                          _selection.clear();
-                          setState(() {});
-                        },
-                      ),
+                    if (!_loading.value) ...[
+                      if (!_searching ||
+                          _searchController.text.trim().isNotEmpty)
+                        IconButton(
+                          icon: _searching
+                              ? Icon(Icons.backspace)
+                              : Icon(Icons.search),
+                          onPressed: _searching
+                              ? () {
+                                  _selection.clear();
+                                  _searchController.clear();
+                                  setState(() {});
+                                }
+                              : () async {
+                                  _selection.clear();
+                                  _searching = true;
+                                  _search();
+                                },
+                        ),
+                      if (_searching)
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            _searching = false;
+                            _selection.clear();
+                            setState(() {});
+                          },
+                        ),
+                    ],
                     IconButton(
                       icon: const Icon(Icons.more_vert),
                       onPressed: () {
@@ -1353,172 +1388,216 @@ class _HomeState extends State<Home> {
                               (Main.pathFromKey(_driveDir.key) != null
                                   ? 14
                                   : 0) +
-                              (_driveDir.key != '' ? 32 : 0))
+                              (_driveDir.key != '' ? 32 : 0) +
+                              (Main.accessible && _loading.value ? 4 : 0) +
+                              (!Main.accessible ? 16 : 0))
                           .toDouble();
                     }()),
-                    child: Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.only(
-                        left: 16,
-                        right: 16,
-                        top: 4,
-                        bottom: 8,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                Text(
-                                  _dirModified(_driveDir),
-                                  style: Theme.of(context).textTheme.labelSmall,
-                                ),
-                                SizedBox(width: 6),
-                                Text(
-                                  bytesToReadable(_dirSize(_driveDir)),
-                                  style: Theme.of(context).textTheme.labelSmall,
-                                ),
-                                SizedBox(width: 6),
-                                Text(
-                                  () {
-                                    final count = _count(
-                                      _driveDir,
-                                      recursive: true,
-                                    );
-                                    if (count.$1 == 0) {
-                                      return '${count.$2} files';
-                                    }
-                                    if (count.$2 == 0) {
-                                      return '${count.$1} subfolders';
-                                    }
-                                    return '${count.$2} files in ${count.$1} subfolders';
-                                  }(),
-                                  style: Theme.of(context).textTheme.labelSmall,
-                                ),
-                              ],
-                            ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.only(
+                            left: 16,
+                            right: 16,
+                            top: 4,
+                            bottom: 8,
                           ),
-                          if (_driveDir.key != '')
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children:
-                                    <Widget>[
-                                          GestureDetector(
-                                            onTap:
-                                                (_selection.isNotEmpty &&
-                                                    _selectionAction ==
-                                                        SelectionAction.none)
-                                                ? null
-                                                : () {
-                                                    setState(() {
-                                                      _driveDir = RemoteFile(
-                                                        key: '',
-                                                        size: 0,
-                                                        etag: '',
-                                                      );
-                                                    });
-                                                  },
-                                            child: Text(
-                                              'FileS3',
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.bodyLarge,
-                                            ),
-                                          ),
-                                        ]
-                                        .followedBy(
-                                          _driveDir.key
-                                              .split('/')
-                                              .where((dir) => dir.isNotEmpty)
-                                              .map(
-                                                (dir) => GestureDetector(
-                                                  onTap:
-                                                      (_selection.isNotEmpty &&
-                                                          _selectionAction ==
-                                                              SelectionAction
-                                                                  .none)
-                                                      ? null
-                                                      : () {
-                                                          String newPath = '';
-                                                          for (final part
-                                                              in _driveDir.key
-                                                                  .split('/')) {
-                                                            if (part.isEmpty) {
-                                                              continue;
-                                                            }
-                                                            newPath += '$part/';
-                                                            if (part == dir) {
-                                                              break;
-                                                            }
-                                                          }
-                                                          setState(() {
-                                                            _driveDir = Main
-                                                                .remoteFiles
-                                                                .firstWhere(
-                                                                  (file) =>
-                                                                      p.normalize(
-                                                                        file.key,
-                                                                      ) ==
-                                                                      p.normalize(
-                                                                        newPath,
-                                                                      ),
-                                                                );
-                                                          });
-                                                        },
-                                                  child: Text(
-                                                    dir,
-                                                    style: Theme.of(
-                                                      context,
-                                                    ).textTheme.bodyLarge,
-                                                  ),
-                                                ),
-                                              )
-                                              .map(
-                                                (widget) => Row(
-                                                  children: [
-                                                    const Icon(
-                                                      Icons.chevron_right,
-                                                      size: 16,
-                                                    ),
-                                                    widget,
-                                                  ],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      _dirModified(_driveDir),
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelSmall,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      bytesToReadable(_dirSize(_driveDir)),
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelSmall,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      () {
+                                        final count = _count(
+                                          _driveDir,
+                                          recursive: true,
+                                        );
+                                        if (count.$1 == 0) {
+                                          return '${count.$2} files';
+                                        }
+                                        if (count.$2 == 0) {
+                                          return '${count.$1} subfolders';
+                                        }
+                                        return '${count.$2} files in ${count.$1} subfolders';
+                                      }(),
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelSmall,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_driveDir.key != '')
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children:
+                                        <Widget>[
+                                              GestureDetector(
+                                                onTap:
+                                                    (_selection.isNotEmpty &&
+                                                        _selectionAction ==
+                                                            SelectionAction
+                                                                .none)
+                                                    ? null
+                                                    : () {
+                                                        setState(() {
+                                                          _driveDir =
+                                                              RemoteFile(
+                                                                key: '',
+                                                                size: 0,
+                                                                etag: '',
+                                                              );
+                                                        });
+                                                      },
+                                                child: Text(
+                                                  'FileS3',
+                                                  style: Theme.of(
+                                                    context,
+                                                  ).textTheme.bodyLarge,
                                                 ),
                                               ),
-                                        )
-                                        .toList(),
-                              ),
-                            ),
-                          if (Main.pathFromKey(_driveDir.key) != null)
-                            Row(
-                              children: [
-                                Text(
-                                  '${Main.backupMode(_driveDir.key).name}: ',
-                                  style: Theme.of(context).textTheme.labelSmall,
-                                ),
-                                SizedBox(width: 4),
-                                Expanded(
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: GestureDetector(
-                                      child: Text(
-                                        Main.pathFromKey(_driveDir.key) ?? '',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.labelSmall,
-                                      ),
-                                      onTap: () {
-                                        // TODO: Open file explorer at this location
-                                      },
-                                    ),
+                                            ]
+                                            .followedBy(
+                                              _driveDir.key
+                                                  .split('/')
+                                                  .where(
+                                                    (dir) => dir.isNotEmpty,
+                                                  )
+                                                  .map(
+                                                    (dir) => GestureDetector(
+                                                      onTap:
+                                                          (_selection
+                                                                  .isNotEmpty &&
+                                                              _selectionAction ==
+                                                                  SelectionAction
+                                                                      .none)
+                                                          ? null
+                                                          : () {
+                                                              String newPath =
+                                                                  '';
+                                                              for (final part
+                                                                  in _driveDir
+                                                                      .key
+                                                                      .split(
+                                                                        '/',
+                                                                      )) {
+                                                                if (part
+                                                                    .isEmpty) {
+                                                                  continue;
+                                                                }
+                                                                newPath +=
+                                                                    '$part/';
+                                                                if (part ==
+                                                                    dir) {
+                                                                  break;
+                                                                }
+                                                              }
+                                                              setState(() {
+                                                                _driveDir = Main
+                                                                    .remoteFiles
+                                                                    .firstWhere(
+                                                                      (file) =>
+                                                                          p.normalize(
+                                                                            file.key,
+                                                                          ) ==
+                                                                          p.normalize(
+                                                                            newPath,
+                                                                          ),
+                                                                    );
+                                                              });
+                                                            },
+                                                      child: Text(
+                                                        dir,
+                                                        style: Theme.of(
+                                                          context,
+                                                        ).textTheme.bodyLarge,
+                                                      ),
+                                                    ),
+                                                  )
+                                                  .map(
+                                                    (widget) => Row(
+                                                      children: [
+                                                        const Icon(
+                                                          Icons.chevron_right,
+                                                          size: 16,
+                                                        ),
+                                                        widget,
+                                                      ],
+                                                    ),
+                                                  ),
+                                            )
+                                            .toList(),
                                   ),
                                 ),
-                              ],
+                              if (Main.pathFromKey(_driveDir.key) != null)
+                                Row(
+                                  children: [
+                                    Text(
+                                      '${Main.backupMode(_driveDir.key).name}: ',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelSmall,
+                                    ),
+                                    SizedBox(width: 4),
+                                    Expanded(
+                                      child: SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: GestureDetector(
+                                          child: Text(
+                                            Main.pathFromKey(_driveDir.key) ??
+                                                '',
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.labelSmall,
+                                          ),
+                                          onTap: () {
+                                            // TODO: Open file explorer at this location
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (!Main.accessible)
+                          Container(
+                            width: double.infinity,
+                            color: Theme.of(context).colorScheme.errorContainer,
+                            alignment: Alignment.center,
+                            child: Text(
+                              'Remote access failed!',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onErrorContainer,
+                                  ),
                             ),
-                        ],
-                      ),
+                          ),
+                        if (Main.accessible && _loading.value)
+                          LinearProgressIndicator(),
+                      ],
                     ),
                   )
                 : null,

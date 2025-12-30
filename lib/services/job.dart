@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:files3/services/models/backup_mode.dart';
@@ -133,6 +132,7 @@ abstract class Main {
   static Future<void> Function()? pushS3ConfigPage;
   static Function(bool loading)? setLoadingState;
   static Function()? setHomeState;
+  static bool accessible = false;
 
   static String? pathFromKey(String key) {
     final localDir = IniManager.config!
@@ -257,11 +257,19 @@ abstract class Main {
   }
 
   static Future<void> refreshRemote({String dir = ''}) async {
-    final fetchedRemoteFiles = await s3Manager!.listObjects(dir: dir);
-    remoteFiles.removeWhere((file) => p.isWithin(dir, file.key));
-    remoteFiles.addAll(fetchedRemoteFiles);
-    ensureDirectoryObjects();
-    await ConfigManager.saveRemoteFiles(remoteFiles);
+    try {
+      final fetchedRemoteFiles = await s3Manager!.listObjects(dir: dir);
+      remoteFiles.removeWhere((file) => p.isWithin(dir, file.key));
+      remoteFiles.addAll(fetchedRemoteFiles);
+      ensureDirectoryObjects();
+      await ConfigManager.saveRemoteFiles(remoteFiles);
+      accessible = true;
+    } catch (e) {
+      accessible = false;
+      if (kDebugMode) {
+        debugPrint("Error refreshing remote files: $e");
+      }
+    }
   }
 
   static Future<void> refreshWatchers({bool background = false}) async {
@@ -294,6 +302,7 @@ abstract class Main {
 
     await refreshRemote();
     await refreshWatchers(background: true);
+
     await setLoadingState?.call(false);
   }
 

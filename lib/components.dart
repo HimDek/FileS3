@@ -189,7 +189,7 @@ abstract class ContextActionHandler {
 
 class FileContextActionHandler extends ContextActionHandler {
   final RemoteFile file;
-  final String Function(RemoteFile, int?) getLink;
+  final String? Function(RemoteFile, int?) getLink;
   final Function(RemoteFile) downloadFile;
   final Function(RemoteFile, String) saveFile;
   final Future<void> Function(List<String>, List<String>) moveFiles;
@@ -210,13 +210,16 @@ class FileContextActionHandler extends ContextActionHandler {
     return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
   }
 
-  dynamic Function() open() {
+  dynamic Function()? open() {
+    final link = getLink(file, null);
     return File(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? () {
             OpenFile.open(Main.pathFromKey(file.key) ?? file.key);
           }
+        : link == null
+        ? null
         : () {
-            launchUrl(Uri.parse(getLink(file, null)));
+            launchUrl(Uri.parse(link));
           };
   }
 
@@ -248,7 +251,7 @@ class FileContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  String Function() getLinkToCopy(int? seconds) {
+  String? Function() getLinkToCopy(int? seconds) {
     return () {
       return getLink(file, seconds);
     };
@@ -285,7 +288,7 @@ class FileContextActionHandler extends ContextActionHandler {
 
 class FilesContextActionHandler extends ContextActionHandler {
   final List<RemoteFile> files;
-  final String Function(RemoteFile, int?) getLink;
+  final String? Function(RemoteFile, int?) getLink;
   final Function(RemoteFile) downloadFile;
   final Function(RemoteFile, String) saveFile;
   final Future<void> Function(List<String>, List<String>) moveFiles;
@@ -744,7 +747,9 @@ class FileContextOption {
               Main.pathFromKey(handler.file.key) ?? handler.file.key,
             ).existsSync()
             ? 'Open'
-            : 'Opens Link',
+            : handler.open() == null
+            ? 'Link Unavailable'
+            : 'Open Link',
         subtitle: Main.pathFromKey(handler.file.key),
         icon: Icons.open_in_new,
         action: handler.open(),
@@ -817,14 +822,20 @@ class FileContextOption {
     title: 'Copy Link',
     icon: Icons.link,
     action: () async {
-      Clipboard.setData(
-        ClipboardData(
-          text: handler.getLinkToCopy(await expiryDialog(context))(),
-        ),
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('File link copied to clipboard')),
-      );
+      try {
+        Clipboard.setData(
+          ClipboardData(
+            text: handler.getLinkToCopy(await expiryDialog(context))()!,
+          ),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File link copied to clipboard')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to generate link: $e')));
+      }
     },
   );
 
@@ -2172,7 +2183,7 @@ class BulkContextOption {
 Widget buildFileContextMenu(
   BuildContext context,
   RemoteFile item,
-  String Function(RemoteFile, int?) getLink,
+  String? Function(RemoteFile, int?) getLink,
   Function(RemoteFile) downloadFile,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile) cut,
@@ -2252,7 +2263,7 @@ Widget buildFileContextMenu(
 Widget buildFilesContextMenu(
   BuildContext context,
   List<RemoteFile> items,
-  String Function(RemoteFile, int?) getLink,
+  String? Function(RemoteFile, int?) getLink,
   Function(RemoteFile) downloadFile,
   Function(RemoteFile, String) saveFile,
   Function(RemoteFile?) cut,
@@ -2502,7 +2513,7 @@ Widget buildDirectoriesContextMenu(
 Widget buildBulkContextMenu(
   BuildContext context,
   List<RemoteFile> items,
-  String Function(RemoteFile, int?) getLink,
+  String? Function(RemoteFile, int?) getLink,
   Function(RemoteFile) downloadFile,
   Function(RemoteFile) downloadDirectory,
   Function(RemoteFile, String) saveFile,
