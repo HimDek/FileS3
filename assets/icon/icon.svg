@@ -1,39 +1,59 @@
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
 
-<!-- Uploaded to: SVG Repo, www.svgrepo.com, Transformed by: SVG Repo Mixer Tools -->
-<svg
-  width="512"
-  height="512"
-  viewBox="0 0 512 512"
-  xmlns="http://www.w3.org/2000/svg"
->
-  <!-- Left slab (narrowed) -->
-  <rect
-    x="96"
-    y="88"
-    width="80"
-    height="336"
-    rx="12"
-  />
+<svg:svg
+   width="108mm"
+   height="108mm"
+   viewBox="0 0 108 108"
+   version="1.1"
+   id="svg1"
+   xml:space="preserve"
+   xmlns:svg="http://www.w3.org/2000/svg"><svg:defs
+     id="defs1"><svg:style
+       id="style1">
+      .cls-1 {
+        fill: #e25444;
+      }
 
-  <!-- Right slab (narrowed, rounded, file-style top cut) -->
-  <path
-    d="
-      M352 88
-      H392
-      L424 120
-      V412
-      Q424 424 412 424
-      H352
-      Q340 424 340 412
-      V100
-      Q340 88 352 88
-      Z
-    "
-  />
+      .cls-1, .cls-2, .cls-3 {
+        fill-rule: evenodd;
+      }
 
-  <!-- Center stacked blocks (unchanged) -->
-  <rect x="208" y="48"  width="96" height="96" rx="10" />
-  <rect x="208" y="208" width="96" height="96" rx="10" />
-  <rect x="208" y="368" width="96" height="96" rx="10" />
-</svg>
+      .cls-2 {
+        fill: #7b1d13;
+      }
+
+      .cls-3 {
+        fill: #58150d;
+      }
+    </svg:style></svg:defs><svg:g
+     id="layer1"><script /><svg:g
+       id="g27"
+       transform="matrix(0.99958712,0,0,0.99958712,-66.207986,-42.533041)"
+       style="stroke-width:1.00041"><svg:path
+         id="path2"
+         style="fill:#000000;stroke-width:1.00041"
+         class="cls-2"
+         d="m 173.35273,55.169242 -37.70261,7.56698 v 12.059729 h -13.53251 v 7.33547 h 13.59194 v 29.999719 h -13.59194 v 6.21874 h 13.53251 v 12.71499 l 28.92071,7.31221 V 87.672168 l 8.7819,-5.39657 V 74.795951 58.604175 Z m -61.82155,19.626709 -4.45916,7.33547 h 12.22923 v -7.33547 z m -5.82187,9.576677 -7.416602,12.200289 7.416602,12.200293 z m 2.04122,27.758512 3.78065,6.21874 h 7.77007 v -6.21874 z" /><svg:path
+         id="path4"
+         class="cls-1"
+         d="m 84.801025,57.170154 v 25.105444 l -8.961726,5.110799 v 51.020143 l 29.810581,-7.50032 v -12.55634 h 13.65137 v -6.21874 H 105.70931 V 82.131421 h 13.59194 v -7.33547 H 105.64988 V 62.962048 Z"
+         style="fill:#000000;stroke-width:1.00041" /><svg:rect
+         id="rect17"
+         width="26.487137"
+         height="26.487137"
+         x="107.40643"
+         y="46.552261"
+         style="stroke-width:1.00041" /><svg:rect
+         id="rect17-0"
+         width="26.487137"
+         height="26.487137"
+         x="107.40643"
+         y="120.10643"
+         style="stroke-width:1.00041" /><svg:rect
+         id="rect17-0-6"
+         width="26.487137"
+         height="26.605995"
+         x="107.40643"
+         y="83.828285"
+         style="stroke-width:1.00041" /></svg:g></svg:g></svg:svg>
