@@ -163,6 +163,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   bool _loading = true;
   bool _obscureSecret = true;
   S3Config? _s3Config;
+  String? _permissionPolicy;
   final FocusNode _accessFocusNode = FocusNode();
   final FocusNode _secretFocusNode = FocusNode();
   final FocusNode _regionFocusNode = FocusNode();
@@ -218,6 +219,20 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   void initState() {
     super.initState();
     _readConfig();
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    if (mounted) {
+      super.setState(() {
+        fn();
+        _permissionPolicy = _bucketController.text.isNotEmpty
+            ? _prefixController.text.isNotEmpty
+                  ? '{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}/${_prefixController.text}*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}"\n        }\n    ]\n}'
+                  : '{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}*"\n        }\n    ]\n}'
+            : null;
+      });
+    }
   }
 
   @override
@@ -368,30 +383,35 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                     Text(
                       'Make sure the provided AWS credentials have the following permissions:',
                     ),
-                    Text('s3:ListBucket on arn:aws:s3:::*'),
-                    Text(
-                      's3:GetObject, s3:PutObject, s3:DeleteObject on arn:aws:s3:::${_bucketController.text}/${_prefixController.text}*',
-                    ),
+                    if (_prefixController.text.isNotEmpty) ...[
+                      SizedBox(height: 8),
+                      Text('s3:ListBucket'),
+                      Text('on arn:aws:s3:::${_bucketController.text}'),
+                      SizedBox(height: 8),
+                      Text('s3:GetObject, s3:PutObject, s3:DeleteObject'),
+                      Text(
+                        'on arn:aws:s3:::${_bucketController.text}/${_prefixController.text}*',
+                      ),
+                    ] else ...[
+                      SizedBox(height: 8),
+                      Text(
+                        's3:ListBucket, s3:GetObject, s3:PutObject, s3:DeleteObject',
+                      ),
+                      Text('on arn:aws:s3:::${_bucketController.text}*'),
+                    ],
                   ],
                 ),
               ),
-            if (_bucketController.text.isNotEmpty)
+            if (_permissionPolicy != null)
               ListTile(
                 dense: true,
                 visualDensity: VisualDensity.compact,
                 title: Text(
                   'Minimum IAM Permissions Policy for the app to function properly:',
                 ),
-                subtitle: Text(
-                  '\n{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}/*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::*"\n        }\n    ]\n}',
-                ),
+                subtitle: Text('\n$_permissionPolicy'),
                 onTap: () {
-                  Clipboard.setData(
-                    ClipboardData(
-                      text:
-                          '{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}/*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::*"\n        }\n    ]\n}',
-                    ),
-                  );
+                  Clipboard.setData(ClipboardData(text: _permissionPolicy!));
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Policy copied to clipboard')),
                   );
