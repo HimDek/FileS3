@@ -357,44 +357,46 @@ class S3ConfigPageState extends State<S3ConfigPage> {
               enabled: !_loading,
             ),
             SizedBox(height: 16),
-            ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              title: Text('Note:'),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Make sure the provided AWS credentials have the following permissions:',
-                  ),
-                  Text('s3:ListBucket on arn:aws:s3:::*'),
-                  Text(
-                    's3:GetObject, s3:PutObject, s3:DeleteObject on arn:aws:s3:::${_bucketController.text}/${_prefixController.text}*',
-                  ),
-                ],
+            if (_bucketController.text.isNotEmpty)
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                title: Text('Note:'),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Make sure the provided AWS credentials have the following permissions:',
+                    ),
+                    Text('s3:ListBucket on arn:aws:s3:::*'),
+                    Text(
+                      's3:GetObject, s3:PutObject, s3:DeleteObject on arn:aws:s3:::${_bucketController.text}/${_prefixController.text}*',
+                    ),
+                  ],
+                ),
               ),
-            ),
-            ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              title: Text(
-                'Minimum IAM Permissions Policy for the app to function properly:',
+            if (_bucketController.text.isNotEmpty)
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                title: Text(
+                  'Minimum IAM Permissions Policy for the app to function properly:',
+                ),
+                subtitle: Text(
+                  '\n{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}/*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::*"\n        }\n    ]\n}',
+                ),
+                onTap: () {
+                  Clipboard.setData(
+                    ClipboardData(
+                      text:
+                          '{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}/*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::*"\n        }\n    ]\n}',
+                    ),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Policy copied to clipboard')),
+                  );
+                },
               ),
-              subtitle: Text(
-                '\n{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::files3-dev/*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::*"\n        }\n    ]\n}',
-              ),
-              onTap: () {
-                Clipboard.setData(
-                  ClipboardData(
-                    text:
-                        '{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::files3-dev/*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::*"\n        }\n    ]\n}',
-                  ),
-                );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Policy copied to clipboard')),
-                );
-              },
-            ),
           ],
         ),
       ),
