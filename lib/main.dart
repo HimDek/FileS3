@@ -199,7 +199,7 @@ class _HomeState extends State<Home> {
   final List<RemoteFile> _allSelectableItems = [];
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
-  final _loading = ValueNotifier<bool>(true);
+  final ValueNotifier<bool> _loading = ValueNotifier<bool>(true);
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
   List<Object> _searchResults = [];
   bool _foldersFirst = true;
@@ -210,6 +210,8 @@ class _HomeState extends State<Home> {
   int _navIndex = 0;
   bool _searching = false;
   bool _controlsVisible = true;
+
+  Timer? _inaccessibleTimer;
 
   void _select(RemoteFile item) {
     if (_selection.any((selected) {
@@ -1012,13 +1014,17 @@ class _HomeState extends State<Home> {
         _updateCounts();
       });
     }
-    if (!Main.accessible) {
-      () async {
-        await Future.delayed(const Duration(seconds: 5));
-        if (mounted && !Main.accessible) {
+    if (!Main.accessible && !(_inaccessibleTimer?.isActive ?? false)) {
+      _inaccessibleTimer = Timer.periodic(const Duration(seconds: 5), (
+        timer,
+      ) async {
+        if (!Main.accessible) {
           await Main.listDirectories();
         }
-      }();
+        if (Main.accessible) {
+          timer.cancel();
+        }
+      });
     }
   }
 

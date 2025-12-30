@@ -35,13 +35,13 @@ class S3FileManager {
       client: _client,
       endpointUrl: cfg.host.isEmpty
           ? 'https://s3.${cfg.region}.amazonaws.com'
-          : cfg.host,
+          : 'https://${cfg.host}',
     );
     _bucket = cfg.bucket;
     _prefix = cfg.prefix;
     _host = cfg.host.isEmpty
         ? '$_bucket.s3.${cfg.region}.amazonaws.com'
-        : cfg.host;
+        : '$_bucket.${cfg.host}';
     _accessKey = cfg.accessKey;
     _secretKey = cfg.secretKey;
     _region = cfg.region;
@@ -242,7 +242,7 @@ class S3FileManager {
     String? copySource,
   }) {
     final service = 's3';
-    final host = '$_bucket.s3.$_region.amazonaws.com';
+    final host = _host;
     final credentialScope = '$shortDate/$_region/$service/aws4_request';
 
     // 1. Build the unsorted headers map

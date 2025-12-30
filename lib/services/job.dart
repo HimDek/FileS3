@@ -132,7 +132,7 @@ abstract class Main {
   static Future<void> Function()? pushS3ConfigPage;
   static Function(bool loading)? setLoadingState;
   static Function()? setHomeState;
-  static bool accessible = false;
+  static bool accessible = true;
 
   static String? pathFromKey(String key) {
     final localDir = IniManager.config!

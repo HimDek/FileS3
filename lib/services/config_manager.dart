@@ -278,6 +278,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
               ),
               focusNode: _accessFocusNode,
               controller: _accessKeyController,
+              keyboardType: TextInputType.visiblePassword,
               onChanged: (value) {
                 setState(() {});
               },
@@ -304,6 +305,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
               ),
               focusNode: _secretFocusNode,
               controller: _secretKeyController,
+              keyboardType: TextInputType.visiblePassword,
               obscureText: _obscureSecret,
               onChanged: (value) {
                 setState(() {});
@@ -361,11 +363,14 @@ class S3ConfigPageState extends State<S3ConfigPage> {
               decoration: InputDecoration(
                 prefixIcon: Icon(Icons.link),
                 labelText: 'Host (optional)',
-                hintText: 'e.g. https://s3.custom-endpoint.com',
-                helperText: 'Custom S3-compatible endpoint (if any)',
+                hintText: _regionController.text.isNotEmpty
+                    ? 's3.${_regionController.text}.amazonaws.com'
+                    : 'Default for AWS S3: s3.{region-name}.amazonaws.com',
+                helperText: 'Custom S3-compatible domain name',
               ),
               focusNode: _hostFocusNode,
               controller: _hostController,
+              keyboardType: TextInputType.url,
               onChanged: (value) {
                 setState(() {});
               },
