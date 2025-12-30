@@ -111,39 +111,6 @@ class LifecycleWatcher extends WidgetsBindingObserver {
   }
 }
 
-class ThemeController extends ChangeNotifier {
-  ThemeMode _theme = ThemeMode.system;
-
-  ThemeMode get theme => _theme;
-
-  ThemeMode get themeMode {
-    switch (_theme) {
-      case ThemeMode.light:
-        return ThemeMode.light;
-      case ThemeMode.dark:
-        return ThemeMode.dark;
-      case ThemeMode.system:
-        return ThemeMode.system;
-    }
-  }
-
-  void update(ThemeMode theme) {
-    _theme = theme;
-    notifyListeners();
-  }
-}
-
-class UltraDarkController extends ChangeNotifier {
-  bool _ultraDark = false;
-
-  bool get ultraDark => _ultraDark;
-
-  void update(bool ultraDark) {
-    _ultraDark = ultraDark;
-    notifyListeners();
-  }
-}
-
 /// ===============================
 /// MAIN
 /// ===============================
@@ -917,12 +884,7 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _init() async {
-    final uiConfig = ConfigManager.loadUiConfig();
-    themeController.update(uiConfig.colorMode);
-    ultraDarkController.update(uiConfig.ultraDark);
-
     Permission? permission;
-
     if (Platform.isAndroid) {
       final androidInfo = await DeviceInfoPlugin().androidInfo;
       final sdkInt = androidInfo.version.sdkInt;
@@ -930,7 +892,6 @@ class _HomeState extends State<Home> {
           ? Permission.manageExternalStorage
           : Permission.storage;
     }
-
     if (permission != null) {
       while (await permission.request().isDenied) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -961,9 +922,14 @@ class _HomeState extends State<Home> {
       }
     }
 
+    final uiConfig = ConfigManager.loadUiConfig();
+    themeController.update(uiConfig.colorMode);
+    ultraDarkController.update(uiConfig.ultraDark);
+
     setState(() {
       _loading.value = true;
     });
+
     Main.setLoadingState = (bool loading) {
       setState(() {
         _loading.value = loading;
@@ -973,8 +939,8 @@ class _HomeState extends State<Home> {
       setState(() {});
     };
     Main.pushS3ConfigPage = _pushS3ConfigPage;
-
     await Main.init();
+
     setState(() {
       _loading.value = false;
     });
@@ -1363,8 +1329,9 @@ class _HomeState extends State<Home> {
                                     ).textTheme.bodyMedium,
                                     title: Text('Settings', maxLines: 1),
                                     trailing: Icon(Icons.settings),
-                                    onTap: () async {
-                                      await Navigator.of(context).push(
+                                    onTap: () {
+                                      Navigator.of(context).pop();
+                                      Navigator.of(context).push(
                                         MaterialPageRoute(
                                           builder: (context) => SettingsPage(),
                                         ),

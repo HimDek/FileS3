@@ -4,9 +4,41 @@ import 'package:flutter/material.dart';
 import 'package:files3/services/models/remote_file.dart';
 import 'package:files3/services/ini_manager.dart';
 import 'package:files3/services/job.dart';
-import 'package:files3/main.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+class ThemeController extends ChangeNotifier {
+  ThemeMode _theme = ThemeMode.system;
+
+  ThemeMode get theme => _theme;
+
+  ThemeMode get themeMode {
+    switch (_theme) {
+      case ThemeMode.light:
+        return ThemeMode.light;
+      case ThemeMode.dark:
+        return ThemeMode.dark;
+      case ThemeMode.system:
+        return ThemeMode.system;
+    }
+  }
+
+  void update(ThemeMode theme) {
+    _theme = theme;
+    notifyListeners();
+  }
+}
+
+class UltraDarkController extends ChangeNotifier {
+  bool _ultraDark = false;
+
+  bool get ultraDark => _ultraDark;
+
+  void update(bool ultraDark) {
+    _ultraDark = ultraDark;
+    notifyListeners();
+  }
+}
 
 final themeController = ThemeController();
 final ultraDarkController = UltraDarkController();
