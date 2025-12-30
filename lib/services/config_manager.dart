@@ -5,6 +5,7 @@ import 'package:files3/services/models/remote_file.dart';
 import 'package:files3/services/ini_manager.dart';
 import 'package:files3/services/job.dart';
 import 'package:files3/main.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 final themeController = ThemeController();
@@ -332,7 +333,11 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Make sure the provided AWS credentials have s3:ListBucket, s3:GetObject, s3:PutObject, s3:DeleteObject permissions on the specified S3 bucket and prefix.',
+                    'Make sure the provided AWS credentials have the following permissions:',
+                  ),
+                  Text('s3:ListBucket on arn:aws:s3:::*'),
+                  Text(
+                    's3:GetObject, s3:PutObject, s3:DeleteObject on arn:aws:s3:::${_bucketController.text}/${_prefixController.text}*',
                   ),
                 ],
               ),
@@ -341,21 +346,22 @@ class S3ConfigPageState extends State<S3ConfigPage> {
               dense: true,
               visualDensity: VisualDensity.compact,
               title: Text(
-                '["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]',
+                'Minimum IAM Permissions Policy for the app to function properly:',
               ),
               subtitle: Text(
-                'Minimum required S3 permissions for the app to function properly.',
+                '\n{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::files3-dev/*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::*"\n        }\n    ]\n}',
               ),
-            ),
-            ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              title: Text(
-                'arn:aws:s3:::${_bucketController.text}/${_prefixController.text}*',
-              ),
-              subtitle: Text(
-                'Resource ARN for the specified bucket and prefix.',
-              ),
+              onTap: () {
+                Clipboard.setData(
+                  ClipboardData(
+                    text:
+                        '{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::files3-dev/*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::*"\n        }\n    ]\n}',
+                  ),
+                );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Policy copied to clipboard')),
+                );
+              },
             ),
           ],
         ),
