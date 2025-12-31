@@ -39,7 +39,6 @@ class SettingsPageState extends State<SettingsPage> {
               context,
             ).push(MaterialPageRoute(builder: (context) => UiSettingsPage())),
           ),
-          Text(IniManager.config.toString()),
         ],
       ),
     );
