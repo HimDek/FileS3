@@ -2206,6 +2206,15 @@ Widget buildDirectoryContextMenu(
                       )) {
                         IniManager.config!.addSection('directories');
                       }
+                      for (String key
+                          in IniManager.config!.options('directories') ?? []) {
+                        if (IniManager.config!
+                                .get('directories', key)
+                                .toString() ==
+                            directoryPath) {
+                          IniManager.config!.removeOption('directories', key);
+                        }
+                      }
                       IniManager.config!.set(
                         'directories',
                         file.key,
