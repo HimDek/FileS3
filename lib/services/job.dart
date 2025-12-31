@@ -739,28 +739,29 @@ class Watcher {
       );
     }
 
-    for (Job job
-        in Job.jobs.where((job) => !job.completed && !job.running).toList()) {
-      job.remove();
-    }
+    // for (Job job
+    //     in Job.jobs.where((job) => !job.completed && !job.running).toList()) {
+    //   job.remove();
+    // }
 
     for (File file in [...result.newFile, ...result.modifiedLocally]) {
+      final key = p.join(remoteDir, p.relative(file.path, from: localDir.path));
       if (Job.jobs.any(
-        (job) => job.localFile.path == file.path && !job.completed,
+        (job) =>
+            job.localFile.path == file.path &&
+            job.remoteKey == key &&
+            !job.completed,
       )) {
         continue;
       }
       BackupMode mode = Main.backupMode(Main.keyFromPath(file.path) ?? '');
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
-        Main.uploadFile(
-          p.join(remoteDir, p.relative(file.path, from: localDir.path)),
-          file,
-        );
+        Main.uploadFile(key, file);
       }
     }
 
     for (RemoteFile file in result.modifiedRemotely) {
-      if (Job.jobs.any((job) => job.remoteKey == file.key)) {
+      if (Job.jobs.any((job) => job.remoteKey == file.key && !job.completed)) {
         continue;
       }
       BackupMode mode = Main.backupMode(file.key);
@@ -770,7 +771,7 @@ class Watcher {
     }
 
     for (RemoteFile file in result.remoteOnly) {
-      if (Job.jobs.any((job) => job.remoteKey == file.key)) {
+      if (Job.jobs.any((job) => job.remoteKey == file.key && !job.completed)) {
         continue;
       }
       if (Main.backupMode(file.key) == BackupMode.sync) {
