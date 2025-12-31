@@ -247,9 +247,9 @@ abstract class IniManager {
   }
 
   static void cleanDirectories() {
-    for (String key in config!.options('directories') ?? []) {
+    for (String key in config!.options('directories')?.toList() ?? []) {
       final dirPath = config!.get('directories', key).toString();
-      for (String k in config!.options('directories') ?? []) {
+      for (String k in config!.options('directories')?.toList() ?? []) {
         if (k != key &&
             p.canonicalize(config!.get('directories', k).toString()) ==
                 p.canonicalize(dirPath)) {
