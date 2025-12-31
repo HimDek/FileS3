@@ -89,17 +89,24 @@ class S3FileManager {
   }
 
   Future<List<RemoteFile>> listObjects({String dir = ''}) async {
-    String prefix = p.posix.join(_prefix, dir);
-    prefix = prefix.endsWith('/') ? prefix : '$prefix/';
+    String? prefix = p.posix.join(_prefix, dir);
+    prefix = prefix.isEmpty
+        ? null
+        : prefix.endsWith('/')
+        ? prefix
+        : '$prefix/';
     final ListObjectsOutput resp = await _s3.listObjects(
       bucket: _bucket,
       prefix: prefix,
     );
     final contents = resp.contents ?? [];
     List<RemoteFile> list = contents
+        .where((item) => item.key != null)
         .map(
           (item) => RemoteFile(
-            key: (item.key ?? prefix).substring(prefix.length),
+            key:
+                p.relative(item.key!, from: _prefix) +
+                (item.key!.endsWith('/') ? '/' : ''),
             size: item.size ?? 0,
             etag: item.eTag != null && item.eTag!.isNotEmpty
                 ? item.eTag!.substring(1, item.eTag!.length - 1)

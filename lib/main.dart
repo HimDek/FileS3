@@ -330,7 +330,23 @@ class _HomeState extends State<Home> {
       : () {
           setState(() {
             _navIndex = 0;
+            _controlsVisible = true;
             _driveDir = dir;
+            for (RemoteFile item in _selection) {
+              if (p.isWithin(item.key, _driveDir.key) ||
+                  item.key == _driveDir.key) {
+                _driveDir = () {
+                  String dir = _driveDir.key;
+                  while (p.isWithin(item.key, dir) || item.key == dir) {
+                    dir = p.dirname(dir);
+                    if (dir == '') {
+                      break;
+                    }
+                  }
+                  return Main.remoteFiles.firstWhere((file) => file.key == dir);
+                }();
+              }
+            }
           });
         };
 
@@ -996,21 +1012,6 @@ class _HomeState extends State<Home> {
       super.setState(() {
         Main.ensureDirectoryObjects();
         fn();
-        for (RemoteFile item in _selection) {
-          if (p.isWithin(item.key, _driveDir.key) ||
-              item.key == _driveDir.key) {
-            _driveDir = () {
-              String dir = _driveDir.key;
-              while (p.isWithin(item.key, dir) || item.key == dir) {
-                dir = p.dirname(dir);
-                if (dir == '') {
-                  break;
-                }
-              }
-              return Main.remoteFiles.firstWhere((file) => file.key == dir);
-            }();
-          }
-        }
         _updateCounts();
       });
     }
@@ -1031,7 +1032,6 @@ class _HomeState extends State<Home> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
       body: CustomScrollView(
         controller: _scrollController,
         slivers: [
@@ -1087,7 +1087,9 @@ class _HomeState extends State<Home> {
                       ? Text(
                           _searching
                               ? "${_searchResults.where((item) => item is RemoteFile && item.key.endsWith('/')).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && item.key.endsWith('/')).length} Folders ' : ''}${_searchResults.where((item) => item is RemoteFile && !item.key.endsWith('/')).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && !item.key.endsWith('/')).length} Files ' : ''}found"
-                              : "${_dirCount > 0 ? '$_dirCount Folders ' : ''}${_fileCount > 0 ? '$_fileCount Files' : ''}",
+                              : _dirCount > 0 || _fileCount > 0
+                              ? "${_dirCount > 0 ? '$_dirCount Folders ' : ''}${_fileCount > 0 ? '$_fileCount Files' : ''}"
+                              : "Empty",
                           style: Theme.of(context).textTheme.bodySmall,
                         )
                       : SizedBox.shrink(),
@@ -1390,13 +1392,16 @@ class _HomeState extends State<Home> {
             bottom: _navIndex == 0
                 ? PreferredSize(
                     preferredSize: Size.fromHeight(() {
-                      return (14 +
+                      return (28 +
+                              (_driveDir.key != '' ? 24 : 0) +
                               (Main.pathFromKey(_driveDir.key) != null
-                                  ? 14
+                                  ? 16
                                   : 0) +
-                              (_driveDir.key != '' ? 32 : 0) +
-                              (Main.accessible && _loading.value ? 4 : 0) +
-                              (!Main.accessible ? 16 : 0))
+                              (!Main.accessible
+                                  ? 16
+                                  : _loading.value
+                                  ? 4
+                                  : 0))
                           .toDouble();
                     }()),
                     child: Column(
@@ -1464,16 +1469,13 @@ class _HomeState extends State<Home> {
                                                             SelectionAction
                                                                 .none)
                                                     ? null
-                                                    : () {
-                                                        setState(() {
-                                                          _driveDir =
-                                                              RemoteFile(
-                                                                key: '',
-                                                                size: 0,
-                                                                etag: '',
-                                                              );
-                                                        });
-                                                      },
+                                                    : _changeDirectory(
+                                                        RemoteFile(
+                                                          key: '',
+                                                          size: 0,
+                                                          etag: '',
+                                                        ),
+                                                      ),
                                                 child: Text(
                                                   'FileS3',
                                                   style: Theme.of(
@@ -1517,19 +1519,17 @@ class _HomeState extends State<Home> {
                                                                   break;
                                                                 }
                                                               }
-                                                              setState(() {
-                                                                _driveDir = Main
-                                                                    .remoteFiles
-                                                                    .firstWhere(
-                                                                      (file) =>
-                                                                          p.normalize(
-                                                                            file.key,
-                                                                          ) ==
-                                                                          p.normalize(
-                                                                            newPath,
-                                                                          ),
-                                                                    );
-                                                              });
+                                                              _changeDirectory(
+                                                                Main.remoteFiles.firstWhere(
+                                                                  (file) =>
+                                                                      p.normalize(
+                                                                        file.key,
+                                                                      ) ==
+                                                                      p.normalize(
+                                                                        newPath,
+                                                                      ),
+                                                                ),
+                                                              )?.call();
                                                             },
                                                       child: Text(
                                                         dir,
@@ -1637,15 +1637,17 @@ class _HomeState extends State<Home> {
                 )
               : _driveDir.key == '' && _navIndex == 0
               ? ListFiles(
-                  files: Set<RemoteFile>.from(
-                    Main.remoteFiles
-                        .where(
-                          (file) =>
-                              p.split(file.key).length == 1 &&
-                              file.key.endsWith('/'),
-                        )
-                        .map<RemoteFile>((file) => file),
-                  ).toList(),
+                  files: () {
+                    return Set<RemoteFile>.from(
+                      Main.remoteFiles
+                          .where(
+                            (file) =>
+                                p.dirname(file.key) == '.' &&
+                                file.key.endsWith('/'),
+                          )
+                          .map<RemoteFile>((file) => file),
+                    ).toList();
+                  }(),
                   sortMode: _sortMode,
                   foldersFirst: _foldersFirst,
                   relativeto: _driveDir,
@@ -1828,36 +1830,43 @@ class _HomeState extends State<Home> {
       bottomNavigationBar: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         height: _controlsVisible ? kBottomNavigationBarHeight + 24 : 0,
-        decoration: BoxDecoration(color: Theme.of(context).canvasColor),
-        child: BottomNavigationBar(
-          items: [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.folder),
-              label: 'Directories',
-            ),
-            BottomNavigationBarItem(
-              icon: Badge.count(
-                isLabelVisible: Job.completedJobs.isNotEmpty,
-                count: Job.completedJobs.length,
-                child: Icon(Icons.done_all),
+        child: Wrap(
+          children: [
+            SizedBox(
+              height: kBottomNavigationBarHeight + 24,
+              child: BottomNavigationBar(
+                items: [
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.folder),
+                    label: 'Directories',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Badge.count(
+                      isLabelVisible: Job.completedJobs.isNotEmpty,
+                      count: Job.completedJobs.length,
+                      child: Icon(Icons.done_all),
+                    ),
+                    label: 'Completed',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Badge.count(
+                      isLabelVisible: Job.jobs.isNotEmpty,
+                      count: Job.jobs.length,
+                      child: Icon(Icons.swap_vert),
+                    ),
+                    label: 'Active',
+                  ),
+                ],
+                currentIndex: _navIndex,
+                onTap: (index) async {
+                  setState(() {
+                    _navIndex = index;
+                    _controlsVisible = true;
+                  });
+                },
               ),
-              label: 'Completed',
-            ),
-            BottomNavigationBarItem(
-              icon: Badge.count(
-                isLabelVisible: Job.jobs.isNotEmpty,
-                count: Job.jobs.length,
-                child: Icon(Icons.swap_vert),
-              ),
-              label: 'Active',
             ),
           ],
-          currentIndex: _navIndex,
-          onTap: (index) async {
-            setState(() {
-              _navIndex = index;
-            });
-          },
         ),
       ),
     );

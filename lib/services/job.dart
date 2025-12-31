@@ -259,7 +259,9 @@ abstract class Main {
   static Future<void> refreshRemote({String dir = ''}) async {
     try {
       final fetchedRemoteFiles = await s3Manager!.listObjects(dir: dir);
-      remoteFiles.removeWhere((file) => p.isWithin(dir, file.key));
+      remoteFiles.removeWhere(
+        (file) => p.isWithin(dir, file.key) || file.key == dir || dir.isEmpty,
+      );
       remoteFiles.addAll(fetchedRemoteFiles);
       ensureDirectoryObjects();
       await ConfigManager.saveRemoteFiles(remoteFiles);
@@ -301,8 +303,7 @@ abstract class Main {
     }
 
     await refreshRemote();
-    await refreshWatchers(background: true);
-
+    await refreshWatchers(background: background);
     await setLoadingState?.call(false);
   }
 
@@ -771,9 +772,6 @@ class Watcher {
       if (Job.jobs.any((job) => job.remoteKey == file.key)) {
         continue;
       }
-      print(
-        'Remote only file: ${file.key}, mode: ${Main.backupMode(file.key).value}',
-      );
       if (Main.backupMode(file.key) == BackupMode.sync) {
         Main.downloadFile(file);
       }
