@@ -1,20 +1,9 @@
 import 'dart:io';
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:files3/components.dart';
-import 'package:files3/list_files.dart';
-import 'package:files3/services/ini_manager.dart';
-import 'package:files3/services/config_manager.dart';
-import 'package:files3/services/models/common.dart';
-import 'package:files3/services/models/backup_mode.dart';
-import 'package:files3/services/models/remote_file.dart';
-import 'package:files3/services/job.dart';
-import 'package:files3/completed_jobs.dart';
-import 'package:files3/active_jobs.dart';
-import 'package:files3/settings.dart';
-import 'package:path/path.dart' as p;
+import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:file_selector/file_selector.dart';
@@ -22,6 +11,13 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:files3/utils/context_menu.dart';
+import 'package:files3/utils/job.dart';
+import 'package:files3/list_files.dart';
+import 'package:files3/settings.dart';
+import 'package:files3/helpers.dart';
+import 'package:files3/models.dart';
+import 'package:files3/jobs.dart';
 
 /// ===============================
 /// SHARED ASYNC JOB
@@ -568,6 +564,10 @@ class _HomeState extends State<Home> {
     });
     for (int i = 0; i < keys.length; i++) {
       await _copyFile(keys[i], newKeys[i], refresh: false);
+      renameOrCopyAndDelete(
+        File(Main.pathFromKey(keys[i]) ?? keys[i]),
+        Main.pathFromKey(newKeys[i]) ?? newKeys[i],
+      );
     }
     await _deleteFiles(keys, refresh: false);
     if (refresh) {

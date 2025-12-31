@@ -2,12 +2,9 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:files3/services/s3_file_manager.dart';
-import 'package:files3/services/hash_util.dart';
-import 'package:files3/components.dart';
-
-typedef ProgressCallback = void Function(int bytesTransferred, int totalBytes);
-typedef StatusCallback = void Function(String status);
+import 'package:files3/utils/s3_file_manager.dart';
+import 'package:files3/utils/hash_util.dart';
+import 'package:files3/helpers.dart';
 
 enum TransferTask { upload, download }
 
@@ -17,8 +14,8 @@ class S3TransferTask {
   final Digest md5;
   final S3FileManager fileManager;
   final TransferTask task;
-  final ProgressCallback? onProgress;
-  final StatusCallback? onStatus;
+  final void Function(int bytesTransferred, int totalBytes)? onProgress;
+  final void Function(String status)? onStatus;
 
   final HttpClient _httpClient = HttpClient();
 

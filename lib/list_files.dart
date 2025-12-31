@@ -1,13 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:files3/services/models/remote_file.dart';
-import 'package:files3/services/models/common.dart';
-import 'package:files3/services/job.dart';
-import 'package:files3/components.dart';
-import 'package:files3/job_view.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_file/open_file.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:files3/utils/job.dart';
+import 'package:files3/helpers.dart';
+import 'package:files3/models.dart';
+import 'package:files3/jobs.dart';
 
 class ListFiles extends StatelessWidget {
   final List<dynamic> files;

@@ -1,9 +1,33 @@
 import 'dart:io';
-import 'package:files3/services/job.dart';
-import 'package:flutter/foundation.dart';
-import 'package:files3/services/models/remote_file.dart';
-import 'package:files3/services/file_sync_status.dart';
 import 'package:path/path.dart' as p;
+import 'package:flutter/foundation.dart';
+import 'package:files3/utils/hash_util.dart';
+import 'package:files3/utils/job.dart';
+import 'package:files3/models.dart';
+
+enum FileSyncStatus {
+  uploaded,
+  modifiedLocally,
+  modifiedRemotely,
+  newFile,
+  remoteOnly,
+}
+
+class FileSyncComparator {
+  static Future<FileSyncStatus> compare({
+    required File localFile,
+    required RemoteFile? remote,
+  }) async {
+    if (!localFile.existsSync()) return FileSyncStatus.remoteOnly;
+    if (remote == null) return FileSyncStatus.newFile;
+    final localHash = await HashUtil(localFile).md5Hash();
+    return localHash.toString() == remote.etag
+        ? FileSyncStatus.uploaded
+        : remote.lastModified!.isAfter(localFile.lastModifiedSync())
+        ? FileSyncStatus.modifiedRemotely
+        : FileSyncStatus.modifiedLocally;
+  }
+}
 
 class SyncAnalysisResult {
   final List<File> newFile;

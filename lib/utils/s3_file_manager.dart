@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'package:files3/services/models/remote_file.dart';
-import 'package:files3/services/config_manager.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
+import 'package:files3/helpers.dart';
+import 'package:files3/models.dart';
 
 class S3FileManager {
   late final S3 _s3;

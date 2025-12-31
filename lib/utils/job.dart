@@ -1,128 +1,15 @@
 import 'dart:io';
 import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:files3/services/models/backup_mode.dart';
-import 'package:files3/services/models/remote_file.dart';
-import 'package:files3/services/s3_transfer_task.dart';
-import 'package:files3/services/s3_file_manager.dart';
-import 'package:files3/services/config_manager.dart';
-import 'package:files3/services/sync_analyzer.dart';
-import 'package:files3/services/ini_manager.dart';
-import 'package:files3/services/hash_util.dart';
-import 'package:ini/ini.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
-
-class DeletionRegistrar {
-  static late File _file;
-  static Config? config;
-  static DateTime lastPulled = DateTime.fromMillisecondsSinceEpoch(0).toUtc();
-
-  static Future<void> init() async {
-    _file = File(
-      '${(await getApplicationDocumentsDirectory()).path}/deletion-register.ini',
-    );
-
-    if (!_file.existsSync()) {
-      _file.createSync(recursive: true);
-      _file.writeAsStringSync('[register]');
-    }
-
-    config = Config.fromStrings(await _file.readAsLines());
-  }
-
-  static void save() {
-    _file.writeAsStringSync(config.toString());
-  }
-
-  static void logDeletions(List<String> keys) {
-    if (!config!.sections().contains('register')) {
-      config!.addSection('register');
-    }
-    for (String key in keys) {
-      config!.set('register', key, DateTime.now().toUtc().toIso8601String());
-    }
-    save();
-  }
-
-  static Future<Map<String, DateTime>> pullDeletions() async {
-    await Main.refreshRemote(dir: 'deletion-register.ini');
-
-    if (Main.remoteFiles.every((file) => file.key != 'deletion-register.ini')) {
-      if (kDebugMode) {
-        debugPrint("Remote deletion register does not exist.");
-      }
-      return {};
-    }
-
-    final remoteFile = Main.remoteFiles.firstWhere(
-      (file) => file.key == 'deletion-register.ini',
-    );
-
-    if (lastPulled.toUtc().isAfter(
-          remoteFile.lastModified?.toUtc() ??
-              DateTime.fromMillisecondsSinceEpoch(0).toUtc(),
-        ) &&
-        _file.existsSync()) {
-      if (kDebugMode) {
-        debugPrint("Local deletion register is up to date.");
-      }
-      return {
-        for (var entry in config!.options('register')!)
-          entry: DateTime.parse(config!.get('register', entry)!).toUtc(),
-      };
-    }
-
-    Job job = DownloadJob(
-      localFile: _file,
-      remoteKey: 'deletion-register.ini',
-      bytes: remoteFile.size,
-      md5: () {
-        final hex = remoteFile.etag.replaceAll('"', '');
-
-        if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
-          throw StateError('ETag is not a single-part MD5 digest');
-        }
-
-        final bytes = List<int>.generate(
-          16,
-          (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16),
-        );
-
-        return Digest(bytes);
-      }(),
-      onStatus: (job, result) {},
-    );
-
-    await job.start();
-    Job.completedJobs.remove(job);
-
-    if (_file.existsSync()) {
-      config = Config.fromStrings(_file.readAsLinesSync());
-    }
-
-    lastPulled = DateTime.now().toUtc();
-
-    return {
-      for (var entry in config!.options('register')!)
-        entry: DateTime.parse(config!.get('register', entry)!).toUtc(),
-    };
-  }
-
-  static Future<void> pushDeletions() async {
-    Job job = UploadJob(
-      localFile: _file,
-      remoteKey: 'deletion-register.ini',
-      bytes: _file.lengthSync(),
-      onStatus: (job, result) {},
-      md5: await HashUtil(_file).md5Hash(),
-    );
-    await job.start();
-    Job.completedJobs.remove(job);
-  }
-}
+import 'package:flutter/foundation.dart';
+import 'package:files3/utils/s3_transfer_task.dart';
+import 'package:files3/utils/s3_file_manager.dart';
+import 'package:files3/utils/sync_analyzer.dart';
+import 'package:files3/utils/hash_util.dart';
+import 'package:files3/helpers.dart';
+import 'package:files3/models.dart';
 
 abstract class Main {
   static late S3FileManager? s3Manager;
@@ -463,6 +350,14 @@ abstract class Job {
   });
 
   void add() {
+    if (jobs.any(
+      (job) =>
+          job.localFile.path == localFile.path &&
+          job.remoteKey == remoteKey &&
+          !job.completed,
+    )) {
+      return;
+    }
     if (kDebugMode) {
       debugPrint(
         "Adding job: ${runtimeType == UploadJob ? 'Upload' : 'Download'} - $remoteKey",
@@ -500,12 +395,12 @@ abstract class Job {
           },
         );
         final result = await task!.start();
+        jobs.remove(this);
+        completedJobs.add(this);
         failed = false;
         running = false;
         completed = true;
         bytesCompleted = bytes;
-        jobs.remove(this);
-        completedJobs.add(this);
         final resultFile = RemoteFile(
           key: remoteKey,
           size: bytes,
@@ -541,12 +436,12 @@ abstract class Job {
           },
         );
         await task!.start();
+        jobs.remove(this);
+        completedJobs.add(this);
         failed = false;
         running = false;
         completed = true;
         bytesCompleted = bytes;
-        jobs.remove(this);
-        completedJobs.add(this);
         onStatus?.call(this, null);
       }
     } catch (e) {
@@ -745,7 +640,7 @@ class Watcher {
     // }
 
     for (File file in [...result.newFile, ...result.modifiedLocally]) {
-      final key = p.join(remoteDir, p.relative(file.path, from: localDir.path));
+      final key = Main.keyFromPath(file.path) ?? '';
       if (Job.jobs.any(
         (job) =>
             job.localFile.path == file.path &&
