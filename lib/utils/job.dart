@@ -38,15 +38,13 @@ abstract class Main {
           .get('directories', dir)
           ?.replaceAll('\\', '/');
       if (localDir != null) {
-        final normalizedLocalDir = p.normalize(localDir);
-        final normalizedPath = p.normalize(path);
-        if (p.isWithin(normalizedLocalDir, normalizedPath) ||
-            normalizedLocalDir == normalizedPath) {
+        if (p.isWithin(localDir, path) || localDir == path) {
           final relativePath = p
-              .relative(normalizedPath, from: normalizedLocalDir)
-              .replaceAll('\\', '/')
-              .replaceAll('.', '');
-          return p.join(dir, relativePath).replaceAll('\\', '/');
+              .relative(path, from: localDir)
+              .replaceAll('\\', '/');
+          return p
+              .join(dir, relativePath == '.' ? '' : relativePath)
+              .replaceAll('\\', '/');
         }
       }
     }
@@ -560,7 +558,6 @@ class Watcher {
   Timer? timer;
   bool watching = false;
   bool scanning = false;
-  Completer<void>? _scanWaiter;
   bool _rescanQueued = false;
 
   Watcher({required this.remoteDir});
@@ -573,18 +570,13 @@ class Watcher {
         if (kDebugMode) {
           debugPrint("Scan already queued for ${localDir.path}, skipping.");
         }
-        return;
-      }
-
-      _rescanQueued = true;
-
-      if (_scanWaiter != null) {
+      } else {
         if (kDebugMode) {
           debugPrint(
             "Scan in progress for ${localDir.path}. Queued one rescan.",
           );
+          _rescanQueued = true;
         }
-        await _scanWaiter!.future;
       }
       return;
     }
@@ -594,7 +586,6 @@ class Watcher {
     }
 
     scanning = true;
-    _scanWaiter = Completer<void>();
 
     if (!localDir.existsSync()) {
       if (kDebugMode) {
@@ -633,11 +624,13 @@ class Watcher {
         "Sync analysis completed for ${localDir.path}: New Files: ${result.newFile.length}, Modified Locally: ${result.modifiedLocally.length}, Modified Remotely: ${result.modifiedRemotely.length}, Remote Only: ${result.remoteOnly.length}",
       );
     }
-
-    // for (Job job
-    //     in Job.jobs.where((job) => !job.completed && !job.running).toList()) {
-    //   job.remove();
-    // }
+    try {
+      throw Exception("Debug Exception");
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint("Debug Exception caught: $e");
+      }
+    }
 
     for (File file in [...result.newFile, ...result.modifiedLocally]) {
       final key = Main.keyFromPath(file.path) ?? '';
@@ -679,12 +672,10 @@ class Watcher {
     }
 
     scanning = false;
-    _scanWaiter?.complete();
-    _scanWaiter = null;
 
     if (_rescanQueued) {
       _rescanQueued = false;
-      await scan();
+      scan();
     }
   }
 

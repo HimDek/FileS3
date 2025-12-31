@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:files3/globals.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -621,9 +622,7 @@ class FileContextOption {
         ))?.path,
       );
       if (handle != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(handle())));
+        showSnackBar(SnackBar(content: Text(handle())));
       }
     },
   );
@@ -660,13 +659,11 @@ class FileContextOption {
             text: handler.getLinkToCopy(await expiryDialog(context))()!,
           ),
         );
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(content: Text('File link copied to clipboard')),
         );
       } catch (e) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to generate link: $e')));
+        showSnackBar(SnackBar(content: Text('Failed to generate link: $e')));
       }
     },
   );
@@ -711,9 +708,7 @@ class FileContextOption {
       if (newName != null &&
           newName.isNotEmpty &&
           newName != handler.file.key.split('/').last) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(await handler.rename(newName)())),
-        );
+        showSnackBar(SnackBar(content: Text(await handler.rename(newName)())));
       }
     },
   );
@@ -748,9 +743,7 @@ class FileContextOption {
         ),
       );
       if (handle != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(await handle())));
+        showSnackBar(SnackBar(content: Text(await handle())));
       }
     },
   );
@@ -785,9 +778,7 @@ class FileContextOption {
         ),
       );
       if (handle != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(await handle())));
+        showSnackBar(SnackBar(content: Text(await handle())));
       }
     },
   );
@@ -860,9 +851,7 @@ class FilesContextOption {
         saved = true;
       }
       if (saved) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Saving files to $directory')));
+        showSnackBar(SnackBar(content: Text('Saving files to $directory')));
       }
     },
   );
@@ -896,7 +885,7 @@ class FilesContextOption {
       String allLinks = handler.getLinksToCopy(seconds)();
       if (allLinks.isNotEmpty) {
         Clipboard.setData(ClipboardData(text: allLinks));
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(content: Text('File links copied to clipboard')),
         );
       }
@@ -949,8 +938,7 @@ class FilesContextOption {
         ),
       );
       if (yes ?? false) {
-        handler.deleteUploaded(handler.removableFiles(), true)!.call();
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(
             content: Text('Local copies of uploaded files deleted'),
           ),
@@ -988,7 +976,7 @@ class FilesContextOption {
       );
       if (yes ?? false) {
         handler.deleteLocal(true)!.call();
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(
             content: Text('Local copies of selected files deleted'),
           ),
@@ -1046,7 +1034,7 @@ class FilesContextOption {
       );
       if (yes ?? false) {
         handler.deleteS3(handler.cloudDeletable(), true)!.call();
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(content: Text('Selected files deleted from S3')),
         );
       }
@@ -1084,7 +1072,7 @@ class FilesContextOption {
       if (yes ?? false) {
         handler.delete(true)!.call();
         clearSelection();
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(
             content: Text('Selected files deleted from device and S3'),
           ),
@@ -1166,9 +1154,7 @@ class DirectoryContextOption {
             : p.join(directory, p.basename(handler.file.key)),
       );
       if (handle != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(handle())));
+        showSnackBar(SnackBar(content: Text(handle())));
       }
     },
   );
@@ -1206,9 +1192,7 @@ class DirectoryContextOption {
       if (newName != null &&
           newName.isNotEmpty &&
           newName != p.basename(handler.file.key)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(await handler.rename(newName)())),
-        );
+        showSnackBar(SnackBar(content: Text(await handler.rename(newName)())));
       }
     },
   );
@@ -1268,7 +1252,7 @@ class DirectoryContextOption {
               ),
             );
             if (yes ?? false) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              showSnackBar(
                 SnackBar(
                   content: Text(
                     await handler.deleteUploaded(
@@ -1310,7 +1294,7 @@ class DirectoryContextOption {
         ),
       );
       if (yes ?? false) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           SnackBar(content: Text(await handler.deleteLocal(true)!())),
         );
       }
@@ -1373,7 +1357,7 @@ class DirectoryContextOption {
         ),
       );
       if (yes ?? false) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           SnackBar(
             content: Text(
               await handler.deleteS3(handler.cloudDeletable(), true)!(),
@@ -1412,9 +1396,7 @@ class DirectoryContextOption {
         ),
       );
       if (yes ?? false) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(await handler.delete(true)!())));
+        showSnackBar(SnackBar(content: Text(await handler.delete(true)!())));
       }
     },
   );
@@ -1480,7 +1462,7 @@ class DirectoriesContextOption {
         saved = true;
       }
       if (saved) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           SnackBar(content: Text('Saving directories to $directory')),
         );
       }
@@ -1559,7 +1541,7 @@ class DirectoriesContextOption {
               ),
             );
             if (yes ?? false) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              showSnackBar(
                 SnackBar(
                   content: Text(
                     await handler.deleteUploaded(
@@ -1603,7 +1585,7 @@ class DirectoriesContextOption {
       );
       if (yes ?? false) {
         handler.deleteLocal(true)!.call();
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(
             content: Text('Local copies of selected directories deleted'),
           ),
@@ -1661,7 +1643,7 @@ class DirectoriesContextOption {
       );
       if (yes ?? false) {
         handler.deleteS3(handler.cloudDeletable(), true)!.call();
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(content: Text('Selected directories deleted from S3')),
         );
       }
@@ -1698,7 +1680,7 @@ class DirectoriesContextOption {
       if (yes ?? false) {
         handler.delete(true)!.call();
         clearSelection();
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(
             content: Text('Selected directories deleted from device and S3'),
           ),
@@ -1810,9 +1792,7 @@ class BulkContextOption {
         }
       }
       if (saved) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Saving items to $directory')));
+        showSnackBar(SnackBar(content: Text('Saving items to $directory')));
       }
     },
   );
@@ -1897,7 +1877,7 @@ class BulkContextOption {
         filesHandler
             .deleteUploaded(filesHandler.removableFiles(), true)!
             .call();
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(
             content: Text('Local copies of uploaded items deleted'),
           ),
@@ -1938,7 +1918,7 @@ class BulkContextOption {
         for (final handler in [directoriesHandler, filesHandler]) {
           handler.deleteLocal(true)!.call();
         }
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(
             content: Text('Local copies of selected items deleted'),
           ),
@@ -1982,7 +1962,7 @@ class BulkContextOption {
           handler.delete(true)!.call();
         }
         clearSelection();
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           const SnackBar(
             content: Text('Selected items deleted from device and S3'),
           ),
@@ -2091,7 +2071,7 @@ Widget buildFileContextMenu(
                       ? null
                       : () async {
                           await option.action!();
-                          Navigator.of(context).pop();
+                          globalNavigator?.pop();
                         },
                 ),
               ),
@@ -2143,7 +2123,7 @@ Widget buildFilesContextMenu(
                 onTap: option.action != null
                     ? () async {
                         await option.action!();
-                        Navigator.of(context).pop();
+                        globalNavigator?.pop();
                       }
                     : null,
               ),
@@ -2233,7 +2213,7 @@ Widget buildDirectoryContextMenu(
                       );
                       IniManager.save();
                       Main.listDirectories();
-                      Navigator.of(context).pop();
+                      globalNavigator!.pop();
                     }
                   },
                 ),
@@ -2290,7 +2270,7 @@ Widget buildDirectoryContextMenu(
                   onTap: option.action != null
                       ? () async {
                           await option.action!();
-                          Navigator.of(context).pop();
+                          globalNavigator?.pop();
                         }
                       : null,
                 ),
@@ -2341,7 +2321,7 @@ Widget buildDirectoriesContextMenu(
                 onTap: option.action != null
                     ? () async {
                         await option.action!();
-                        Navigator.of(context).pop();
+                        globalNavigator?.pop();
                       }
                     : null,
               ),
@@ -2438,7 +2418,7 @@ Widget buildBulkContextMenu(
                   onTap: option.action != null
                       ? () async {
                           await option.action!(context);
-                          Navigator.of(context).pop();
+                          globalNavigator?.pop();
                         }
                       : null,
                 ),

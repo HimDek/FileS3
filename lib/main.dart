@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:files3/globals.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -163,7 +164,7 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: Listenable.merge([themeController, ultraDarkController]),
-      builder: (_, __) {
+      builder: (_, _) {
         return DynamicColorBuilder(
           builder: (lightScheme, darkScheme) {
             return MaterialApp(
@@ -174,7 +175,7 @@ class MainApp extends StatelessWidget {
               darkTheme: themeController.themeMode == ThemeMode.light
                   ? getLightTheme(lightScheme)
                   : getDarkTheme(darkScheme),
-              home: Home(),
+              home: Home(key: navigatorKey),
             );
           },
         );
@@ -365,7 +366,7 @@ class _HomeState extends State<Home> {
       }
     } catch (e) {
       ScaffoldMessenger.of(
-        context,
+        navigatorKey.currentContext!,
       ).showSnackBar(SnackBar(content: Text('Error creating directory: $e')));
     }
     setState(() {
@@ -723,9 +724,7 @@ class _HomeState extends State<Home> {
             }
             _selectionAction = SelectionAction.none;
           } catch (e) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('Error pasting items: $e')));
+            showSnackBar(SnackBar(content: Text('Error pasting items: $e')));
           }
         };
 
@@ -933,13 +932,13 @@ class _HomeState extends State<Home> {
     }
     if (permission != null) {
       while (await permission.request().isDenied) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           SnackBar(
             content: Text(
               'Storage permission is required to use this app.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onError),
+              style: TextStyle(color: globalTheme?.colorScheme.onError),
             ),
-            backgroundColor: Theme.of(context).colorScheme.error,
+            backgroundColor: globalTheme?.colorScheme.error,
           ),
         );
       }
@@ -948,13 +947,13 @@ class _HomeState extends State<Home> {
           .request();
 
       if (status.isPermanentlyDenied || status.isRestricted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        showSnackBar(
           SnackBar(
             content: Text(
               'Storage permission is required to use this app.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onError),
+              style: TextStyle(color: globalTheme?.colorScheme.onError),
             ),
-            backgroundColor: Theme.of(context).colorScheme.error,
+            backgroundColor: globalTheme?.colorScheme.error,
           ),
         );
         await openAppSettings();
@@ -1883,7 +1882,7 @@ class _HomeState extends State<Home> {
                           '${p.join(_driveDir.key, dir)}/',
                         ].contains(file.key),
                       )) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        showSnackBar(
                           SnackBar(
                             content: Text(
                               'Directory "${p.join(_driveDir.key, dir)}" already exists.',
