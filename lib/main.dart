@@ -1462,7 +1462,8 @@ class _HomeState extends State<Home> {
                                 ? 4
                                 : 0),
                         child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                          mainAxisSize: MainAxisSize.max,
+                          mainAxisAlignment: MainAxisAlignment.end,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Padding(
