@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:files3/services/job.dart';
 import 'package:flutter/foundation.dart';
 import 'package:files3/services/models/remote_file.dart';
 import 'package:files3/services/file_sync_status.dart';
@@ -37,7 +38,7 @@ class SyncAnalyzer {
         final rel = p
             .relative(ent.path, from: localRoot.path)
             .replaceAll('\\', '/');
-        localMap[p.join(p.split(localRoot.path).last, rel)] = ent;
+        localMap[p.join(Main.keyFromPath(localRoot.path) ?? '', rel)] = ent;
       }
     }
     final remoteMap = {

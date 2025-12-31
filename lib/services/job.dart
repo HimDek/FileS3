@@ -157,7 +157,8 @@ abstract class Main {
             normalizedLocalDir == normalizedPath) {
           final relativePath = p
               .relative(normalizedPath, from: normalizedLocalDir)
-              .replaceAll('\\', '/');
+              .replaceAll('\\', '/')
+              .replaceAll('.', '');
           return p.join(dir, relativePath).replaceAll('\\', '/');
         }
       }
@@ -564,7 +565,7 @@ abstract class Job {
     return task != null && running && !completed;
   }
 
-  void stop(Job job) {
+  void stop() {
     if (stoppable()) task!.cancel();
     failed = true;
     running = false;
@@ -625,7 +626,7 @@ abstract class Job {
 
   static void stopall() {
     for (var job in jobs) {
-      job.stop(job);
+      job.stop();
     }
   }
 

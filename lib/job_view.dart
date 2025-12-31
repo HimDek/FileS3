@@ -18,63 +18,78 @@ class JobView extends StatefulWidget {
 class JobViewState extends State<JobView> {
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      dense: MediaQuery.of(context).size.width < 600 ? true : false,
-      visualDensity: MediaQuery.of(context).size.width < 600
-          ? VisualDensity.compact
-          : VisualDensity.standard,
-      leading: widget.job.running
-          ? CircularPercentIndicator(
-              radius: 20.0,
-              lineWidth: 4.0,
-              percent: widget.job.bytesCompleted / widget.job.bytes,
-              center: Text(
-                '${((widget.job.bytesCompleted / widget.job.bytes) * 100).toStringAsFixed(0)}%',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-              progressColor: Theme.of(context).primaryColor,
-            )
-          : widget.job.completed
-          ? widget.job.runtimeType == UploadJob
-                ? Icon(Icons.done_all)
-                : Icon(Icons.download_done)
-          : IconButton(
-              onPressed: () {
-                widget.job.start();
-              },
-              icon: Icon(Icons.start),
-            ),
-      title: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: p.isWithin(widget.job.remoteKey, widget.relativeTo?.key ?? '')
-            ? Text(
-                p.relative(
-                  widget.job.remoteKey,
-                  from: widget.relativeTo?.key ?? '',
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(
+          dense: MediaQuery.of(context).size.width < 600 ? true : false,
+          visualDensity: MediaQuery.of(context).size.width < 600
+              ? VisualDensity.compact
+              : VisualDensity.standard,
+          leading: widget.job.completed
+              ? widget.job.runtimeType == UploadJob
+                    ? Icon(Icons.done_all)
+                    : Icon(Icons.download_done)
+              : widget.job.running
+              ? Icon(Icons.pause_circle_filled)
+              : Icon(
+                  widget.job.runtimeType == UploadJob
+                      ? Icons.upload
+                      : Icons.download,
                 ),
-              )
-            : Text(widget.job.remoteKey),
-      ),
-      subtitle: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            Text(widget.job.statusMsg, maxLines: 1),
-            SizedBox(width: 16),
-            Text(widget.job.localFile.path, maxLines: 1),
-          ],
+          onTap: widget.job.startable()
+              ? () {
+                  widget.job.start();
+                }
+              : widget.job.stoppable()
+              ? () {
+                  widget.job.stop();
+                }
+              : null,
+          title: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Text(
+              p.isWithin(widget.relativeTo?.key ?? '', widget.job.remoteKey)
+                  ? p.relative(
+                      widget.job.remoteKey,
+                      from: widget.relativeTo?.key ?? '',
+                    )
+                  : widget.job.remoteKey,
+            ),
+          ),
+          subtitle: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                if (widget.job.statusMsg.isNotEmpty) ...[
+                  Text(widget.job.statusMsg, maxLines: 1),
+                  SizedBox(width: 16),
+                ],
+                Text(widget.job.localFile.path, maxLines: 1),
+              ],
+            ),
+          ),
+          trailing: widget.job.dismissible()
+              ? IconButton(
+                  onPressed: () {
+                    widget.job.dismiss();
+                    if (widget.onUpdate != null) widget.onUpdate!();
+                  },
+                  icon: Icon(Icons.close),
+                )
+              : null,
         ),
-      ),
-      trailing: widget.job.dismissible()
-          ? IconButton(
-              onPressed: () {
-                widget.job.dismiss();
-                if (widget.onUpdate != null) widget.onUpdate!();
-              },
-              icon: Icon(Icons.close),
-            )
-          : null,
+        if (!widget.job.completed)
+          LinearPercentIndicator(
+            percent: widget.job.bytesCompleted / widget.job.bytes,
+            lineHeight: 4,
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            progressColor: Theme.of(context).colorScheme.primary,
+          )
+        else
+          SizedBox(height: 4),
+      ],
     );
   }
 }

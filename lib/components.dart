@@ -1501,13 +1501,21 @@ class DirectoryContextOption {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Are you sure you want to delete ${p.basename(handler.file.key)} from S3? This action cannot be undone.',
+                'Are you sure you want to delete ${p.basename(handler.file.key)} containing the following ${handler.cloudDeletable().length} files from S3? This action cannot be undone.',
               ),
-              SingleChildScrollView(
-                child: Column(
-                  children: handler.cloudDeletable().map((file) {
-                    return Text(file.key);
-                  }).toList(),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 200,
+                child: SingleChildScrollView(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: handler.cloudDeletable().map((file) {
+                        return Text(file.key);
+                      }).toList(),
+                    ),
+                  ),
                 ),
               ),
               if (handler.cloudDeletable().isEmpty)
