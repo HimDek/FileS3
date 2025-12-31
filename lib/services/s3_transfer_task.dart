@@ -1,11 +1,10 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:files3/services/s3_file_manager.dart';
 import 'package:files3/services/hash_util.dart';
 import 'package:files3/components.dart';
-import 'package:http/http.dart' as http;
-import 'package:crypto/crypto.dart';
 
 typedef ProgressCallback = void Function(int bytesTransferred, int totalBytes);
 typedef StatusCallback = void Function(String status);
@@ -21,13 +20,11 @@ class S3TransferTask {
   final ProgressCallback? onProgress;
   final StatusCallback? onStatus;
 
-  bool _sinkClosed = false;
+  final HttpClient _httpClient = HttpClient();
+
   bool _isCancelled = false;
-  StreamSubscription<List<int>>? sub;
 
-  late final http.Client _client;
-
-  static DateTime lastcallbackTime = DateTime.fromMicrosecondsSinceEpoch(0);
+  static DateTime lastCallbackTime = DateTime.fromMicrosecondsSinceEpoch(0);
 
   S3TransferTask({
     required this.key,
@@ -37,215 +34,208 @@ class S3TransferTask {
     required this.task,
     this.onProgress,
     this.onStatus,
-  }) {
-    _client = http.Client();
-  }
+  });
 
-  Future<dynamic> closeSink(http.StreamedRequest request) async {
-    if (!_sinkClosed) {
-      _sinkClosed = true;
-      return await request.sink.close();
-    }
-  }
-
-  /// Starts the upload or download operation.
+  /// Starts upload or download
   Future<dynamic> start() async {
-    dynamic response;
     try {
       onStatus?.call(
         task == TransferTask.upload
             ? 'Starting upload...'
-            : task == TransferTask.download
-            ? 'Starting download...'
-            : 'Generating pre-signed URL...',
+            : 'Starting download...',
       );
+
       if (task == TransferTask.upload) {
-        response = await _upload();
-      } else if (task == TransferTask.download) {
-        response = await _download();
+        return await _upload();
+      } else {
+        return await _download();
       }
     } catch (e) {
       if (_isCancelled) {
         onStatus?.call('Cancelled');
       } else {
-        _client.close();
         onStatus?.call('Error: $e');
       }
       rethrow;
     } finally {
-      _client.close();
+      _httpClient.close(force: true);
     }
-
-    return response;
   }
 
-  /// Cancels the ongoing transfer.
+  /// Cancel transfer
   void cancel() {
     _isCancelled = true;
-    sub?.cancel();
   }
 
+  // ---------------------------------------------------------------------------
+  // UPLOAD
+  // ---------------------------------------------------------------------------
+
   Future<dynamic> _upload() async {
-    _sinkClosed = false;
-    int uploaded = 0;
     final totalBytes = await localFile.length();
+    int uploaded = 0;
 
     final contentHash = await _sha256OfFile(localFile);
     final contentMD5 = base64.encode(md5.bytes);
     final now = DateTime.now().toUtc();
-    final amzDate = fileManager.formatAmzDate(now);
-    final shortDate = fileManager.formatDate(now);
 
-    // Prepare signed headers
     final headers = fileManager.buildSignedHeaders(
       key: key,
       method: 'PUT',
-      amzDate: amzDate,
-      shortDate: shortDate,
+      amzDate: fileManager.formatAmzDate(now),
+      shortDate: fileManager.formatDate(now),
       contentHash: contentHash,
       contentMD5: contentMD5,
       contentType: fileManager.guessMime(localFile),
     );
-    headers['Expect'] = '100-continue';
 
-    // Streamed request
-    final request = http.StreamedRequest('PUT', fileManager.getUri(key))
-      ..headers.addAll(headers)
-      ..contentLength = totalBytes;
+    final uri = fileManager.getUri(key);
+    final req = await _httpClient.openUrl('PUT', uri);
 
-    final completer = Completer<void>();
-    final stream = localFile.openRead();
+    headers.forEach(req.headers.set);
+    req.contentLength = totalBytes;
+    req.bufferOutput = false; // important for real progress
 
-    sub = stream.listen(
-      (chunk) {
+    await req.addStream(
+      localFile.openRead().map((chunk) {
         if (_isCancelled) {
-          closeSink(request);
-          sub?.cancel();
-          return;
+          throw Exception('Upload cancelled');
         }
-        request.sink.add(chunk);
+
         uploaded += chunk.length;
-        if (DateTime.now().difference(lastcallbackTime).inMilliseconds < 100 &&
-            uploaded < totalBytes) {
-          return;
+
+        if (DateTime.now().difference(lastCallbackTime).inMilliseconds >= 100 ||
+            uploaded >= totalBytes) {
+          lastCallbackTime = DateTime.now();
+          onProgress?.call(uploaded, totalBytes);
+
+          if (uploaded >= totalBytes) {
+            onStatus?.call('Finalizing upload...');
+          } else {
+            onStatus?.call(
+              'Uploading... ${bytesToReadable(uploaded)} / ${bytesToReadable(totalBytes)}',
+            );
+          }
         }
-        lastcallbackTime = DateTime.now();
-        onProgress?.call(uploaded, totalBytes);
-        onStatus?.call(
-          'Uploading... ${bytesToReadable(uploaded)} / ${bytesToReadable(totalBytes)}',
-        );
-      },
-      onDone: () async {
-        await closeSink(request);
-        completer.complete();
-      },
-      onError: (e) async {
-        await closeSink(request);
-        completer.completeError(e);
-      },
-      cancelOnError: true,
+
+        return chunk;
+      }),
     );
 
-    final responseFuture = _client.send(request);
-    await completer.future;
-    final response = await responseFuture;
+    final res = await req.close();
 
-    if (response.statusCode == 200) {
+    if (res.statusCode == 200) {
       onStatus?.call('Upload complete');
-    } else {
-      final body = await response.stream.bytesToString();
-      throw Exception('Upload failed: ${response.statusCode} - $body');
-    }
 
-    return response.headers;
+      final responseHeaders = <String, String>{};
+      res.headers.forEach((k, v) {
+        responseHeaders[k] = v.join(',');
+      });
+
+      return responseHeaders;
+    } else {
+      final body = await utf8.decodeStream(res);
+      throw Exception('Upload failed: ${res.statusCode} - $body');
+    }
   }
+
+  // ---------------------------------------------------------------------------
+  // DOWNLOAD
+  // ---------------------------------------------------------------------------
 
   Future<dynamic> _download() async {
     final now = DateTime.now().toUtc();
-    final amzDate = fileManager.formatAmzDate(now);
-    final shortDate = fileManager.formatDate(now);
-    final contentHash = S3FileManager.emptySha256;
 
     final headers = fileManager.buildSignedHeaders(
       key: key,
       method: 'GET',
-      amzDate: amzDate,
-      shortDate: shortDate,
-      contentHash: contentHash,
+      amzDate: fileManager.formatAmzDate(now),
+      shortDate: fileManager.formatDate(now),
+      contentHash: S3FileManager.emptySha256,
     );
 
-    final request = http.Request('GET', fileManager.getUri(key))
-      ..headers.addAll(headers);
+    final uri = fileManager.getUri(key);
+    final req = await _httpClient.openUrl('GET', uri);
 
-    final response = await _client.send(request);
-    if (_isCancelled) {
-      return;
+    headers.forEach(req.headers.set);
+
+    final res = await req.close();
+
+    if (res.statusCode != 200) {
+      final body = await utf8.decodeStream(res);
+      throw Exception('Download failed: ${res.statusCode} - $body');
     }
 
-    final File tempFile = await File(
+    final tempFile = await File(
       '${Directory.systemTemp.path}/app_${DateTime.now().microsecondsSinceEpoch}',
     ).create();
 
-    if (response.statusCode == 200) {
-      final IOSink fileSink = tempFile.openWrite();
-      int received = 0;
-      final total = response.contentLength ?? 0;
+    final sink = tempFile.openWrite();
+    final total = res.contentLength;
+    int received = 0;
 
-      await response.stream
-          .listen(
-            (chunk) {
-              if (_isCancelled) {
-                fileSink.close();
-                if (tempFile.existsSync()) {
-                  tempFile.deleteSync();
-                }
-                return;
-              }
-              fileSink.add(chunk);
-              received += chunk.length;
-              if (DateTime.now().difference(lastcallbackTime).inMilliseconds <
-                      100 &&
-                  received < total) {
-                return;
-              }
-              lastcallbackTime = DateTime.now();
-              onProgress?.call(received, total);
-              onStatus?.call(
-                'Downloading... ${bytesToReadable(received)} / ${bytesToReadable(total)}',
-              );
-            },
-            onDone: () async {
-              await fileSink.close();
-            },
-            onError: (e) async {
-              await fileSink.close();
-              throw e;
-            },
-            cancelOnError: true,
-          )
-          .asFuture();
-    } else {
-      final body = await response.stream.bytesToString();
-      throw Exception('Download failed: ${response.statusCode} - $body');
+    try {
+      await for (final chunk in res) {
+        if (_isCancelled) {
+          throw Exception('Download cancelled');
+        }
+
+        sink.add(chunk);
+        received += chunk.length;
+
+        if (DateTime.now().difference(lastCallbackTime).inMilliseconds >= 100 ||
+            received >= total) {
+          lastCallbackTime = DateTime.now();
+          onProgress?.call(received, total);
+          if (received >= total) {
+            onStatus?.call('Finalizing download...');
+          } else {
+            onStatus?.call(
+              'Downloading... ${bytesToReadable(received)} / ${bytesToReadable(total)}',
+            );
+          }
+        }
+      }
+    } finally {
+      await sink.close();
     }
 
-    if (_isCancelled) return;
-    final filemd5 = await HashUtil(tempFile).md5Hash();
-    if (filemd5 == md5) {
-      if (localFile.existsSync()) {
-        localFile.deleteSync();
+    if (_isCancelled) {
+      if (tempFile.existsSync()) {
+        tempFile.deleteSync();
       }
-      tempFile.copySync(localFile.path);
-      onStatus?.call('Download complete');
-    } else {
+      return;
+    }
+
+    final fileMd5 = await HashUtil(tempFile).md5Hash();
+    if (fileMd5 != md5) {
+      tempFile.deleteSync();
       throw Exception(
-        'Download failed: MD5 mismatch! expected $md5, got $filemd5',
+        'Download failed: MD5 mismatch! expected $md5, got $fileMd5',
       );
     }
-    tempFile.deleteSync();
 
-    return null;
+    if (localFile.existsSync()) {
+      localFile.deleteSync();
+    }
+
+    try {
+      tempFile.renameSync(localFile.path);
+      onStatus?.call('Download complete');
+    } on FileSystemException catch (e) {
+      if (e.osError?.errorCode == 18) {
+        await tempFile.copy(localFile.path);
+        tempFile.deleteSync();
+        onStatus?.call('Download complete');
+      } else {
+        throw Exception('Storage write failed: $e');
+      }
+    }
   }
+
+  // ---------------------------------------------------------------------------
+  // UTILS
+  // ---------------------------------------------------------------------------
 
   Future<String> _sha256OfFile(File file) async {
     final digest = await sha256.bind(file.openRead()).first;
