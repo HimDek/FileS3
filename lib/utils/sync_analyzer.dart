@@ -13,7 +13,7 @@ enum FileSyncStatus {
   remoteOnly,
 }
 
-class FileSyncComparator {
+abstract class FileSyncComparator {
   static Future<FileSyncStatus> compare({
     required File localFile,
     required RemoteFile? remote,

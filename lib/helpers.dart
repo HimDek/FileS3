@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:ini/ini.dart';
 import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -221,7 +222,7 @@ class UltraDarkController extends ChangeNotifier {
 final themeController = ThemeController();
 final ultraDarkController = UltraDarkController();
 
-class IniManager {
+abstract class IniManager {
   static late File _file;
   static Config? config;
 
@@ -237,14 +238,30 @@ class IniManager {
 
     final lines = _file.readAsLinesSync();
     config = Config.fromStrings(lines);
+    cleanDirectories();
   }
 
   static void save() {
+    cleanDirectories();
     _file.writeAsStringSync(config.toString());
+  }
+
+  static void cleanDirectories() {
+    for (String key in config!.options('directories') ?? []) {
+      final dirPath = config!.get('directories', key).toString();
+      for (String k in config!.options('directories') ?? []) {
+        if (k != key &&
+            p.canonicalize(config!.get('directories', k).toString()) ==
+                p.canonicalize(dirPath)) {
+          config!.removeOption('directories', k);
+        }
+        config!.removeOption('directories', key);
+      }
+    }
   }
 }
 
-class ConfigManager {
+abstract class ConfigManager {
   static const _storage = FlutterSecureStorage();
 
   static Future<S3Config> loadS3Config() async {
@@ -328,7 +345,7 @@ class ConfigManager {
   }
 }
 
-class DeletionRegistrar {
+abstract class DeletionRegistrar {
   static late File _file;
   static Config? config;
   static DateTime lastPulled = DateTime.fromMillisecondsSinceEpoch(0).toUtc();
