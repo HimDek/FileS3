@@ -6,6 +6,8 @@ It lets you use **your own S3 or S3-compatible storage** (AWS S3, MinIO, Wasabi,
 No lock-in. No proprietary backend.  
 **Your files stay in your bucket.**
 
+## [Download](https://github.com/HimDek/FileS3/releases/latest/download/app-release.apk)
+
 ## Features
 
 - **Bring Your Own Cloud (BYOC)**
