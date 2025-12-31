@@ -1450,21 +1450,17 @@ class _HomeState extends State<Home> {
                                     : 0))
                             .toDouble();
                       }()),
-                      child: Container(
+                      child: SizedBox(
                         width: double.infinity,
-                        constraints: BoxConstraints(
-                          maxHeight:
-                              28 +
-                              (_driveDir.key != '' ? 24 : 0) +
-                              (Main.pathFromKey(_driveDir.key) != null
-                                  ? 16
-                                  : 0) +
-                              (!Main.accessible
-                                  ? 16
-                                  : _loading.value
-                                  ? 4
-                                  : 0),
-                        ),
+                        height:
+                            28 +
+                            (_driveDir.key != '' ? 24 : 0) +
+                            (Main.pathFromKey(_driveDir.key) != null ? 16 : 0) +
+                            (!Main.accessible
+                                ? 16
+                                : _loading.value
+                                ? 4
+                                : 0),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
