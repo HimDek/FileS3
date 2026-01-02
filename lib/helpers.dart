@@ -254,8 +254,8 @@ abstract class IniManager {
             p.canonicalize(config!.get('directories', k).toString()) ==
                 p.canonicalize(dirPath)) {
           config!.removeOption('directories', k);
+          config!.removeOption('directories', key);
         }
-        config!.removeOption('directories', key);
       }
     }
   }
