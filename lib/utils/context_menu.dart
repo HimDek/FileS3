@@ -2211,6 +2211,7 @@ Widget buildDirectoryContextMenu(
                         file.key,
                         directoryPath,
                       );
+                      IniManager.cleanDirectories(keepKey: file.key);
                       IniManager.save();
                       Main.listDirectories();
                       globalNavigator!.pop();

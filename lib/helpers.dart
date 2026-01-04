@@ -242,19 +242,22 @@ abstract class IniManager {
   }
 
   static void save() {
-    cleanDirectories();
     _file.writeAsStringSync(config.toString());
   }
 
-  static void cleanDirectories() {
+  static void cleanDirectories({String? keepKey}) {
     for (String key in config!.options('directories')?.toList() ?? []) {
       final dirPath = config!.get('directories', key).toString();
       for (String k in config!.options('directories')?.toList() ?? []) {
         if (k != key &&
             p.canonicalize(config!.get('directories', k).toString()) ==
                 p.canonicalize(dirPath)) {
-          config!.removeOption('directories', k);
-          config!.removeOption('directories', key);
+          if (keepKey != k) {
+            config!.removeOption('directories', k);
+          }
+          if (keepKey != key) {
+            config!.removeOption('directories', key);
+          }
         }
       }
     }
