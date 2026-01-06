@@ -556,7 +556,7 @@ class TransferSettingsPageState extends State<TransferSettingsPage> {
         children: [
           ListTile(
             title: Text('Max Concurrent Transfers'),
-            subtitle: Text('Set the maximum number of concurrent downloads'),
+            subtitle: Text('Set the maximum number of concurrent transfers'),
             trailing: DropdownButton<int>(
               value: _downloadConfig.maxConcurrentTransfers,
               items: List.generate(10, (index) => index + 1)
