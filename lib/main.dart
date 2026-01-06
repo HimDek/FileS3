@@ -28,7 +28,9 @@ Future<void> runJob({
 }) async {
   await Main.init(background: true);
   Job.onProgressUpdate = () {
-    final runningJobs = Job.jobs.where((job) => job.running).toList();
+    final runningJobs = Job.jobs
+        .where((job) => job.status == JobStatus.running)
+        .toList();
     if (runningJobs.isEmpty) {
       onProgress(1.0);
       return;
@@ -39,8 +41,10 @@ Future<void> runJob({
     }
     onProgress(totalProgress / runningJobs.length);
   };
-  if (Job.jobs.any((job) => !job.completed && !job.running && !job.failed)) {
-    await Future.delayed(const Duration(seconds: 2));
+  if (Job.jobs.any((job) => job.status == JobStatus.initialized)) {
+    await Future.delayed(const Duration(seconds: 2), () {
+      // TODO: Run Jobs?
+    });
   }
 }
 
@@ -197,6 +201,7 @@ class _HomeState extends State<Home> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final ValueNotifier<bool> _loading = ValueNotifier<bool>(true);
+  final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
   List<Object> _searchResults = [];
   bool _foldersFirst = true;
@@ -415,19 +420,24 @@ class _HomeState extends State<Home> {
     String dir,
     String newDir, {
     bool refresh = true,
+    ValueNotifier<double>? progress,
   }) async {
     setState(() {
       _loading.value = true;
     });
-    for (final file
-        in Main.remoteFiles
-            .where(
-              (file) =>
-                  p.isWithin(dir, file.key) &&
-                  file.key != dir &&
-                  !file.key.endsWith('/'),
-            )
-            .toList()) {
+    final files = Main.remoteFiles
+        .where(
+          (file) =>
+              p.isWithin(dir, file.key) &&
+              file.key != dir &&
+              !file.key.endsWith('/'),
+        )
+        .toList();
+    int progressCount = 0;
+    final totalFiles = files.length;
+    for (final file in files) {
+      progressCount += 1;
+      (progress ?? _progress).value = progressCount / totalFiles;
       await _copyFile(
         file.key,
         p.join(newDir, p.relative(file.key, from: dir)),
@@ -470,7 +480,11 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _deleteFiles(List<String> keys, {bool refresh = true}) async {
+  Future<void> _deleteFiles(
+    List<String> keys, {
+    bool refresh = true,
+    ValueNotifier<double>? progress,
+  }) async {
     setState(() {
       _loading.value = true;
     });
@@ -478,6 +492,7 @@ class _HomeState extends State<Home> {
     DeletionRegistrar.logDeletions(keys);
     await DeletionRegistrar.pushDeletions();
     for (final key in keys) {
+      (progress ?? _progress).value = keys.indexOf(key) / keys.length;
       await Main.s3Manager!.deleteFile(key);
       if (File(Main.pathFromKey(key) ?? key).existsSync()) {
         File(Main.pathFromKey(key) ?? key).deleteSync();
@@ -491,7 +506,11 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _deleteS3(List<String> keys, {bool refresh = true}) async {
+  Future<void> _deleteS3(
+    List<String> keys, {
+    bool refresh = true,
+    ValueNotifier<double>? progress,
+  }) async {
     setState(() {
       _loading.value = true;
     });
@@ -500,10 +519,17 @@ class _HomeState extends State<Home> {
     DeletionRegistrar.logDeletions(keys);
     await DeletionRegistrar.pushDeletions();
 
+    int progressCount = 0;
+    final totalFiles = Main.remoteFiles
+        .where((file) => keys.contains(file.key))
+        .length;
+
     for (final file
         in Main.remoteFiles
             .where((file) => keys.contains(file.key) && !file.key.endsWith('/'))
             .toList()) {
+      progressCount += 1;
+      (progress ?? _progress).value = progressCount / totalFiles;
       await Main.s3Manager!.deleteFile(file.key);
     }
 
@@ -517,6 +543,8 @@ class _HomeState extends State<Home> {
     dirs.sort((a, b) => b.key.length.compareTo(a.key.length));
 
     for (final file in dirs) {
+      progressCount += 1;
+      (progress ?? _progress).value = progressCount / totalFiles;
       await Main.s3Manager!.deleteFile(file.key);
     }
 
@@ -532,6 +560,7 @@ class _HomeState extends State<Home> {
   Future<void> _deleteDirectories(
     List<String> dirs, {
     bool refresh = true,
+    ValueNotifier<double>? progress,
   }) async {
     setState(() {
       _loading.value = true;
@@ -540,10 +569,18 @@ class _HomeState extends State<Home> {
       final files = Main.remoteFiles
           .where((file) => p.isWithin(dir, file.key))
           .toList();
+      final ValueNotifier<double> deleteprogress = ValueNotifier<double>(0.0);
+      deleteprogress.addListener(() {
+        (progress ?? _progress).value =
+            (dirs.indexOf(dir) / dirs.length) +
+            (deleteprogress.value / dirs.length);
+      });
       await _deleteS3(
         files.map((file) => file.key).toList().followedBy([dir]).toList(),
         refresh: false,
+        progress: deleteprogress,
       );
+      deleteprogress.dispose();
       if (Directory(Main.pathFromKey(dir) ?? dir).existsSync()) {
         Directory(Main.pathFromKey(dir) ?? dir).deleteSync(recursive: true);
       }
@@ -564,13 +601,19 @@ class _HomeState extends State<Home> {
       _loading.value = true;
     });
     for (int i = 0; i < keys.length; i++) {
+      _progress.value = (i + 1) * 0.5 / keys.length;
       await _copyFile(keys[i], newKeys[i], refresh: false);
       renameOrCopyAndDelete(
         File(Main.pathFromKey(keys[i]) ?? keys[i]),
         Main.pathFromKey(newKeys[i]) ?? newKeys[i],
       );
     }
-    await _deleteFiles(keys, refresh: false);
+    final ValueNotifier<double> progress = ValueNotifier<double>(0.0);
+    progress.addListener(() {
+      _progress.value = 0.5 + 0.5 * progress.value;
+    });
+    await _deleteFiles(keys, refresh: false, progress: progress);
+    progress.dispose();
     if (refresh) {
       setState(() {
         _loading.value = false;
@@ -587,9 +630,24 @@ class _HomeState extends State<Home> {
       _loading.value = true;
     });
     for (int i = 0; i < dirs.length; i++) {
-      await _copyDirectory(dirs[i], newDirs[i], refresh: false);
+      final ValueNotifier<double> progress = ValueNotifier<double>(0.0);
+      progress.addListener(() {
+        _progress.value = (i + 1) * 0.5 * progress.value / dirs.length;
+      });
+      await _copyDirectory(
+        dirs[i],
+        newDirs[i],
+        refresh: false,
+        progress: progress,
+      );
+      progress.dispose();
     }
-    await _deleteDirectories(dirs, refresh: false);
+    final ValueNotifier<double> progress = ValueNotifier<double>(0.0);
+    progress.addListener(() {
+      _progress.value = 0.5 + 0.5 * progress.value;
+    });
+    await _deleteDirectories(dirs, refresh: false, progress: progress);
+    progress.dispose();
     if (refresh) {
       setState(() {
         _loading.value = false;
@@ -623,15 +681,19 @@ class _HomeState extends State<Home> {
             : BackupMode.sync,
       );
     }
-    for (final file
-        in Main.remoteFiles
-            .where(
-              (file) =>
-                  p.isWithin(dir.key, file.key) &&
-                  file.key != dir.key &&
-                  !file.key.endsWith('/'),
-            )
-            .toList()) {
+    final files = Main.remoteFiles
+        .where(
+          (file) =>
+              p.isWithin(dir.key, file.key) &&
+              file.key != dir.key &&
+              !file.key.endsWith('/'),
+        )
+        .toList();
+    int progressCount = 0;
+    final totalFiles = files.length;
+    for (final file in files) {
+      progressCount += 1;
+      _progress.value = progressCount / totalFiles;
       final relativePath = p.relative(file.key, from: dir.key);
       final localFilePath = p.join(
         localPath ?? Main.pathFromKey(dir.key) ?? dir.key,
@@ -674,11 +736,17 @@ class _HomeState extends State<Home> {
           try {
             final selection = _selection.toList();
             if (_selectionAction == SelectionAction.copy) {
-              for (final item in selection.where(
+              final items = selection.where(
                 (item) =>
                     p.normalize(p.dirname(item.key)) !=
                     p.normalize(_driveDir.key),
-              )) {
+              );
+              int progressCount = 0;
+              final totalItems = items.length;
+
+              for (final item in items) {
+                progressCount += 1;
+                _progress.value = progressCount / totalItems;
                 final newKey = p.join(_driveDir.key, p.basename(item.key));
                 if (item.key == newKey) {
                   continue;
@@ -747,9 +815,14 @@ class _HomeState extends State<Home> {
       Directory(savePath).deleteSync(recursive: true);
     }
     if (Directory(Main.pathFromKey(dir.key) ?? dir.key).existsSync()) {
-      for (final entity in Directory(
+      final files = Directory(
         Main.pathFromKey(dir.key) ?? dir.key,
-      ).listSync(recursive: true, followLinks: false)) {
+      ).listSync(recursive: true, followLinks: false);
+      int progressCount = 0;
+      final totalFiles = files.length;
+      for (final entity in files) {
+        progressCount += 1;
+        _progress.value = progressCount / totalFiles;
         if (entity is File) {
           final relativePath = p.relative(
             entity.path,
@@ -769,10 +842,12 @@ class _HomeState extends State<Home> {
   }
 
   void _uploadDirectory(String key, Directory directory) {
-    for (final entity in directory.listSync(
-      recursive: true,
-      followLinks: false,
-    )) {
+    final files = directory.listSync(recursive: true, followLinks: false);
+    int progressCount = 0;
+    final totalFiles = files.length;
+    for (final entity in files) {
+      progressCount += 1;
+      _progress.value = progressCount / totalFiles;
       if (entity is File) {
         final relativePath = p.relative(entity.path, from: directory.path);
         final remoteKey = p.join(key, relativePath).replaceAll('\\', '/');
@@ -791,13 +866,19 @@ class _HomeState extends State<Home> {
           ...Main.remoteFiles.where(
             (file) =>
                 p.isWithin(p.normalize(_driveDir.key), p.normalize(file.key)) &&
-                !Job.jobs.any((job) => job.remoteKey == file.key),
+                !Job.jobs.any(
+                  (job) =>
+                      job.remoteKey == file.key &&
+                      job.status != JobStatus.completed,
+                ),
           ),
           ...Job.jobs.where(
-            (job) => p.isWithin(
-              p.normalize(_driveDir.key),
-              p.normalize(job.remoteKey),
-            ),
+            (job) =>
+                p.isWithin(
+                  p.normalize(_driveDir.key),
+                  p.normalize(job.remoteKey),
+                ) &&
+                job.status != JobStatus.completed,
           ),
         ].where((item) {
           if (item is RemoteFile) {
@@ -828,66 +909,90 @@ class _HomeState extends State<Home> {
         builder: (context) {
           return ValueListenableBuilder<bool>(
             valueListenable: _loading,
-            builder: (context, value, _) => value
-                ? const Center(child: CircularProgressIndicator())
-                : file == null
-                ? buildBulkContextMenu(
-                    context,
-                    _selection.toList(),
-                    _getLink,
-                    _downloadFile,
-                    _downloadDirectory,
-                    _saveFile,
-                    _saveDirectory,
-                    (keys, newKeys) async =>
-                        await _moveFiles(keys, newKeys, refresh: true),
-                    (dirs, newDirs) async =>
-                        await _moveDirectories(dirs, newDirs, refresh: true),
-                    _cut,
-                    _copy,
-                    _deleteLocal,
-                    _deleteS3,
-                    (keys) async => await _deleteFiles(keys, refresh: true),
-                    (dirs) async =>
-                        await _deleteDirectories(dirs, refresh: true),
-                    () {
-                      _selection.clear();
-                      setState(() {});
-                    },
-                  )
-                : file.key.endsWith('/')
-                ? buildDirectoryContextMenu(
-                    context,
-                    file,
-                    _downloadDirectory,
-                    _saveDirectory,
-                    _cut,
-                    _copy,
-                    (List<String> dirs, List<String> newDirs) async =>
-                        await _moveDirectories(dirs, newDirs, refresh: true),
-                    _deleteLocal,
-                    _deleteS3,
-                    (List<String> dirs) async =>
-                        await _deleteDirectories(dirs, refresh: true),
-                    _count,
-                    _dirSize,
-                    _dirModified,
-                    _setBackupMode,
-                  )
-                : buildFileContextMenu(
-                    context,
-                    file,
-                    _getLink,
-                    _downloadFile,
-                    _saveFile,
-                    _cut,
-                    _copy,
-                    (List<String> keys, List<String> newKeys) async =>
-                        await _moveFiles(keys, newKeys, refresh: true),
-                    _deleteLocal,
-                    (List<String> keys) async =>
-                        await _deleteFiles(keys, refresh: true),
-                  ),
+            builder: (context, value, _) => SingleChildScrollView(
+              child: file == null
+                  ? buildBulkContextMenu(
+                      context,
+                      _selection.toList(),
+                      _getLink,
+                      _loading.value ? null : _downloadFile,
+                      _loading.value ? null : _downloadDirectory,
+                      _loading.value ? null : _saveFile,
+                      _loading.value ? null : _saveDirectory,
+                      _loading.value
+                          ? null
+                          : (keys, newKeys) async =>
+                                await _moveFiles(keys, newKeys, refresh: true),
+                      _loading.value
+                          ? null
+                          : (dirs, newDirs) async => await _moveDirectories(
+                              dirs,
+                              newDirs,
+                              refresh: true,
+                            ),
+                      _loading.value ? null : _cut,
+                      _loading.value ? null : _copy,
+                      _loading.value ? null : _deleteLocal,
+                      _loading.value ? null : _deleteS3,
+                      _loading.value
+                          ? null
+                          : (keys) async =>
+                                await _deleteFiles(keys, refresh: true),
+                      _loading.value
+                          ? null
+                          : (dirs) async =>
+                                await _deleteDirectories(dirs, refresh: true),
+                      () {
+                        _selection.clear();
+                        setState(() {});
+                      },
+                    )
+                  : file.key.endsWith('/')
+                  ? buildDirectoryContextMenu(
+                      context,
+                      file,
+                      _loading.value ? null : _downloadDirectory,
+                      _loading.value ? null : _saveDirectory,
+                      _loading.value ? null : _cut,
+                      _loading.value ? null : _copy,
+                      _loading.value
+                          ? null
+                          : (List<String> dirs, List<String> newDirs) async =>
+                                await _moveDirectories(
+                                  dirs,
+                                  newDirs,
+                                  refresh: true,
+                                ),
+                      _loading.value ? null : _deleteLocal,
+                      _loading.value ? null : _deleteS3,
+                      _loading.value
+                          ? null
+                          : (List<String> dirs) async =>
+                                await _deleteDirectories(dirs, refresh: true),
+                      _count,
+                      _dirSize,
+                      _dirModified,
+                      _setBackupMode,
+                    )
+                  : buildFileContextMenu(
+                      context,
+                      file,
+                      _getLink,
+                      _loading.value ? null : _downloadFile,
+                      _loading.value ? null : _saveFile,
+                      _loading.value ? null : _cut,
+                      _loading.value ? null : _copy,
+                      _loading.value
+                          ? null
+                          : (List<String> keys, List<String> newKeys) async =>
+                                await _moveFiles(keys, newKeys, refresh: true),
+                      _loading.value ? null : _deleteLocal,
+                      _loading.value
+                          ? null
+                          : (List<String> keys) async =>
+                                await _deleteFiles(keys, refresh: true),
+                    ),
+            ),
           );
         },
       );
@@ -1141,7 +1246,9 @@ class _HomeState extends State<Home> {
               ),
               actions: _navIndex == 1
                   ? [
-                      if (Job.completedJobs.isNotEmpty)
+                      if (Job.jobs
+                          .where((job) => job.status == JobStatus.completed)
+                          .isNotEmpty)
                         IconButton(
                           onPressed: () {
                             Job.clearCompleted();
@@ -1152,8 +1259,10 @@ class _HomeState extends State<Home> {
                     ]
                   : _navIndex == 2
                   ? [
-                      if (Job.jobs.isNotEmpty)
-                        Job.jobs.any((job) => job.running)
+                      if (Job.jobs
+                          .where((job) => job.status != JobStatus.completed)
+                          .isNotEmpty)
+                        Job.jobs.any((job) => job.status == JobStatus.running)
                             ? IconButton(
                                 onPressed: () {
                                   Job.stopall();
@@ -1672,7 +1781,15 @@ class _HomeState extends State<Home> {
                                 ),
                               ),
                             if (Main.accessible && _loading.value)
-                              LinearProgressIndicator(),
+                              ValueListenableBuilder<double>(
+                                valueListenable: _progress,
+                                builder: (context, value, _) =>
+                                    LinearProgressIndicator(
+                                      value: value <= 0.0 || value >= 1.0
+                                          ? null
+                                          : value,
+                                    ),
+                              ),
                           ],
                         ),
                       ),
@@ -1746,12 +1863,17 @@ class _HomeState extends State<Home> {
                           (file) =>
                               p.normalize(p.dirname(file.key)) ==
                                   p.normalize(_driveDir.key) &&
-                              !Job.jobs.any((job) => job.remoteKey == file.key),
+                              !Job.jobs.any(
+                                (job) =>
+                                    job.remoteKey == file.key &&
+                                    job.status != JobStatus.completed,
+                              ),
                         ),
                         ...Job.jobs.where(
                           (job) =>
                               p.normalize(p.dirname(job.remoteKey)) ==
-                              p.normalize(_driveDir.key),
+                                  p.normalize(_driveDir.key) &&
+                              job.status != JobStatus.completed,
                         ),
                       ];
                       _updateAllSelectableItems(
@@ -1780,14 +1902,18 @@ class _HomeState extends State<Home> {
                   )
                 : _navIndex == 1
                 ? CompletedJobs(
-                    completedJobs: Job.completedJobs,
+                    completedJobs: Job.jobs
+                        .where((job) => job.status == JobStatus.completed)
+                        .toList(),
                     onUpdate: () {
                       setState(() {});
                     },
                   )
                 : _navIndex == 2
                 ? ActiveJobs(
-                    jobs: Job.jobs,
+                    jobs: Job.jobs
+                        .where((job) => job.status != JobStatus.completed)
+                        .toList(),
                     onUpdate: () {
                       setState(() {});
                     },
@@ -1909,26 +2035,54 @@ class _HomeState extends State<Home> {
                 child: BottomNavigationBar(
                   items: [
                     BottomNavigationBarItem(
-                      icon: Icon(Icons.folder),
+                      icon: Icon(Icons.folder_outlined),
+                      activeIcon: Icon(Icons.folder),
                       label: 'Directories',
                     ),
                     BottomNavigationBarItem(
                       icon: Badge.count(
-                        isLabelVisible: Job.completedJobs.isNotEmpty,
-                        count: Job.completedJobs.length,
-                        child: Icon(Icons.done_all),
+                        isLabelVisible: Job.jobs
+                            .where((job) => job.status == JobStatus.completed)
+                            .isNotEmpty,
+                        count: Job.jobs
+                            .where((job) => job.status == JobStatus.completed)
+                            .length,
+                        child: Icon(Icons.check_circle_outline),
+                      ),
+                      activeIcon: Badge.count(
+                        isLabelVisible: Job.jobs
+                            .where((job) => job.status == JobStatus.completed)
+                            .isNotEmpty,
+                        count: Job.jobs
+                            .where((job) => job.status == JobStatus.completed)
+                            .length,
+                        child: Icon(Icons.check_circle),
                       ),
                       label: 'Completed',
                     ),
                     BottomNavigationBarItem(
                       icon: Badge.count(
-                        isLabelVisible: Job.jobs.isNotEmpty,
-                        count: Job.jobs.length,
-                        child: Icon(Icons.swap_vert),
+                        isLabelVisible: Job.jobs
+                            .where((job) => job.status != JobStatus.completed)
+                            .isNotEmpty,
+                        count: Job.jobs
+                            .where((job) => job.status != JobStatus.completed)
+                            .length,
+                        child: Icon(Icons.swap_vert_circle_outlined),
+                      ),
+                      activeIcon: Badge.count(
+                        isLabelVisible: Job.jobs
+                            .where((job) => job.status != JobStatus.completed)
+                            .isNotEmpty,
+                        count: Job.jobs
+                            .where((job) => job.status != JobStatus.completed)
+                            .length,
+                        child: Icon(Icons.swap_vert_circle),
                       ),
                       label: 'Active',
                     ),
                   ],
+                  enableFeedback: true,
                   currentIndex: _navIndex,
                   onTap: (index) async {
                     setState(() {

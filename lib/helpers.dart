@@ -453,7 +453,7 @@ abstract class DeletionRegistrar {
     );
 
     await job.start();
-    Job.completedJobs.remove(job);
+    Job.jobs.remove(job);
 
     if (_file.existsSync()) {
       config = Config.fromStrings(_file.readAsLinesSync());
@@ -476,6 +476,6 @@ abstract class DeletionRegistrar {
       md5: await HashUtil(_file).md5Hash(),
     );
     await job.start();
-    Job.completedJobs.remove(job);
+    Job.jobs.remove(job);
   }
 }

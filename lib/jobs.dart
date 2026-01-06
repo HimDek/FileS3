@@ -76,16 +76,16 @@ class JobViewState extends State<JobView> {
           visualDensity: MediaQuery.of(context).size.width < 600
               ? VisualDensity.compact
               : VisualDensity.standard,
-          leading: widget.job.completed
+          leading: widget.job.status == JobStatus.completed
               ? widget.job.runtimeType == UploadJob
                     ? Icon(Icons.done_all)
                     : Icon(Icons.download_done)
-              : widget.job.running
+              : widget.job.stoppable()
               ? Icon(Icons.pause_circle_filled)
               : Icon(
                   widget.job.runtimeType == UploadJob
-                      ? Icons.upload
-                      : Icons.download,
+                      ? Icons.arrow_circle_up
+                      : Icons.arrow_circle_down,
                 ),
           onTap: widget.job.startable()
               ? () {
@@ -126,11 +126,19 @@ class JobViewState extends State<JobView> {
                     widget.job.dismiss();
                     if (widget.onUpdate != null) widget.onUpdate!();
                   },
-                  icon: Icon(Icons.close),
+                  icon: Icon(Icons.clear),
+                )
+              : widget.job.removable()
+              ? IconButton(
+                  onPressed: () {
+                    widget.job.remove();
+                    if (widget.onUpdate != null) widget.onUpdate!();
+                  },
+                  icon: Icon(Icons.cancel),
                 )
               : null,
         ),
-        if (!widget.job.completed)
+        if (widget.job.status != JobStatus.completed)
           LinearPercentIndicator(
             percent: widget.job.bytesCompleted / widget.job.bytes,
             lineHeight: 2,

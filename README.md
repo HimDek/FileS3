@@ -204,6 +204,6 @@ There are a few S3-compatible storage apps on mobile, but most are proprietary, 
   - Limited features
 
 ### [Buffix S3 Client](https://play.google.com/store/apps/details?id=com.orbigle.buffisapp&pcampaignid=web_share)
--Cons:
+- Cons:
   - Proprietary
   - Did not work in testing. Probable bugs and limited features.
