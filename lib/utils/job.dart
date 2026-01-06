@@ -461,12 +461,12 @@ abstract class Job {
   }
 
   bool stoppable() {
-    return task != null && status == JobStatus.running;
+    return status == JobStatus.running || status == JobStatus.initialized;
   }
 
   void stop() {
     if (stoppable()) {
-      task!.cancel();
+      task?.cancel.call();
       status = JobStatus.stopped;
       onStatus?.call(this, null);
       onProgressUpdate?.call();
