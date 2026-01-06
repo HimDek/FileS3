@@ -80,13 +80,15 @@ class JobViewState extends State<JobView> {
               ? widget.job.runtimeType == UploadJob
                     ? Icon(Icons.done_all)
                     : Icon(Icons.download_done)
-              : widget.job.stoppable()
-              ? Icon(Icons.pause_circle_filled)
-              : Icon(
+              : widget.job.startable()
+              ? Icon(
                   widget.job.runtimeType == UploadJob
                       ? Icons.arrow_circle_up
                       : Icons.arrow_circle_down,
-                ),
+                )
+              : widget.job.stoppable()
+              ? Icon(Icons.pause_circle_filled)
+              : Icon(Icons.info),
           onTap: widget.job.startable()
               ? () {
                   widget.job.start();
