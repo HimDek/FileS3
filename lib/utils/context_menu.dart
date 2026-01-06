@@ -337,7 +337,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   void Function()? open() {
     return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? () {
-            OpenFile.open(Main.pathFromKey(file.key));
+            launchUrl(Uri.file(Main.pathFromKey(file.key) ?? file.key));
           }
         : null;
   }
@@ -947,7 +947,7 @@ class FilesContextOption {
     BuildContext context,
     FilesContextActionHandler handler,
   ) => FilesContextOption(
-    title: 'Delete Uploaded Copies',
+    title: 'Clean Uploaded Copies',
     subtitle: 'Delete local copies of uploaded files only',
     icon: Icons.delete_forever_outlined,
     action: handler.deleteLocalFile == null
@@ -1137,7 +1137,13 @@ class FilesContextOption {
       copyAllLinks(context, handler),
       cut(cutKey),
       copy(copyKey),
-      deleteUploaded(context, handler),
+      if (handler.removableFiles().isNotEmpty) deleteUploaded(context, handler),
+      if (handler.files.every(
+        (file) =>
+            p.split(file.key).length == 1 ||
+            Main.backupMode(file.key) == BackupMode.upload,
+      ))
+        deleteS3All(context, handler),
       deleteLocalAll(context, handler),
       deleteAll(context, handler, clearSelection),
     ];
@@ -1258,7 +1264,7 @@ class DirectoryContextOption {
     BuildContext context,
     DirectoryContextActionHandler handler,
   ) => DirectoryContextOption(
-    title: 'Delete Uploaded Files',
+    title: 'Clean Uploaded Files',
     subtitle: 'Delete local copies of uploaded files only',
     icon: Icons.delete_sweep,
     action:
@@ -1480,10 +1486,10 @@ class DirectoryContextOption {
       cut(handler, cutKey),
       copy(handler, copyKey),
       rename(context, handler),
+      if (handler.removableFiles().isNotEmpty) deleteUploaded(context, handler),
       if (p.split(handler.file.key).length == 1 ||
           Main.backupMode(handler.file.key) == BackupMode.upload)
         deleteS3(context, handler),
-      if (handler.removableFiles().isNotEmpty) deleteUploaded(context, handler),
       deleteLocal(context, handler),
       delete(context, handler),
     ];
@@ -1565,7 +1571,7 @@ class DirectoriesContextOption {
     DirectoriesContextActionHandler handler,
     BuildContext context,
   ) => DirectoriesContextOption(
-    title: 'Delete Uploaded Files',
+    title: 'Clean Uploaded Files',
     subtitle: 'Delete local copies of uploaded files only',
     icon: Icons.delete_sweep,
     action:
@@ -1910,7 +1916,7 @@ class BulkContextOption {
     FilesContextActionHandler filesHandler,
     BuildContext context,
   ) => BulkContextOption(
-    title: 'Delete Uploaded Copies',
+    title: 'Clean Uploaded Copies',
     subtitle: 'Delete local copies of uploaded items only',
     icon: Icons.delete_sweep,
     action: (BuildContext context) async {
