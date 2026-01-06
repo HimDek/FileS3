@@ -1163,7 +1163,7 @@ class _HomeState extends State<Home> {
                               )
                             : IconButton(
                                 onPressed: () {
-                                  Job.startall();
+                                  Job.continueAll();
                                   setState(() {});
                                 },
                                 icon: Icon(Icons.start),

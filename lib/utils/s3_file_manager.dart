@@ -179,13 +179,13 @@ class S3FileManager {
   }
 
   String getUrl(String key, {int? validForSeconds}) {
-    final uri = getUri(key);
-
     final now = DateTime.now().toUtc();
     final amzDate = formatAmzDate(now);
     final shortDate = formatDate(now);
 
     final credentialScope = '$shortDate/$_region/s3/aws4_request';
+    final encodedPath =
+        '/${p.join(_prefix, key).split('/').map(awsEncode).join('/')}';
 
     final queryParams = <String, String>{
       'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
@@ -210,9 +210,9 @@ class S3FileManager {
     /// Canonical request
     final canonicalRequest = [
       'GET',
-      uri.path,
+      encodedPath,
       canonicalQuery,
-      'host:${uri.host}\n',
+      'host:${_host.toLowerCase()}\n',
       'host',
       'UNSIGNED-PAYLOAD',
     ].join('\n');
@@ -231,7 +231,10 @@ class S3FileManager {
       signingKey,
     ).convert(utf8.encode(stringToSign)).toString();
 
-    final presignedUri = uri.replace(
+    final presignedUri = Uri(
+      scheme: 'https',
+      host: _host,
+      path: encodedPath,
       query: '$canonicalQuery&X-Amz-Signature=$signature',
     );
 
@@ -367,6 +370,34 @@ class S3FileManager {
     }
   }
 
+  Future<({String etag, int size})> headObject(String key) async {
+    final now = DateTime.now().toUtc();
+
+    final headers = buildSignedHeaders(
+      key: key,
+      method: 'HEAD',
+      amzDate: formatAmzDate(now),
+      shortDate: formatDate(now),
+      contentHash: S3FileManager.emptySha256,
+    );
+
+    final uri = getUri(key);
+    final res = await _client.head(uri, headers: headers);
+
+    if (res.statusCode != 200) {
+      throw Exception('HEAD failed: ${res.statusCode}');
+    }
+
+    final etag = res.headers['etag']?.replaceAll('"', '');
+    final length = res.headers['content-length'];
+
+    if (etag == null || length == null) {
+      throw Exception('HEAD missing ETag or Content-Length');
+    }
+
+    return (etag: etag, size: int.parse(length));
+  }
+
   Uri getUri(String key) {
     return Uri(
       scheme: 'https',
@@ -382,12 +413,18 @@ class S3FileManager {
   }
 
   String awsEncode(String input) {
-    return input.codeUnits.map((unit) {
-      final c = String.fromCharCode(unit);
+    final bytes = utf8.encode(input);
+    final buffer = StringBuffer();
+
+    for (final b in bytes) {
+      final c = String.fromCharCode(b);
       if (RegExp(r'^[A-Za-z0-9\-_.~]$').hasMatch(c)) {
-        return c;
+        buffer.write(c);
+      } else {
+        buffer.write('%${b.toRadixString(16).toUpperCase().padLeft(2, '0')}');
       }
-      return '%${unit.toRadixString(16).toUpperCase().padLeft(2, '0')}';
-    }).join();
+    }
+
+    return buffer.toString();
   }
 }

@@ -133,3 +133,9 @@ class UiConfig {
 
   UiConfig({required this.colorMode, required this.ultraDark});
 }
+
+class TransferConfig {
+  final int maxConcurrentTransfers;
+
+  TransferConfig({this.maxConcurrentTransfers = 5});
+}

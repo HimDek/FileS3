@@ -2,26 +2,29 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:files3/utils/job.dart';
 import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/helpers.dart';
 
 enum TransferTask { upload, download }
 
+class TransferPaused implements Exception {}
+
+class TransferAborted implements Exception {}
+
 class S3TransferTask {
   final String key;
   final File localFile;
   final Digest md5;
-  final S3FileManager fileManager;
   final TransferTask task;
-  final void Function(int bytesTransferred, int totalBytes)? onProgress;
+  final S3FileManager fileManager;
   final void Function(String status)? onStatus;
-
-  final HttpClient _httpClient = HttpClient();
+  final void Function(int bytesTransferred, int? totalBytes)? onProgress;
 
   bool _isCancelled = false;
-
-  static DateTime lastCallbackTime = DateTime.fromMicrosecondsSinceEpoch(0);
+  DateTime lastCallbackTime = DateTime.fromMicrosecondsSinceEpoch(0);
+  String? _cachedSha256;
 
   S3TransferTask({
     required this.key,
@@ -35,44 +38,55 @@ class S3TransferTask {
 
   /// Starts upload or download
   Future<dynamic> start() async {
-    try {
-      onStatus?.call(
-        task == TransferTask.upload
-            ? 'Starting upload...'
-            : 'Starting download...',
-      );
+    _isCancelled = false;
+    final HttpClient httpClient = HttpClient();
 
-      if (task == TransferTask.upload) {
-        return await _upload();
-      } else {
-        return await _download();
-      }
+    try {
+      httpClient.connectionTimeout = const Duration(seconds: 30);
+      httpClient.badCertificateCallback = null;
+
+      return task == TransferTask.upload
+          ? await retry(() => _upload(httpClient))
+          : await retry(() => _download(httpClient));
     } catch (e) {
-      if (_isCancelled) {
-        onStatus?.call('Cancelled');
+      if (e is TransferPaused) {
+      } else if (e is TransferAborted) {
+        onStatus?.call('Upload cancelled');
       } else {
-        onStatus?.call('Error: $e');
+        onStatus?.call(
+          task == TransferTask.upload
+              ? 'Upload failed: $e'
+              : 'Download failed: $e',
+        );
       }
-      rethrow;
     } finally {
-      _httpClient.close(force: true);
+      httpClient.close();
     }
   }
 
   /// Cancel transfer
   void cancel() {
+    if (_isCancelled) return;
     _isCancelled = true;
+
+    if (task == TransferTask.upload) {
+      onStatus?.call('Upload cancelled');
+    }
   }
 
   // ---------------------------------------------------------------------------
   // UPLOAD
   // ---------------------------------------------------------------------------
 
-  Future<dynamic> _upload() async {
+  Future<dynamic> _upload(HttpClient httpClient) async {
     final totalBytes = await localFile.length();
     int uploaded = 0;
 
-    final contentHash = await _sha256OfFile(localFile);
+    if (totalBytes > 5 * 1024 * 1024 * 1024) {
+      throw Exception('Multipart upload required for files > 5GB');
+    }
+
+    final contentHash = _cachedSha256 ??= await _sha256OfFile(localFile);
     final contentMD5 = base64.encode(md5.bytes);
     final now = DateTime.now().toUtc();
 
@@ -87,16 +101,20 @@ class S3TransferTask {
     );
 
     final uri = fileManager.getUri(key);
-    final req = await _httpClient.openUrl('PUT', uri);
+    final req = await httpClient.openUrl('PUT', uri);
 
     headers.forEach(req.headers.set);
     req.contentLength = totalBytes;
     req.bufferOutput = false; // important for real progress
 
+    if (_isCancelled) {
+      throw TransferAborted();
+    }
+
     await req.addStream(
       localFile.openRead().map((chunk) {
         if (_isCancelled) {
-          throw Exception('Upload cancelled');
+          throw TransferAborted();
         }
 
         uploaded += chunk.length;
@@ -119,9 +137,13 @@ class S3TransferTask {
       }),
     );
 
+    if (_isCancelled) {
+      throw TransferAborted();
+    }
+
     final res = await req.close();
 
-    if (res.statusCode == 200) {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
       onStatus?.call('Upload complete');
 
       final responseHeaders = <String, String>{};
@@ -131,6 +153,9 @@ class S3TransferTask {
 
       return responseHeaders;
     } else {
+      if (_isCancelled) {
+        throw TransferAborted();
+      }
       final body = await utf8.decodeStream(res);
       throw Exception('Upload failed: ${res.statusCode} - $body');
     }
@@ -140,8 +165,52 @@ class S3TransferTask {
   // DOWNLOAD
   // ---------------------------------------------------------------------------
 
-  Future<dynamic> _download() async {
+  Future<dynamic> _download(HttpClient httpClient) async {
     final now = DateTime.now().toUtc();
+
+    final head = await fileManager.headObject(key);
+    final remoteEtag = head.etag;
+    final total = head.size;
+
+    final tempFile = File(
+      '${Main.cacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tmp',
+    );
+    final tagFile = File(
+      '${Main.cacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tag',
+    );
+    String localEtag = remoteEtag;
+
+    int offset = 0;
+    if (tempFile.existsSync() && tagFile.existsSync()) {
+      offset = tempFile.lengthSync();
+      if (offset >= total) {
+        offset = 0;
+        tempFile.deleteSync();
+        tagFile.deleteSync();
+        tempFile.createSync(recursive: true);
+        tagFile.createSync(recursive: true);
+        tagFile.writeAsStringSync(remoteEtag, flush: true);
+      } else {
+        localEtag = tagFile.readAsStringSync();
+      }
+    } else {
+      if (tempFile.existsSync()) tempFile.deleteSync();
+      tempFile.createSync(recursive: true);
+      if (tagFile.existsSync()) tagFile.deleteSync();
+      tagFile.createSync(recursive: true);
+      tagFile.writeAsStringSync(remoteEtag, flush: true);
+    }
+
+    if (_isCancelled) {
+      throw TransferPaused();
+    }
+
+    if (offset > 0 && offset < total && localEtag == remoteEtag) {
+      onStatus?.call('Resuming download...');
+    } else {
+      offset = 0;
+      if (tempFile.existsSync()) tempFile.deleteSync();
+    }
 
     final headers = fileManager.buildSignedHeaders(
       key: key,
@@ -152,59 +221,87 @@ class S3TransferTask {
     );
 
     final uri = fileManager.getUri(key);
-    final req = await _httpClient.openUrl('GET', uri);
+    final req = await httpClient.openUrl('GET', uri);
+
+    if (offset > 0) {
+      req.headers.set('Range', 'bytes=$offset-');
+    }
 
     headers.forEach(req.headers.set);
+    req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
+
+    if (_isCancelled) {
+      throw TransferPaused();
+    }
 
     final res = await req.close();
 
-    if (res.statusCode != 200) {
+    if (_isCancelled) {
+      throw TransferPaused();
+    }
+
+    if (offset > 0 && res.statusCode != 206) {
+      if (tempFile.existsSync()) tempFile.deleteSync();
+      tagFile.writeAsStringSync(remoteEtag, flush: true);
+      return await _download(httpClient);
+    } else {
+      if (offset > 0 && offset < total && localEtag == remoteEtag) {
+        onStatus?.call('Resuming download...');
+        onProgress?.call(offset, total);
+      }
+    }
+
+    if (_isCancelled) {
+      throw TransferPaused();
+    }
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
       final body = await utf8.decodeStream(res);
       throw Exception('Download failed: ${res.statusCode} - $body');
     }
 
-    final tempFile = await File(
-      '${Directory.systemTemp.path}/app_${DateTime.now().microsecondsSinceEpoch}',
-    ).create();
-
-    final sink = tempFile.openWrite();
-    final total = res.contentLength;
-    int received = 0;
+    final sink = tempFile.openWrite(
+      mode: offset > 0 ? FileMode.append : FileMode.write,
+    );
+    int received = offset;
 
     try {
       await for (final chunk in res) {
         if (_isCancelled) {
-          throw Exception('Download cancelled');
+          throw TransferPaused();
         }
 
         sink.add(chunk);
         received += chunk.length;
 
         if (DateTime.now().difference(lastCallbackTime).inMilliseconds >= 100 ||
-            received >= total) {
+            received >= (total)) {
           lastCallbackTime = DateTime.now();
           onProgress?.call(received, total);
-          if (received >= total) {
+          if (received >= (total)) {
             onStatus?.call('Finalizing download...');
           } else {
             onStatus?.call(
-              'Downloading... ${bytesToReadable(received)} / ${bytesToReadable(total)}',
+              'Downloaded ${bytesToReadable(received)} of ${bytesToReadable(total)}',
             );
           }
         }
       }
     } finally {
+      await sink.flush();
       await sink.close();
     }
 
     if (_isCancelled) {
-      if (tempFile.existsSync()) {
-        tempFile.deleteSync();
-      }
-      return;
+      throw TransferPaused();
     }
 
     final fileMd5 = await HashUtil(tempFile).md5Hash();
+
+    if (_isCancelled) {
+      throw TransferPaused();
+    }
+
     if (fileMd5 != md5) {
       tempFile.deleteSync();
       throw Exception(
@@ -218,11 +315,13 @@ class S3TransferTask {
 
     try {
       tempFile.renameSync(localFile.path);
+      tagFile.deleteSync();
       onStatus?.call('Download complete');
     } on FileSystemException catch (e) {
       if (e.osError?.errorCode == 18) {
         await tempFile.copy(localFile.path);
         tempFile.deleteSync();
+        tagFile.deleteSync();
         onStatus?.call('Download complete');
       } else {
         throw Exception('Storage write failed: $e');
@@ -233,6 +332,26 @@ class S3TransferTask {
   // ---------------------------------------------------------------------------
   // UTILS
   // ---------------------------------------------------------------------------
+
+  Future<T> retry<T>(Future<T> Function() fn, {int attempts = 3}) async {
+    for (int i = 0; i < attempts; i++) {
+      try {
+        return await fn();
+      } catch (e) {
+        if (e is TransferPaused) rethrow;
+
+        if (task == TransferTask.download) {
+          final base = sha1.convert(utf8.encode(key)).toString();
+          File('${Main.cacheDir}/app_$base.tmp').deleteSync();
+          File('${Main.cacheDir}/app_$base.tag').deleteSync();
+        }
+
+        if (i == attempts - 1) rethrow;
+        await Future.delayed(Duration(seconds: 1 << i));
+      }
+    }
+    throw StateError('unreachable');
+  }
 
   Future<String> _sha256OfFile(File file) async {
     final digest = await sha256.bind(file.openRead()).first;

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
 import 'package:crypto/crypto.dart';
@@ -10,6 +11,7 @@ import 'package:files3/utils/sync_analyzer.dart';
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
+import 'package:path_provider/path_provider.dart';
 
 abstract class Main {
   static late S3FileManager? s3Manager;
@@ -20,6 +22,7 @@ abstract class Main {
   static Function(bool loading)? setLoadingState;
   static Function()? setHomeState;
   static bool accessible = true;
+  static String cacheDir = '';
 
   static String? pathFromKey(String key) {
     final localDir = IniManager.config!
@@ -299,6 +302,10 @@ abstract class Main {
   }
 
   static Future<void> init({bool background = false}) async {
+    if (cacheDir.isEmpty) {
+      final directory = await getApplicationCacheDirectory();
+      cacheDir = p.join(directory.path, 'Downloads');
+    }
     if (IniManager.config == null) {
       await IniManager.init();
     }
@@ -306,6 +313,7 @@ abstract class Main {
       await DeletionRegistrar.init();
     }
     await setConfig();
+    Job.maxrun = ConfigManager.loadTransferConfig().maxConcurrentTransfers;
     Job.onProgressUpdate = () {
       setHomeState?.call();
     };
@@ -326,6 +334,7 @@ abstract class Job {
   int bytesCompleted = 0;
   bool completed = false;
   bool running = false;
+  bool stopped = false;
   bool failed = false;
   String statusMsg = '';
 
@@ -377,6 +386,8 @@ abstract class Job {
     try {
       if (runtimeType == UploadJob) {
         running = true;
+        failed = false;
+        stopped = false;
         task = S3TransferTask(
           key: remoteKey,
           localFile: localFile,
@@ -393,24 +404,32 @@ abstract class Job {
           },
         );
         final result = await task!.start();
-        jobs.remove(this);
-        completedJobs.add(this);
-        failed = false;
         running = false;
-        completed = true;
-        bytesCompleted = bytes;
-        final resultFile = RemoteFile(
-          key: remoteKey,
-          size: bytes,
-          etag: result['etag'] != null && result['etag']!.isNotEmpty
-              ? result['etag']!.substring(1, result['etag']!.length - 1)
-              : '',
-          lastModified: localFile.lastModifiedSync(),
-        );
-        onStatus?.call(this, resultFile);
+        if (bytesCompleted >= bytes) {
+          jobs.remove(this);
+          completedJobs.add(this);
+          failed = false;
+          completed = true;
+          final resultFile = RemoteFile(
+            key: remoteKey,
+            size: bytes,
+            etag: result['etag'] != null && result['etag']!.isNotEmpty
+                ? result['etag']!.substring(1, result['etag']!.length - 1)
+                : '',
+            lastModified: localFile.lastModifiedSync(),
+          );
+          onStatus?.call(this, resultFile);
+        } else {
+          failed = true;
+          completed = false;
+          bytesCompleted = 0;
+          onStatus?.call(this, null);
+        }
       }
       if (runtimeType == DownloadJob) {
         running = true;
+        failed = false;
+        stopped = false;
         // final ifModifiedSince = await localFile.exists()
         //     ? localFile.lastModifiedSync()
         //     : null;
@@ -434,16 +453,19 @@ abstract class Job {
           },
         );
         await task!.start();
-        jobs.remove(this);
-        completedJobs.add(this);
-        failed = false;
         running = false;
-        completed = true;
-        bytesCompleted = bytes;
-        onStatus?.call(this, null);
+        if (bytesCompleted >= bytes) {
+          jobs.remove(this);
+          completedJobs.add(this);
+          failed = false;
+          completed = true;
+          bytesCompleted = bytes;
+          onStatus?.call(this, null);
+        }
       }
     } catch (e) {
       failed = true;
+      stopped = false;
       running = false;
       completed = false;
       bytesCompleted = 0;
@@ -460,11 +482,9 @@ abstract class Job {
 
   void stop() {
     if (stoppable()) task!.cancel();
-    failed = true;
+    stopped = true;
     running = false;
     completed = false;
-    bytesCompleted = 0;
-    statusMsg = "Cancelled";
     onStatus?.call(this, null);
     onProgressUpdate?.call();
   }
@@ -485,6 +505,14 @@ abstract class Job {
     completedJobs.remove(this);
   }
 
+  static void continueAll() {
+    for (var job in jobs.where((job) => job.stopped || job.failed)) {
+      job.stopped = false;
+      job.failed = false;
+    }
+    startall();
+  }
+
   static void startall() {
     if (scheduled) {
       if (kDebugMode) {
@@ -492,29 +520,36 @@ abstract class Job {
       }
       return;
     }
+
     scheduled = true;
 
-    if (kDebugMode) {
-      debugPrint(
-        "Starting jobs: Running ${Job.jobs.where((job) => job.running).length}, Max Run $maxrun, Pending ${Job.jobs.where((job) => !job.completed && !job.running).length}",
-      );
-    }
+    try {
+      if (kDebugMode) {
+        debugPrint(
+          "Starting jobs: Running ${Job.jobs.where((job) => job.running).length}, Max Run $maxrun, Pending ${Job.jobs.where((job) => !job.completed && !job.running).length}",
+        );
+      }
 
-    while (Job.jobs.where((job) => job.running).length < maxrun &&
-        Job.jobs.any((job) => !job.completed && !job.running && !job.failed)) {
-      Job job = jobs.firstWhere(
-        (job) => !job.completed && !job.running && !job.failed,
-      );
-      job.start();
-    }
+      while (Job.jobs.where((job) => job.running).length < maxrun &&
+          Job.jobs.any(
+            (job) =>
+                !job.completed && !job.running && !job.failed && !job.stopped,
+          )) {
+        Job job = jobs.firstWhere(
+          (job) =>
+              !job.completed && !job.running && !job.failed && !job.stopped,
+        );
+        job.start();
+      }
 
-    if (kDebugMode) {
-      debugPrint(
-        "Job scheduling completed: Running ${Job.jobs.where((job) => job.running).length}, Max Run $maxrun, Pending ${Job.jobs.where((job) => !job.completed && !job.running).length}",
-      );
+      if (kDebugMode) {
+        debugPrint(
+          "Job scheduling completed: Running ${Job.jobs.where((job) => job.running).length}, Max Run $maxrun, Pending ${Job.jobs.where((job) => !job.completed && !job.running).length}",
+        );
+      }
+    } finally {
+      scheduled = false;
     }
-
-    scheduled = false;
   }
 
   static void stopall() {
@@ -529,6 +564,28 @@ abstract class Job {
 
   static void clear() {
     jobs.clear();
+  }
+
+  static void clearCache() {
+    final directory = Directory(Main.cacheDir);
+    if (directory.existsSync()) {
+      directory.deleteSync(recursive: true);
+    }
+  }
+
+  static int cacheSize() {
+    final directory = Directory(Main.cacheDir);
+    int totalSize = 0;
+
+    if (directory.existsSync()) {
+      for (var file in directory.listSync(recursive: true)) {
+        if (file is File) {
+          totalSize += file.lengthSync();
+        }
+      }
+    }
+
+    return totalSize;
   }
 }
 
@@ -549,7 +606,47 @@ class DownloadJob extends Job {
     required super.bytes,
     required super.onStatus,
     required super.md5,
-  });
+  }) {
+    final tempFile = File(
+      '${Main.cacheDir}/app_${sha1.convert(utf8.encode(remoteKey)).toString()}.tmp',
+    );
+    final tagFile = File(
+      '${Main.cacheDir}/app_${sha1.convert(utf8.encode(remoteKey)).toString()}.tag',
+    );
+
+    String localEtag = '';
+    int offset = 0;
+    if (tempFile.existsSync() && tagFile.existsSync()) {
+      offset = tempFile.lengthSync();
+      if (offset >= bytes) {
+        offset = 0;
+        tempFile.deleteSync();
+        tagFile.deleteSync();
+        tempFile.createSync(recursive: true);
+        tagFile.createSync(recursive: true);
+        tagFile.writeAsStringSync(base64.encode(super.md5.bytes), flush: true);
+      } else {
+        localEtag = tagFile.readAsStringSync();
+      }
+    } else {
+      if (tempFile.existsSync()) tempFile.deleteSync();
+      tempFile.createSync(recursive: true);
+      if (tagFile.existsSync()) tagFile.deleteSync();
+      tagFile.createSync(recursive: true);
+      tagFile.writeAsStringSync(base64.encode(super.md5.bytes), flush: true);
+    }
+
+    if (offset > 0 &&
+        offset < bytes &&
+        localEtag == base64.encode(super.md5.bytes)) {
+      bytesCompleted = offset;
+      statusMsg =
+          "Downloaded ${bytesToReadable(bytesCompleted)} of ${bytesToReadable(bytes)}";
+    } else {
+      offset = 0;
+      if (tempFile.existsSync()) tempFile.deleteSync();
+    }
+  }
 }
 
 class Watcher {

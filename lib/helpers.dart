@@ -233,7 +233,9 @@ abstract class IniManager {
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
-      _file.writeAsStringSync('[aws]\n[s3]\n[directories]\n[modes]\n[ui]');
+      _file.writeAsStringSync(
+        '[aws]\n[s3]\n[directories]\n[modes]\n[ui]\n[download]',
+      );
     }
 
     final lines = _file.readAsLinesSync();
@@ -329,6 +331,27 @@ abstract class ConfigManager {
     }
     IniManager.config!.set("ui", "color_mode", colorModeStr);
     IniManager.config!.set("ui", "ultra_dark", config.ultraDark.toString());
+    IniManager.save();
+  }
+
+  static TransferConfig loadTransferConfig() {
+    final maxConcurrentTransfersStr =
+        IniManager.config?.get("transfer", "max_concurrent_transfers") ?? '5';
+
+    final maxConcurrentTransfers = int.tryParse(maxConcurrentTransfersStr) ?? 5;
+
+    return TransferConfig(maxConcurrentTransfers: maxConcurrentTransfers);
+  }
+
+  static Future<void> saveTransferConfig(TransferConfig config) async {
+    if (!IniManager.config!.sections().contains("transfer")) {
+      IniManager.config!.addSection("transfer");
+    }
+    IniManager.config!.set(
+      "transfer",
+      "max_concurrent_transfers",
+      config.maxConcurrentTransfers.toString(),
+    );
     IniManager.save();
   }
 

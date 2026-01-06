@@ -133,12 +133,12 @@ class JobViewState extends State<JobView> {
         if (!widget.job.completed)
           LinearPercentIndicator(
             percent: widget.job.bytesCompleted / widget.job.bytes,
-            lineHeight: 4,
+            lineHeight: 2,
             backgroundColor: Theme.of(context).colorScheme.surface,
             progressColor: Theme.of(context).colorScheme.primary,
           )
         else
-          SizedBox(height: 4),
+          SizedBox(height: 2),
       ],
     );
   }
