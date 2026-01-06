@@ -465,10 +465,12 @@ abstract class Job {
   }
 
   void stop() {
-    if (stoppable()) task!.cancel();
-    status = JobStatus.stopped;
-    onStatus?.call(this, null);
-    onProgressUpdate?.call();
+    if (stoppable()) {
+      task!.cancel();
+      status = JobStatus.stopped;
+      onStatus?.call(this, null);
+      onProgressUpdate?.call();
+    }
   }
 
   bool removable() {
