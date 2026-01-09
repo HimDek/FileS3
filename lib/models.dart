@@ -6,8 +6,15 @@ class FileProps {
   final int size;
   final RemoteFile? file;
   final Job? job;
+  final String? url;
 
-  FileProps({required this.key, required this.size, this.file, this.job});
+  FileProps({
+    required this.key,
+    required this.size,
+    this.file,
+    this.job,
+    this.url,
+  });
 }
 
 enum SelectionAction { copy, cut, none }

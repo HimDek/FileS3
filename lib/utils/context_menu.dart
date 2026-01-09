@@ -363,7 +363,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   }
 
   Future<String> Function()? rename(String newName) {
-    return moveDirectories == null
+    return moveDirectories == null || p.dirname(file.key).isEmpty
         ? null
         : () async {
             final key = file.key.endsWith('/') ? file.key : '${file.key}/';
@@ -1486,7 +1486,7 @@ class DirectoryContextOption {
       saveTo(handler, context),
       cut(handler, cutKey),
       copy(handler, copyKey),
-      rename(context, handler),
+      if (handler.rename('any name') != null) rename(context, handler),
       if (handler.removableFiles().isNotEmpty) deleteUploaded(context, handler),
       if (p.split(handler.file.key).length == 1 ||
           Main.backupMode(handler.file.key) == BackupMode.upload)

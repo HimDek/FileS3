@@ -56,9 +56,9 @@ class SettingsPageState extends State<SettingsPage> {
 }
 
 class S3ConfigPage extends StatefulWidget {
-  final Profile profile;
+  final Profile? profile;
 
-  const S3ConfigPage({super.key, required this.profile});
+  const S3ConfigPage({super.key, this.profile});
 
   @override
   S3ConfigPageState createState() => S3ConfigPageState();
@@ -69,12 +69,15 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   bool _obscureSecret = true;
   S3Config? _s3Config;
   String? _permissionPolicy;
+  Profile? _profile;
+  final FocusNode _profileFocusNode = FocusNode();
   final FocusNode _accessFocusNode = FocusNode();
   final FocusNode _secretFocusNode = FocusNode();
   final FocusNode _regionFocusNode = FocusNode();
   final FocusNode _bucketFocusNode = FocusNode();
   final FocusNode _prefixFocusNode = FocusNode();
   final FocusNode _hostFocusNode = FocusNode();
+  final TextEditingController _profileNameController = TextEditingController();
   final TextEditingController _accessKeyController = TextEditingController();
   final TextEditingController _secretKeyController = TextEditingController();
   final TextEditingController _regionController = TextEditingController();
@@ -86,14 +89,24 @@ class S3ConfigPageState extends State<S3ConfigPage> {
     setState(() {
       _loading = true;
     });
-    _s3Config = (await ConfigManager.loadS3Config())[widget.profile.name];
+    try {
+      _profile = widget.profile;
+      _profile ??= Main.profiles.firstWhere(
+        (p) => p.name == _profileNameController.text,
+      );
+    } catch (e) {
+      _profile = null;
+    }
+    _profileNameController.text = _profile?.name ?? _profileNameController.text;
+    _s3Config =
+        (await ConfigManager.loadS3Config())[_profileNameController.text];
     setState(() {
-      _accessKeyController.text = _s3Config!.accessKey;
-      _secretKeyController.text = _s3Config!.secretKey;
-      _regionController.text = _s3Config!.region;
-      _bucketController.text = _s3Config!.bucket;
-      _prefixController.text = _s3Config!.prefix;
-      _hostController.text = _s3Config!.host;
+      _accessKeyController.text = _s3Config?.accessKey ?? '';
+      _secretKeyController.text = _s3Config?.secretKey ?? '';
+      _regionController.text = _s3Config?.region ?? '';
+      _bucketController.text = _s3Config?.bucket ?? '';
+      _prefixController.text = _s3Config?.prefix ?? '';
+      _hostController.text = _s3Config?.host ?? '';
       _loading = false;
     });
   }
@@ -109,8 +122,9 @@ class S3ConfigPageState extends State<S3ConfigPage> {
           setState(() {
             _loading = true;
           });
+          if (_profileNameController.text.isEmpty) return;
           await ConfigManager.saveS3Config(
-            widget.profile.name,
+            _profileNameController.text,
             S3Config(
               accessKey: _accessKeyController.text,
               secretKey: _secretKeyController.text,
@@ -121,11 +135,13 @@ class S3ConfigPageState extends State<S3ConfigPage> {
             ),
           );
           showSnackBar(SnackBar(content: Text('Configuration saved')));
+          await Main.refreshProfiles();
           await _readConfig();
         };
 
   Future<void> _setConfig() async {
-    widget.profile.cfg = S3Config(
+    if (_profile == null) return;
+    _profile!.cfg = S3Config(
       accessKey: _accessKeyController.text,
       secretKey: _secretKeyController.text,
       region: _regionController.text,
@@ -133,7 +149,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
       prefix: _prefixController.text,
       host: _hostController.text,
     );
-    await widget.profile.listDirectories();
+    await _profile!.listDirectories();
   }
 
   @override
@@ -160,19 +176,22 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop:
+          _profile == null ||
           !_loading &&
-          _s3Config?.accessKey.isNotEmpty == true &&
-          _s3Config?.secretKey.isNotEmpty == true &&
-          _s3Config?.region.isNotEmpty == true &&
-          _s3Config?.bucket.isNotEmpty == true,
+              _s3Config?.accessKey.isNotEmpty == true &&
+              _s3Config?.secretKey.isNotEmpty == true &&
+              _s3Config?.region.isNotEmpty == true &&
+              _s3Config?.bucket.isNotEmpty == true,
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) {
+        if (didPop && !_loading && _profile != null) {
           await _setConfig();
         }
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text('AWS S3 Config'),
+          title: Text(
+            '${_profileNameController.text.isEmpty ? "New " : ""}S3 Profile Config',
+          ),
           actions: [
             IconButton(
               onPressed: _saveConfig(),
@@ -185,6 +204,25 @@ class S3ConfigPageState extends State<S3ConfigPage> {
           child: ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
+              TextField(
+                decoration: InputDecoration(
+                  prefixIcon: Icon(Icons.cloud_circle),
+                  labelText: 'Profile Name',
+                  hintText: 'A unique name for this S3 configuration',
+                  helperText:
+                      'Used to identify this configuration in the app. Can\'t be changed later.',
+                ),
+                focusNode: _profileFocusNode,
+                controller: _profileNameController,
+                keyboardType: TextInputType.text,
+                onChanged: (value) {
+                  setState(() {});
+                },
+                enabled: !_loading && _profile == null,
+                autofillHints: const ['profile', 's3 profile', 's3_profile'],
+                textInputAction: TextInputAction.next,
+              ),
+              SizedBox(height: 16),
               TextField(
                 decoration: InputDecoration(
                   prefixIcon: Icon(Icons.vpn_key),

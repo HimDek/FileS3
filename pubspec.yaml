@@ -31,6 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   ini:
+  dio:
   http:
   path:
   yaml:
@@ -41,6 +42,7 @@ dependencies:
   collection:
   workmanager:
   url_launcher:
+  enough_media:
   dynamic_color:
   path_provider:  
   file_selector:

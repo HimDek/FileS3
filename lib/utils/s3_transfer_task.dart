@@ -177,12 +177,8 @@ class S3TransferTask {
     final remoteEtag = head.etag;
     final total = head.size;
 
-    final tempFile = File(
-      '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tmp',
-    );
-    final tagFile = File(
-      '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tag',
-    );
+    final tempFile = File(Main.cachePathFromKey(key));
+    final tagFile = File(Main.tagPathFromKey(key));
     String localEtag = remoteEtag;
 
     int offset = 0;
@@ -346,9 +342,8 @@ class S3TransferTask {
         if (e is TransferPaused) rethrow;
 
         if (task == TransferTask.download) {
-          final base = sha1.convert(utf8.encode(key)).toString();
-          File('${Main.downloadCacheDir}/app_$base.tmp').deleteSync();
-          File('${Main.downloadCacheDir}/app_$base.tag').deleteSync();
+          File(Main.cachePathFromKey(key)).deleteSync();
+          File(Main.tagPathFromKey(key)).deleteSync();
         }
 
         if (i == attempts - 1) rethrow;

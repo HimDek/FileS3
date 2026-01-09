@@ -64,6 +64,14 @@ abstract class Main {
     return watcherMap[dirKey];
   }
 
+  static String cachePathFromKey(String key) {
+    return '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tmp';
+  }
+
+  static String tagPathFromKey(String key) {
+    return '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tag';
+  }
+
   static Future<void> onJobStatus(Job job, dynamic result) async {
     if (job is UploadJob &&
         job.status == JobStatus.completed &&
@@ -577,12 +585,8 @@ class DownloadJob extends Job {
     required super.md5,
     required super.profile,
   }) {
-    final tempFile = File(
-      '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(remoteKey)).toString()}.tmp',
-    );
-    final tagFile = File(
-      '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(remoteKey)).toString()}.tag',
-    );
+    final tempFile = File(Main.cachePathFromKey(remoteKey));
+    final tagFile = File(Main.tagPathFromKey(remoteKey));
 
     String localEtag = '';
     int offset = 0;

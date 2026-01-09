@@ -205,6 +205,7 @@ class _HomeState extends State<Home> {
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
   List<Object> _searchResults = [];
   bool _foldersFirst = true;
+  bool _gridView = false;
   SortMode _sortMode = SortMode.nameAsc;
   SelectionAction _selectionAction = SelectionAction.none;
   int _dirCount = 0;
@@ -405,7 +406,7 @@ class _HomeState extends State<Home> {
       String downloadTo = Main.pathFromKey(key) ?? key;
       downloadTo = p.isAbsolute(downloadTo)
           ? downloadTo
-          : p.join(Main.downloadCacheDir, downloadTo);
+          : Main.cachePathFromKey(key);
       if (!File(downloadTo).parent.existsSync()) {
         File(downloadTo).parent.createSync(recursive: true);
       }
@@ -1563,6 +1564,27 @@ class _HomeState extends State<Home> {
                                           Navigator.of(context).pop();
                                         },
                                       ),
+                                      CheckboxListTile(
+                                        dense: true,
+                                        visualDensity: VisualDensity.compact,
+                                        contentPadding: EdgeInsets.only(
+                                          left: 16,
+                                          right: 16,
+                                        ),
+                                        title: Text(
+                                          'Grid View',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium,
+                                        ),
+                                        value: _gridView,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _gridView = value ?? true;
+                                          });
+                                          Navigator.of(context).pop();
+                                        },
+                                      ),
                                       const PopupMenuDivider(),
                                     ],
                                     ListTile(
@@ -1865,6 +1887,7 @@ class _HomeState extends State<Home> {
                     }(),
                     sortMode: _sortMode,
                     foldersFirst: _foldersFirst,
+                    gridView: _gridView,
                     relativeto: _driveDir,
                     selection: _selection,
                     selectionAction: _selectionAction,
@@ -1901,6 +1924,7 @@ class _HomeState extends State<Home> {
                     }(),
                     sortMode: _sortMode,
                     foldersFirst: _foldersFirst,
+                    gridView: _gridView,
                     relativeto: _driveDir,
                     selection: _selection,
                     selectionAction: _selectionAction,
@@ -1946,6 +1970,7 @@ class _HomeState extends State<Home> {
                     }(),
                     sortMode: _sortMode,
                     foldersFirst: _foldersFirst,
+                    gridView: _gridView,
                     relativeto: _driveDir,
                     selection: _selection,
                     selectionAction: _selectionAction,
@@ -1984,32 +2009,32 @@ class _HomeState extends State<Home> {
                 : Container(),
           ],
         ),
-        floatingActionButton: AnimatedSlide(
-          duration: const Duration(milliseconds: 300),
-          offset:
-              _navIndex == 0 &&
-                  !_loading.value &&
-                  _selection.isEmpty &&
-                  _controlsVisible &&
-                  _profile != null &&
-                  _profile!.accessible
-              ? Offset.zero
-              : const Offset(2, 0),
-          child: AnimatedScale(
-            duration: const Duration(milliseconds: 300),
-            scale:
-                _navIndex == 0 &&
-                    !_loading.value &&
-                    _selection.isEmpty &&
-                    _controlsVisible &&
-                    _profile != null &&
-                    _profile!.accessible
-                ? 1
-                : 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FloatingActionButton(
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSlide(
+              duration: const Duration(milliseconds: 300),
+              offset:
+                  _navIndex == 0 &&
+                      !_loading.value &&
+                      _selection.isEmpty &&
+                      _controlsVisible &&
+                      _profile != null &&
+                      _profile!.accessible
+                  ? const Offset(0, 1)
+                  : const Offset(2, 1),
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 300),
+                scale:
+                    _navIndex == 0 &&
+                        !_loading.value &&
+                        _selection.isEmpty &&
+                        _controlsVisible &&
+                        _profile != null &&
+                        _profile!.accessible
+                    ? 1
+                    : 0,
+                child: FloatingActionButton(
                   heroTag: 'upload_file',
                   child: const Icon(Icons.file_upload_outlined),
                   onPressed: () async {
@@ -2022,8 +2047,32 @@ class _HomeState extends State<Home> {
                     }
                   },
                 ),
-                SizedBox(height: 16),
-                FloatingActionButton(
+              ),
+            ),
+            SizedBox(height: 16),
+            AnimatedSlide(
+              duration: const Duration(milliseconds: 300),
+              offset:
+                  _navIndex == 0 &&
+                      !_loading.value &&
+                      _selection.isEmpty &&
+                      _controlsVisible &&
+                      _profile != null &&
+                      _profile!.accessible
+                  ? const Offset(0, 1)
+                  : const Offset(2, 1),
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 300),
+                scale:
+                    _navIndex == 0 &&
+                        !_loading.value &&
+                        _selection.isEmpty &&
+                        _controlsVisible &&
+                        _profile != null &&
+                        _profile!.accessible
+                    ? 1
+                    : 0,
+                child: FloatingActionButton(
                   heroTag: 'upload_directory',
                   child: const Icon(Icons.drive_folder_upload_outlined),
                   onPressed: () async {
@@ -2036,8 +2085,32 @@ class _HomeState extends State<Home> {
                     }
                   },
                 ),
-                SizedBox(height: 16),
-                FloatingActionButton(
+              ),
+            ),
+            SizedBox(height: 16),
+            AnimatedSlide(
+              duration: const Duration(milliseconds: 300),
+              offset:
+                  _navIndex == 0 &&
+                      !_loading.value &&
+                      _selection.isEmpty &&
+                      _controlsVisible &&
+                      _profile != null &&
+                      _profile!.accessible
+                  ? const Offset(0, 1)
+                  : const Offset(2, 1),
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 300),
+                scale:
+                    _navIndex == 0 &&
+                        !_loading.value &&
+                        _selection.isEmpty &&
+                        _controlsVisible &&
+                        _profile != null &&
+                        _profile!.accessible
+                    ? 1
+                    : 0,
+                child: FloatingActionButton(
                   heroTag: 'create_directory',
                   child: const Icon(Icons.create_new_folder_rounded),
                   onPressed: () async {
@@ -2087,9 +2160,40 @@ class _HomeState extends State<Home> {
                     }
                   },
                 ),
-              ],
+              ),
             ),
-          ),
+            AnimatedSlide(
+              duration: const Duration(milliseconds: 300),
+              offset:
+                  _navIndex == 0 &&
+                      !_loading.value &&
+                      _selection.isEmpty &&
+                      _controlsVisible &&
+                      _profile == null
+                  ? Offset.zero
+                  : const Offset(2, 0),
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 300),
+                scale:
+                    _navIndex == 0 &&
+                        !_loading.value &&
+                        _selection.isEmpty &&
+                        _controlsVisible &&
+                        _profile == null
+                    ? 1
+                    : 0,
+                child: FloatingActionButton(
+                  heroTag: 'add_profile',
+                  child: const Icon(Icons.add_circle_outline),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (context) => S3ConfigPage()),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
         bottomNavigationBar: AnimatedContainer(
           duration: const Duration(milliseconds: 300),
