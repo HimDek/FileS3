@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';

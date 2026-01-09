@@ -1,12 +1,13 @@
 import 'dart:io';
 import 'package:files3/globals.dart';
-import 'package:path/path.dart' as p;
+import 'package:files3/settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
@@ -367,7 +368,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         : () async {
             final key = file.key.endsWith('/') ? file.key : '${file.key}/';
             final newKey =
-                '${p.dirname(key) == '.' ? '' : '${p.dirname(key)}/'}${newName.replaceAll('/', '_')}/';
+                '${p.join(p.dirname(key), newName.replaceAll('/', '_'))}/';
             await moveDirectories!([key], [newKey]);
             return 'Renamed to $newName';
           };
@@ -2263,7 +2264,7 @@ Widget buildDirectoryContextMenu(
         <Widget>[
               ListTile(
                 visualDensity: VisualDensity.comfortable,
-                leading: Icon(Icons.insert_drive_file_rounded),
+                leading: Icon(Icons.cloud_circle),
                 title: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(file.key),
@@ -2289,6 +2290,18 @@ Widget buildDirectoryContextMenu(
                     ],
                   ),
                 ),
+                onTap: Main.profileFromKey(file.key) == null
+                    ? null
+                    : () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => S3ConfigPage(
+                              profile: Main.profileFromKey(file.key)!,
+                            ),
+                          ),
+                        );
+                      },
               ),
               if (p.split(file.key).length == 1)
                 ListTile(
@@ -2318,6 +2331,21 @@ Widget buildDirectoryContextMenu(
                       globalNavigator!.pop();
                     }
                   },
+                  trailing: Main.pathFromKey(file.key) == null
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            IniManager.config!.removeOption(
+                              'directories',
+                              file.key,
+                            );
+                            IniManager.cleanDirectories(keepKey: file.key);
+                            IniManager.save();
+                            Main.listDirectories();
+                            globalNavigator!.pop();
+                          },
+                        ),
                 ),
               if (p.isAbsolute(Main.pathFromKey(file.key) ?? file.key) &&
                   p.split(file.key).length == 1) ...[

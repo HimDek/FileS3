@@ -2,31 +2,38 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
 import 'package:crypto/crypto.dart';
-import 'package:path/path.dart' as p;
-import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:files3/utils/s3_transfer_task.dart';
-import 'package:files3/utils/s3_file_manager.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/sync_analyzer.dart';
 import 'package:files3/utils/hash_util.dart';
+import 'package:files3/utils/profile.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
-import 'package:path_provider/path_provider.dart';
 
 abstract class Main {
-  static late S3FileManager? s3Manager;
+  static final Set<Profile> profiles = <Profile>{};
   static final Map<String, Watcher> watcherMap = <String, Watcher>{};
   static List<RemoteFile> remoteFiles = <RemoteFile>[];
-  static http.Client httpClient = http.Client();
-  static Future<void> Function()? pushS3ConfigPage;
   static Function(bool loading)? setLoadingState;
   static Function()? setHomeState;
-  static bool accessible = true;
-  static String cacheDir = '';
+  static String downloadCacheDir = '';
+  static String documentsDir = '';
+
+  static Profile? profileFromKey(String key) {
+    try {
+      return profiles.firstWhere(
+        (profile) => profile.name == key.split('/').first,
+      );
+    } catch (e) {
+      return null;
+    }
+  }
 
   static String? pathFromKey(String key) {
-    final localDir = IniManager.config!
-        .get('directories', "${key.split('/').first}/")
+    final localDir = IniManager.config
+        ?.get('directories', "${key.split('/').first}/")
         ?.replaceAll('\\', '/');
     if (localDir != null) {
       return p.join(localDir, key.split('/').sublist(1).join('/'));
@@ -45,9 +52,7 @@ abstract class Main {
           final relativePath = p
               .relative(path, from: localDir)
               .replaceAll('\\', '/');
-          return p
-              .join(dir, relativePath == '.' ? '' : relativePath)
-              .replaceAll('\\', '/');
+          return p.join(dir, relativePath).replaceAll('\\', '/');
         }
       }
     }
@@ -118,18 +123,18 @@ abstract class Main {
       final isDir = normalized.endsWith('/');
 
       final basePath = isDir
-          ? p.posix.dirname(normalized.substring(0, normalized.length - 1))
-          : p.posix.dirname(normalized);
+          ? p.dirname(normalized.substring(0, normalized.length - 1))
+          : p.dirname(normalized);
 
-      if (basePath == '.' || basePath.isEmpty) continue;
+      if (basePath.isEmpty) continue;
 
-      final parts = p.posix.split(basePath);
+      final parts = p.split(basePath);
 
       String current = '';
       for (final part in parts) {
         if (part.isEmpty) continue;
 
-        current = p.posix.join(current, part);
+        current = p.join(current, part);
         final dirPath = '$current/';
 
         if (!existingPaths.contains(dirPath)) {
@@ -143,24 +148,6 @@ abstract class Main {
           remoteFiles.add(dirObject);
           existingPaths.add(dirPath);
         }
-      }
-    }
-  }
-
-  static Future<void> refreshRemote({String dir = ''}) async {
-    try {
-      final fetchedRemoteFiles = await s3Manager!.listObjects(dir: dir);
-      remoteFiles.removeWhere(
-        (file) => p.isWithin(dir, file.key) || file.key == dir || dir.isEmpty,
-      );
-      remoteFiles.addAll(fetchedRemoteFiles);
-      ensureDirectoryObjects();
-      await ConfigManager.saveRemoteFiles(remoteFiles);
-      accessible = true;
-    } catch (e) {
-      accessible = false;
-      if (kDebugMode) {
-        debugPrint("Error refreshing remote files: $e");
       }
     }
   }
@@ -182,20 +169,26 @@ abstract class Main {
     setLoadingState?.call(false);
   }
 
+  static Future<void> refreshProfiles() async {
+    setLoadingState?.call(true);
+    for (final entry in (await ConfigManager.loadS3Config()).entries) {
+      if (profiles.any((profile) => profile.name == entry.key)) {
+        profiles
+            .firstWhere((profile) => profile.name == entry.key)
+            .updateConfig(entry.value);
+        continue;
+      }
+      profiles.add(Profile(name: entry.key, cfg: entry.value));
+    }
+    setLoadingState?.call(false);
+  }
+
   static Future<void> listDirectories({bool background = false}) async {
-    await setLoadingState?.call(true);
-
-    if (!background) {
-      remoteFiles = await ConfigManager.loadRemoteFiles();
+    setLoadingState?.call(true);
+    for (final profile in profiles) {
+      await profile.listDirectories(background: background);
     }
-
-    while (s3Manager == null || !s3Manager!.configured) {
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
-
-    await refreshRemote();
-    await refreshWatchers(background: background);
-    await setLoadingState?.call(false);
+    setLoadingState?.call(false);
   }
 
   static void downloadFile(RemoteFile file, {String? localPath}) {
@@ -218,6 +211,7 @@ abstract class Main {
         return Digest(bytes);
       }(),
       onStatus: onJobStatus,
+      profile: profileFromKey(file.key),
     ).add();
   }
 
@@ -227,7 +221,9 @@ abstract class Main {
     }
 
     if (p.normalize(pathFromKey(key) ?? key) == p.normalize(file.path)) {
-      final deleteionLog = await DeletionRegistrar.pullDeletions();
+      final deleteionLog = await profileFromKey(
+        key,
+      )!.deletionRegistrar.pullDeletions();
       if (deleteionLog.containsKey(key) &&
           file.lastModifiedSync().toUtc().isBefore(
             deleteionLog[key]!.toUtc(),
@@ -243,6 +239,7 @@ abstract class Main {
           bytes: file.lengthSync(),
           onStatus: onJobStatus,
           md5: await HashUtil(file).md5Hash(),
+          profile: profileFromKey(key),
         ).add();
       }
     } else if (p.isAbsolute(pathFromKey(key) ?? key)) {
@@ -291,38 +288,29 @@ abstract class Main {
         bytes: file.lengthSync(),
         onStatus: onJobStatus,
         md5: await HashUtil(file).md5Hash(),
+        profile: profileFromKey(newKey),
       ).add();
     }
   }
 
-  static Future<void> setConfig() async {
-    s3Manager = await S3FileManager.create(httpClient);
-    while (s3Manager == null) {
-      await pushS3ConfigPage?.call();
-      s3Manager = await S3FileManager.create(httpClient);
-    }
-  }
-
   static Future<void> init({bool background = false}) async {
-    if (cacheDir.isEmpty) {
+    if (downloadCacheDir.isEmpty) {
       final directory = await getApplicationCacheDirectory();
-      cacheDir = p.join(directory.path, 'Downloads');
+      downloadCacheDir = p.join(directory.path, 'Downloads');
     }
-    if (IniManager.config == null) {
-      await IniManager.init();
+    if (documentsDir.isEmpty) {
+      final directory = await getApplicationDocumentsDirectory();
+      documentsDir = directory.path;
     }
-    if (DeletionRegistrar.config == null) {
-      await DeletionRegistrar.init();
+    if (!ConfigManager.initialized) {
+      await ConfigManager.init();
     }
-    await setConfig();
+    Profile.setLoadingState = setLoadingState;
     Job.maxrun = ConfigManager.loadTransferConfig().maxConcurrentTransfers;
     Job.onProgressUpdate = () {
       setHomeState?.call();
     };
-    if (s3Manager == null) {
-      // TODO: Show config notification
-      return;
-    }
+    await refreshProfiles();
     await listDirectories(background: background);
   }
 }
@@ -332,12 +320,12 @@ abstract class Job {
   final String remoteKey;
   final Digest md5;
   final int bytes;
+  final Profile? profile;
   S3TransferTask? task;
   int bytesCompleted = 0;
   JobStatus status = JobStatus.initialized;
   String statusMsg = '';
 
-  static S3FileManager fileManager = Main.s3Manager!;
   static int maxrun = 5;
   static bool scheduled = false;
   static final List<Job> jobs = [];
@@ -352,6 +340,7 @@ abstract class Job {
     required this.bytes,
     required this.onStatus,
     required this.md5,
+    required this.profile,
   });
 
   void add() {
@@ -373,9 +362,7 @@ abstract class Job {
   }
 
   bool startable() {
-    return status != JobStatus.running &&
-        Main.s3Manager != null &&
-        Main.s3Manager!.configured;
+    return status != JobStatus.running && (profile?.accessible ?? false);
   }
 
   Future<void> start() async {
@@ -387,7 +374,7 @@ abstract class Job {
           key: remoteKey,
           localFile: localFile,
           task: TransferTask.upload,
-          fileManager: fileManager,
+          profile: profile,
           md5: md5,
           onProgress: (sent, total) {
             bytesCompleted = sent;
@@ -430,7 +417,7 @@ abstract class Job {
           key: remoteKey,
           localFile: localFile,
           task: TransferTask.download,
-          fileManager: fileManager,
+          profile: profile,
           md5: md5,
           onProgress: (received, total) {
             bytesCompleted = received;
@@ -548,14 +535,14 @@ abstract class Job {
   }
 
   static void clearCache() {
-    final directory = Directory(Main.cacheDir);
+    final directory = Directory(Main.downloadCacheDir);
     if (directory.existsSync()) {
       directory.deleteSync(recursive: true);
     }
   }
 
   static int cacheSize() {
-    final directory = Directory(Main.cacheDir);
+    final directory = Directory(Main.downloadCacheDir);
     int totalSize = 0;
 
     if (directory.existsSync()) {
@@ -577,6 +564,7 @@ class UploadJob extends Job {
     required super.bytes,
     required super.onStatus,
     required super.md5,
+    required super.profile,
   });
 }
 
@@ -587,12 +575,13 @@ class DownloadJob extends Job {
     required super.bytes,
     required super.onStatus,
     required super.md5,
+    required super.profile,
   }) {
     final tempFile = File(
-      '${Main.cacheDir}/app_${sha1.convert(utf8.encode(remoteKey)).toString()}.tmp',
+      '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(remoteKey)).toString()}.tmp',
     );
     final tagFile = File(
-      '${Main.cacheDir}/app_${sha1.convert(utf8.encode(remoteKey)).toString()}.tag',
+      '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(remoteKey)).toString()}.tag',
     );
 
     String localEtag = '';
@@ -677,9 +666,9 @@ class Watcher {
         .where((file) => p.isWithin(remoteDir, file.key))
         .isEmpty) {
       if (kDebugMode) {
-        debugPrint("Remote files list is empty, refreshing remote files.");
+        debugPrint("Remote files list is empty, skipping refresh.");
       }
-      await Main.refreshRemote(dir: remoteDir);
+      return;
     }
 
     if (kDebugMode) {

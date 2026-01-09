@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:files3/utils/job.dart';
+import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/helpers.dart';
@@ -18,7 +19,7 @@ class S3TransferTask {
   final File localFile;
   final Digest md5;
   final TransferTask task;
-  final S3FileManager fileManager;
+  final Profile? profile;
   final void Function(String status)? onStatus;
   final void Function(int bytesTransferred, int? totalBytes)? onProgress;
 
@@ -30,7 +31,7 @@ class S3TransferTask {
     required this.key,
     required this.localFile,
     required this.md5,
-    required this.fileManager,
+    required this.profile,
     required this.task,
     this.onProgress,
     this.onStatus,
@@ -42,6 +43,10 @@ class S3TransferTask {
     final HttpClient httpClient = HttpClient();
 
     try {
+      if (profile?.fileManager == null || !(profile?.accessible ?? false)) {
+        throw Exception('Profile is not accessible');
+      }
+
       httpClient.connectionTimeout = const Duration(seconds: 30);
       httpClient.badCertificateCallback = null;
 
@@ -90,17 +95,17 @@ class S3TransferTask {
     final contentMD5 = base64.encode(md5.bytes);
     final now = DateTime.now().toUtc();
 
-    final headers = fileManager.buildSignedHeaders(
+    final headers = profile!.fileManager!.buildSignedHeaders(
       key: key,
       method: 'PUT',
-      amzDate: fileManager.formatAmzDate(now),
-      shortDate: fileManager.formatDate(now),
+      amzDate: S3FileManager.formatAmzDate(now),
+      shortDate: S3FileManager.formatDate(now),
       contentHash: contentHash,
       contentMD5: contentMD5,
-      contentType: fileManager.guessMime(localFile),
+      contentType: S3FileManager.guessMime(localFile),
     );
 
-    final uri = fileManager.getUri(key);
+    final uri = profile!.fileManager!.getUri(key);
     final req = await httpClient.openUrl('PUT', uri);
 
     headers.forEach(req.headers.set);
@@ -168,15 +173,15 @@ class S3TransferTask {
   Future<dynamic> _download(HttpClient httpClient) async {
     final now = DateTime.now().toUtc();
 
-    final head = await fileManager.headObject(key);
+    final head = await profile!.fileManager!.headObject(key);
     final remoteEtag = head.etag;
     final total = head.size;
 
     final tempFile = File(
-      '${Main.cacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tmp',
+      '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tmp',
     );
     final tagFile = File(
-      '${Main.cacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tag',
+      '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tag',
     );
     String localEtag = remoteEtag;
 
@@ -212,15 +217,15 @@ class S3TransferTask {
       if (tempFile.existsSync()) tempFile.deleteSync();
     }
 
-    final headers = fileManager.buildSignedHeaders(
+    final headers = profile!.fileManager!.buildSignedHeaders(
       key: key,
       method: 'GET',
-      amzDate: fileManager.formatAmzDate(now),
-      shortDate: fileManager.formatDate(now),
+      amzDate: S3FileManager.formatAmzDate(now),
+      shortDate: S3FileManager.formatDate(now),
       contentHash: S3FileManager.emptySha256,
     );
 
-    final uri = fileManager.getUri(key);
+    final uri = profile!.fileManager!.getUri(key);
     final req = await httpClient.openUrl('GET', uri);
 
     if (offset > 0) {
@@ -342,8 +347,8 @@ class S3TransferTask {
 
         if (task == TransferTask.download) {
           final base = sha1.convert(utf8.encode(key)).toString();
-          File('${Main.cacheDir}/app_$base.tmp').deleteSync();
-          File('${Main.cacheDir}/app_$base.tag').deleteSync();
+          File('${Main.downloadCacheDir}/app_$base.tmp').deleteSync();
+          File('${Main.downloadCacheDir}/app_$base.tag').deleteSync();
         }
 
         if (i == attempts - 1) rethrow;

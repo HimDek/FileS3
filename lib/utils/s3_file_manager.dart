@@ -2,14 +2,15 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
 import 'package:aws_s3_api/s3-2006-03-01.dart';
-import 'package:files3/helpers.dart';
+import 'package:files3/utils/path_utils.dart' as p;
+import 'package:files3/utils/profile.dart';
 import 'package:files3/models.dart';
 
 class S3FileManager {
   late final S3 _s3;
+  late final Profile _profile;
   late final String _accessKey;
   late final String _secretKey;
   late final String _region;
@@ -18,13 +19,12 @@ class S3FileManager {
   late final String _host;
   late http.Client _client;
 
-  bool configured = false;
-
   static const emptySha256 =
       'e3b0c44298fc1c149afbf4c8996fb924'
       '27ae41e4649b934ca495991b7852b855';
 
-  S3FileManager._(S3Config cfg, http.Client client) {
+  S3FileManager._(Profile profile, S3Config cfg, http.Client client) {
+    _profile = profile;
     _client = client;
     _s3 = S3(
       region: cfg.region,
@@ -45,16 +45,18 @@ class S3FileManager {
     _accessKey = cfg.accessKey;
     _secretKey = cfg.secretKey;
     _region = cfg.region;
-    configured = true;
   }
 
-  static Future<S3FileManager?> create(http.Client client) async {
-    final cfg = await ConfigManager.loadS3Config();
+  static S3FileManager? create(
+    Profile profile,
+    http.Client client,
+    S3Config cfg,
+  ) {
     if (cfg.accessKey.isNotEmpty &&
         cfg.secretKey.isNotEmpty &&
         cfg.region.isNotEmpty &&
         cfg.bucket.isNotEmpty) {
-      return S3FileManager._(cfg, client);
+      return S3FileManager._(profile, cfg, client);
     } else {
       return null;
     }
@@ -88,8 +90,8 @@ class S3FileManager {
     return response.headers;
   }
 
-  Future<List<RemoteFile>> listObjects({String dir = ''}) async {
-    String? prefix = p.posix.join(_prefix, dir);
+  Future<List<RemoteFile>> listObjects(String dir) async {
+    String? prefix = p.join(_prefix, p.relative(dir, from: _profile.name));
     prefix = prefix.isEmpty
         ? null
         : prefix.endsWith('/')
@@ -105,7 +107,7 @@ class S3FileManager {
         .map(
           (item) => RemoteFile(
             key:
-                p.relative(item.key!, from: _prefix) +
+                p.join(_profile.name, p.relative(item.key!, from: _prefix)) +
                 (item.key!.endsWith('/') ? '/' : ''),
             size: item.size ?? 0,
             etag: item.eTag != null && item.eTag!.isNotEmpty
@@ -119,7 +121,10 @@ class S3FileManager {
   }
 
   Future<dynamic> copyFile(String sourceKey, String destinationKey) async {
-    String prefixedSourceKey = p.posix.join(_prefix, sourceKey);
+    String prefixedSourceKey = p.join(
+      _prefix,
+      p.relative(sourceKey, from: _profile.name),
+    );
 
     final copySource =
         '/$_bucket/${prefixedSourceKey.split('/').map(awsEncode).join('/')}';
@@ -185,7 +190,7 @@ class S3FileManager {
 
     final credentialScope = '$shortDate/$_region/s3/aws4_request';
     final encodedPath =
-        '/${p.join(_prefix, key).split('/').map(awsEncode).join('/')}';
+        '/${p.join(_prefix, p.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}';
 
     final queryParams = <String, String>{
       'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
@@ -287,7 +292,7 @@ class S3FileManager {
 
     // 5. Canonical URI (already encoded)
     final encodedPath =
-        '/${p.join(_prefix, key).split('/').map(awsEncode).join('/')}';
+        '/${p.join(_prefix, p.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}';
 
     // 6. Assemble canonical request
     final canonicalRequest = [
@@ -332,10 +337,10 @@ class S3FileManager {
     return {...headers, 'Authorization': authorization};
   }
 
-  List<int> _sign(List<int> key, String data) =>
+  static List<int> _sign(List<int> key, String data) =>
       Hmac(sha256, key).convert(utf8.encode(data)).bytes;
 
-  List<int> getSigningKey(
+  static List<int> getSigningKey(
     String secret,
     String date,
     String region,
@@ -347,13 +352,13 @@ class S3FileManager {
     return _sign(kService, 'aws4_request');
   }
 
-  String formatAmzDate(DateTime time) =>
+  static String formatAmzDate(DateTime time) =>
       '${time.toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z';
 
-  String formatDate(DateTime time) =>
+  static String formatDate(DateTime time) =>
       time.toIso8601String().split('T').first.replaceAll('-', '');
 
-  String guessMime(File f) {
+  static String guessMime(File f) {
     final ext = f.path.split('.').last.toLowerCase();
     switch (ext) {
       case 'jpg':
@@ -402,17 +407,18 @@ class S3FileManager {
     return Uri(
       scheme: 'https',
       host: _host,
-      path: '/${p.join(_prefix, key).split('/').map(awsEncode).join('/')}',
+      path:
+          '/${p.join(_prefix, p.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}',
     );
   }
 
-  String encode(String input) {
+  static String encode(String input) {
     return Uri.encodeComponent(
       input,
     ).replaceAll('+', '%20').replaceAll('%7E', '~');
   }
 
-  String awsEncode(String input) {
+  static String awsEncode(String input) {
     final bytes = utf8.encode(input);
     final buffer = StringBuffer();
 

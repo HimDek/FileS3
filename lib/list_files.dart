@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import 'package:open_file/open_file.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
@@ -78,7 +78,11 @@ class ListFiles extends StatelessWidget {
                   context,
                 ).colorScheme.primary.withValues(alpha: 0.1),
                 selectedColor: Theme.of(context).colorScheme.primary,
-                leading: Icon(Icons.folder),
+                leading: Icon(
+                  p.split(item.key).length > 1
+                      ? Icons.folder
+                      : Icons.cloud_circle_rounded,
+                ),
                 title: Text(
                   p.isWithin(relativeto.key, item.key)
                       ? "${p.relative(item.key, from: relativeto.key)}/"
@@ -111,7 +115,7 @@ class ListFiles extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (relativeto.key != '${p.dirname(item.file!.key)}/')
+                    if (relativeto.key != p.dirname(item.file!.key))
                       Row(
                         children: [
                           Text('${Main.backupMode(item.file!.key).name}:'),

@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'package:files3/globals.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:files3/globals.dart';
+import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
@@ -20,16 +21,16 @@ class SettingsPageState extends State<SettingsPage> {
       appBar: AppBar(title: Text('Settings')),
       body: ListView(
         children: [
-          ListTile(
-            leading: Icon(Icons.cloud),
-            title: Text("AWS S3 Configuration"),
-            subtitle: Text(
-              "Configure AWS S3 access key, secret key, region, bucket, host etc.",
-            ),
-            onTap: () async => await Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (context) => S3ConfigPage())),
-          ),
+          // ListTile(
+          //   leading: Icon(Icons.cloud),
+          //   title: Text("AWS S3 Configuration"),
+          //   subtitle: Text(
+          //     "Configure AWS S3 access key, secret key, region, bucket, host etc.",
+          //   ),
+          //   onTap: () async => await Navigator.of(
+          //     context,
+          //   ).push(MaterialPageRoute(builder: (context) => S3ConfigPage())),
+          // ),
           ListTile(
             leading: Icon(Icons.palette),
             title: Text("Appearance"),
@@ -55,7 +56,9 @@ class SettingsPageState extends State<SettingsPage> {
 }
 
 class S3ConfigPage extends StatefulWidget {
-  const S3ConfigPage({super.key});
+  final Profile profile;
+
+  const S3ConfigPage({super.key, required this.profile});
 
   @override
   S3ConfigPageState createState() => S3ConfigPageState();
@@ -83,7 +86,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
     setState(() {
       _loading = true;
     });
-    _s3Config = await ConfigManager.loadS3Config();
+    _s3Config = (await ConfigManager.loadS3Config())[widget.profile.name];
     setState(() {
       _accessKeyController.text = _s3Config!.accessKey;
       _secretKeyController.text = _s3Config!.secretKey;
@@ -107,6 +110,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
             _loading = true;
           });
           await ConfigManager.saveS3Config(
+            widget.profile.name,
             S3Config(
               accessKey: _accessKeyController.text,
               secretKey: _secretKeyController.text,
@@ -121,8 +125,15 @@ class S3ConfigPageState extends State<S3ConfigPage> {
         };
 
   Future<void> _setConfig() async {
-    await Main.setConfig();
-    await Main.listDirectories();
+    widget.profile.cfg = S3Config(
+      accessKey: _accessKeyController.text,
+      secretKey: _secretKeyController.text,
+      region: _regionController.text,
+      bucket: _bucketController.text,
+      prefix: _prefixController.text,
+      host: _hostController.text,
+    );
+    await widget.profile.listDirectories();
   }
 
   @override

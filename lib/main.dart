@@ -1,7 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'package:files3/globals.dart';
-import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart';
@@ -12,10 +10,13 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/context_menu.dart';
+import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/list_files.dart';
 import 'package:files3/settings.dart';
+import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 import 'package:files3/jobs.dart';
@@ -126,8 +127,6 @@ Future<void> main() async {
     await Workmanager().initialize(callbackDispatcher);
   }
 
-  await IniManager.init();
-
   runApp(MainApp());
 }
 
@@ -202,6 +201,7 @@ class _HomeState extends State<Home> {
   final TextEditingController _searchController = TextEditingController();
   final ValueNotifier<bool> _loading = ValueNotifier<bool>(true);
   final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
+  Profile? _profile;
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
   List<Object> _searchResults = [];
   bool _foldersFirst = true;
@@ -235,7 +235,9 @@ class _HomeState extends State<Home> {
 
   String? _getLink(RemoteFile file, int? seconds) {
     try {
-      return Main.s3Manager!.getUrl(file.key, validForSeconds: seconds);
+      return Main.profileFromKey(
+        file.key,
+      )?.fileManager?.getUrl(file.key, validForSeconds: seconds);
     } catch (e) {
       return null;
     }
@@ -243,14 +245,13 @@ class _HomeState extends State<Home> {
 
   String _dirModified(RemoteFile dir) {
     DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
-    for (final file in Main.remoteFiles) {
-      if (p.isWithin(dir.key, file.key) && !file.key.endsWith('/')) {
-        if (file.lastModified!.isAfter(latest)) {
-          latest = file.lastModified!;
-        }
+    for (final file in Main.remoteFiles.where(
+      (file) => p.isWithin(dir.key, file.key) && !file.key.endsWith('/'),
+    )) {
+      if (file.lastModified!.isAfter(latest)) {
+        latest = file.lastModified!;
       }
     }
-
     return timeToReadable(latest);
   }
 
@@ -260,7 +261,8 @@ class _HomeState extends State<Home> {
     for (final file in Main.remoteFiles) {
       if (p.isWithin(dir.key, file.key) &&
           file.key != dir.key &&
-          (recursive || p.dirname(file.key) == p.normalize(dir.key))) {
+          (recursive ||
+              p.normalize(p.dirname(file.key)) == p.normalize(dir.key))) {
         if (file.key.endsWith('/')) {
           dirCount += 1;
         } else {
@@ -268,7 +270,6 @@ class _HomeState extends State<Home> {
         }
       }
     }
-
     return (dirCount, fileCount);
   }
 
@@ -334,6 +335,7 @@ class _HomeState extends State<Home> {
             _navIndex = 0;
             _controlsVisible = true;
             _driveDir = dir;
+            _profile = Main.profileFromKey(_driveDir.key);
             for (RemoteFile item in _selection) {
               if (p.isWithin(item.key, _driveDir.key) ||
                   item.key == _driveDir.key) {
@@ -357,7 +359,7 @@ class _HomeState extends State<Home> {
       _loading.value = true;
     });
     try {
-      await Main.s3Manager!.createDirectory(dir);
+      await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
       Main.remoteFiles.add(
         RemoteFile(
           key: dir.endsWith('/') ? dir : '$dir/',
@@ -387,7 +389,34 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading.value = true;
     });
-    await Main.s3Manager!.copyFile(key, newKey);
+
+    RemoteFile oldFile = Main.remoteFiles.firstWhere((file) => file.key == key);
+    RemoteFile newFile = RemoteFile(
+      key: newKey,
+      size: oldFile.size,
+      etag: oldFile.etag,
+      lastModified: oldFile.lastModified,
+    );
+
+    final Profile? profile = Main.profileFromKey(key);
+    final Profile? newProfile = Main.profileFromKey(newKey);
+
+    if (profile != newProfile) {
+      String downloadTo = Main.pathFromKey(key) ?? key;
+      downloadTo = p.isAbsolute(downloadTo)
+          ? downloadTo
+          : p.join(Main.downloadCacheDir, downloadTo);
+      if (!File(downloadTo).parent.existsSync()) {
+        File(downloadTo).parent.createSync(recursive: true);
+      }
+      // TODO: Download wait and Upload
+      // Main.downloadFile(oldFile, localPath: downloadTo);
+      // Main.uploadFile(newKey, File(downloadTo));
+      return;
+    }
+
+    await Main.profileFromKey(key)!.fileManager!.copyFile(key, newKey);
+
     if (File(Main.pathFromKey(key) ?? key).existsSync() &&
         Main.pathFromKey(newKey) != null) {
       if (!File(Main.pathFromKey(newKey) ?? newKey).parent.existsSync()) {
@@ -399,14 +428,6 @@ class _HomeState extends State<Home> {
         Main.pathFromKey(key) ?? key,
       ).copySync(Main.pathFromKey(newKey) ?? newKey);
     }
-
-    RemoteFile oldFile = Main.remoteFiles.firstWhere((file) => file.key == key);
-    RemoteFile newFile = RemoteFile(
-      key: newKey,
-      size: oldFile.size,
-      etag: oldFile.etag,
-      lastModified: oldFile.lastModified,
-    );
 
     Main.remoteFiles.add(newFile);
     if (refresh) {
@@ -488,17 +509,42 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading.value = true;
     });
-    await DeletionRegistrar.pullDeletions();
-    DeletionRegistrar.logDeletions(keys);
-    await DeletionRegistrar.pushDeletions();
-    for (final key in keys) {
-      (progress ?? _progress).value = keys.indexOf(key) / keys.length;
-      await Main.s3Manager!.deleteFile(key);
-      if (File(Main.pathFromKey(key) ?? key).existsSync()) {
-        File(Main.pathFromKey(key) ?? key).deleteSync();
+
+    final List<String> files = Main.remoteFiles
+        .where((file) => keys.contains(file.key) && !file.key.endsWith('/'))
+        .map((e) => e.key)
+        .toList();
+
+    final Map<Profile, List<String>> profileKeys = {};
+    for (final key in files) {
+      final profile = Main.profileFromKey(key);
+      if (profile != null) {
+        profileKeys.putIfAbsent(profile, () => []).add(key);
       }
     }
-    Main.remoteFiles.removeWhere((file) => keys.contains(file.key));
+
+    int progressCount = 0;
+    for (final entry in profileKeys.entries) {
+      final profile = entry.key;
+      final keysForProfile = entry.value;
+
+      await profile.deletionRegistrar.pullDeletions();
+      profile.deletionRegistrar.logDeletions(keysForProfile);
+      await profile.deletionRegistrar.pushDeletions();
+
+      for (final key in keysForProfile) {
+        progressCount += 1;
+        (progress ?? _progress).value =
+            progressCount / profileKeys.values.expand((e) => e).length;
+        await profile.fileManager?.deleteFile(key);
+        if (File(Main.pathFromKey(key) ?? key).existsSync()) {
+          File(Main.pathFromKey(key) ?? key).deleteSync();
+        }
+      }
+
+      Main.remoteFiles.removeWhere((file) => keysForProfile.contains(file.key));
+    }
+
     if (refresh) {
       setState(() {
         _loading.value = false;
@@ -515,40 +561,67 @@ class _HomeState extends State<Home> {
       _loading.value = true;
     });
 
-    await DeletionRegistrar.pullDeletions();
-    DeletionRegistrar.logDeletions(keys);
-    await DeletionRegistrar.pushDeletions();
+    final List<RemoteFile> files = Main.remoteFiles
+        .where((file) => keys.contains(file.key))
+        .toList();
+
+    final Map<Profile, List<RemoteFile>> profileFiles = {};
+    for (final file in files) {
+      final profile = Main.profileFromKey(file.key);
+      if (profile != null) {
+        profileFiles.putIfAbsent(profile, () => []).add(file);
+      }
+    }
 
     int progressCount = 0;
-    final totalFiles = Main.remoteFiles
-        .where((file) => keys.contains(file.key))
-        .length;
+    for (final entry in profileFiles.entries) {
+      final profile = entry.key;
+      final filesForProfile = entry.value;
 
-    for (final file
-        in Main.remoteFiles
-            .where((file) => keys.contains(file.key) && !file.key.endsWith('/'))
-            .toList()) {
-      progressCount += 1;
-      (progress ?? _progress).value = progressCount / totalFiles;
-      await Main.s3Manager!.deleteFile(file.key);
+      await profile.deletionRegistrar.pullDeletions();
+      profile.deletionRegistrar.logDeletions(
+        filesForProfile.map((e) => e.key).toList(),
+      );
+      await profile.deletionRegistrar.pushDeletions();
+
+      for (final file
+          in filesForProfile
+              .where((file) => !file.key.endsWith('/'))
+              .toList()) {
+        progressCount += 1;
+        (progress ?? _progress).value =
+            progressCount / profileFiles.values.expand((e) => e).length;
+        await profile.fileManager?.deleteFile(file.key);
+      }
+
+      Main.remoteFiles.removeWhere(
+        (file) =>
+            filesForProfile.map((e) => e.key).contains(file.key) &&
+            !file.key.endsWith('/'),
+      );
+
+      final dirsForProfile = Main.remoteFiles
+          .where(
+            (file) =>
+                filesForProfile.map((e) => e.key).contains(file.key) &&
+                file.key.endsWith('/'),
+          )
+          .toList();
+      dirsForProfile.sort((a, b) => b.key.length.compareTo(a.key.length));
+
+      for (final dir in dirsForProfile) {
+        progressCount += 1;
+        (progress ?? _progress).value =
+            progressCount / profileFiles.values.expand((e) => e).length;
+        await profile.fileManager?.deleteFile(dir.key);
+      }
+
+      Main.remoteFiles.removeWhere(
+        (file) => dirsForProfile.map((e) => e.key).contains(file.key),
+      );
+
+      await profile.refreshRemote(dir: profile.name);
     }
-
-    Main.remoteFiles.removeWhere(
-      (file) => keys.contains(file.key) && !file.key.endsWith('/'),
-    );
-
-    final dirs = Main.remoteFiles
-        .where((file) => keys.contains(file.key) && file.key.endsWith('/'))
-        .toList();
-    dirs.sort((a, b) => b.key.length.compareTo(a.key.length));
-
-    for (final file in dirs) {
-      progressCount += 1;
-      (progress ?? _progress).value = progressCount / totalFiles;
-      await Main.s3Manager!.deleteFile(file.key);
-    }
-
-    await Main.refreshRemote();
 
     if (refresh) {
       setState(() {
@@ -565,26 +638,16 @@ class _HomeState extends State<Home> {
     setState(() {
       _loading.value = true;
     });
-    for (final dir in dirs) {
-      final files = Main.remoteFiles
-          .where((file) => p.isWithin(dir, file.key))
-          .toList();
-      final ValueNotifier<double> deleteprogress = ValueNotifier<double>(0.0);
-      deleteprogress.addListener(() {
-        (progress ?? _progress).value =
-            (dirs.indexOf(dir) / dirs.length) +
-            (deleteprogress.value / dirs.length);
-      });
-      await _deleteS3(
-        files.map((file) => file.key).toList().followedBy([dir]).toList(),
-        refresh: false,
-        progress: deleteprogress,
-      );
-      deleteprogress.dispose();
-      if (Directory(Main.pathFromKey(dir) ?? dir).existsSync()) {
-        Directory(Main.pathFromKey(dir) ?? dir).deleteSync(recursive: true);
-      }
+
+    _deleteS3(dirs, refresh: false, progress: progress);
+
+    for (final dir
+        in dirs
+            .map((dir) => Directory(Main.pathFromKey(dir) ?? dir))
+            .where((dir) => dir.existsSync())) {
+      dir.deleteSync(recursive: true);
     }
+
     if (refresh) {
       setState(() {
         _loading.value = false;
@@ -729,8 +792,7 @@ class _HomeState extends State<Home> {
       (_selectionAction == SelectionAction.none ||
           _selection.isEmpty ||
           _navIndex != 0 ||
-          (_driveDir.key.isEmpty &&
-              _selection.any((item) => !item.key.endsWith('/'))))
+          _profile == null)
       ? null
       : () async {
           try {
@@ -997,7 +1059,7 @@ class _HomeState extends State<Home> {
         },
       );
     } catch (e) {
-      await Main.refreshRemote();
+      showSnackBar(SnackBar(content: Text('Error showing context menu: $e')));
     }
 
     if (_loading.value) {
@@ -1016,14 +1078,6 @@ class _HomeState extends State<Home> {
 
     await Main.refreshWatchers();
     setState(() {});
-  }
-
-  Future<void> _pushS3ConfigPage() async {
-    if (Main.s3Manager == null) {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (context) => S3ConfigPage()));
-    }
   }
 
   Future<void> _init() async {
@@ -1081,7 +1135,6 @@ class _HomeState extends State<Home> {
     Main.setHomeState = () {
       setState(() {});
     };
-    Main.pushS3ConfigPage = _pushS3ConfigPage;
     await Main.init();
 
     setState(() {
@@ -1107,6 +1160,10 @@ class _HomeState extends State<Home> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
+    _loading.dispose();
+    _progress.dispose();
+    _inaccessibleTimer?.cancel();
     super.dispose();
   }
 
@@ -1119,14 +1176,15 @@ class _HomeState extends State<Home> {
         _updateCounts();
       });
     }
-    if (!Main.accessible && !(_inaccessibleTimer?.isActive ?? false)) {
+    if (!(_profile?.accessible ?? false) &&
+        !(_inaccessibleTimer?.isActive ?? false)) {
       _inaccessibleTimer = Timer.periodic(const Duration(seconds: 5), (
         timer,
       ) async {
-        if (!Main.accessible) {
+        if (!(_profile == null ? true : _profile?.accessible ?? false)) {
           await Main.listDirectories();
         }
-        if (Main.accessible) {
+        if (!(_profile == null ? true : _profile?.accessible ?? false)) {
           timer.cancel();
         }
       });
@@ -1169,13 +1227,7 @@ class _HomeState extends State<Home> {
         }
         if (_driveDir.key.isNotEmpty) {
           _changeDirectory(
-            RemoteFile(
-              key: p.dirname(_driveDir.key) == '.'
-                  ? ''
-                  : p.dirname(_driveDir.key),
-              size: 0,
-              etag: '',
-            ),
+            RemoteFile(key: p.dirname(_driveDir.key), size: 0, etag: ''),
           )?.call();
           return;
         }
@@ -1551,7 +1603,7 @@ class _HomeState extends State<Home> {
                                 (Main.pathFromKey(_driveDir.key) != null
                                     ? 16
                                     : 0) +
-                                (!Main.accessible
+                                (!(_profile?.accessible ?? false)
                                     ? 16
                                     : _loading.value
                                     ? 4
@@ -1564,7 +1616,9 @@ class _HomeState extends State<Home> {
                             28 +
                             (_driveDir.key != '' ? 24 : 0) +
                             (Main.pathFromKey(_driveDir.key) != null ? 16 : 0) +
-                            (!Main.accessible
+                            (!(_profile == null
+                                    ? true
+                                    : _profile?.accessible ?? false)
                                 ? 16
                                 : _loading.value
                                 ? 4
@@ -1763,7 +1817,9 @@ class _HomeState extends State<Home> {
                                 ],
                               ),
                             ),
-                            if (!Main.accessible)
+                            if (!(_profile == null
+                                ? true
+                                : _profile?.accessible ?? false))
                               Container(
                                 width: double.infinity,
                                 color: Theme.of(
@@ -1780,7 +1836,10 @@ class _HomeState extends State<Home> {
                                       ),
                                 ),
                               ),
-                            if (Main.accessible && _loading.value)
+                            if ((_profile == null
+                                    ? true
+                                    : _profile?.accessible ?? false) &&
+                                _loading.value)
                               ValueListenableBuilder<double>(
                                 valueListenable: _progress,
                                 builder: (context, value, _) =>
@@ -1826,15 +1885,19 @@ class _HomeState extends State<Home> {
                 : _driveDir.key == '' && _navIndex == 0
                 ? ListFiles(
                     files: () {
-                      return Set<RemoteFile>.from(
+                      final files = Set<RemoteFile>.from(
                         Main.remoteFiles
                             .where(
                               (file) =>
-                                  p.dirname(file.key) == '.' &&
+                                  p.dirname(file.key).isEmpty &&
                                   file.key.endsWith('/'),
                             )
                             .map<RemoteFile>((file) => file),
                       ).toList();
+                      _updateAllSelectableItems(
+                        files.whereType<RemoteFile>().toList(),
+                      );
+                      return files;
                     }(),
                     sortMode: _sortMode,
                     foldersFirst: _foldersFirst,
@@ -1927,7 +1990,9 @@ class _HomeState extends State<Home> {
               _navIndex == 0 &&
                   !_loading.value &&
                   _selection.isEmpty &&
-                  _controlsVisible
+                  _controlsVisible &&
+                  _profile != null &&
+                  _profile!.accessible
               ? Offset.zero
               : const Offset(2, 0),
           child: AnimatedScale(
@@ -1936,26 +2001,27 @@ class _HomeState extends State<Home> {
                 _navIndex == 0 &&
                     !_loading.value &&
                     _selection.isEmpty &&
-                    _controlsVisible
+                    _controlsVisible &&
+                    _profile != null &&
+                    _profile!.accessible
                 ? 1
                 : 0,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (_driveDir.key != '')
-                  FloatingActionButton(
-                    heroTag: 'upload_file',
-                    child: const Icon(Icons.file_upload_outlined),
-                    onPressed: () async {
-                      final XFile? file = await openFile();
-                      if (file != null) {
-                        Main.uploadFile(
-                          p.join(_driveDir.key, p.basename(file.path)),
-                          File(file.path),
-                        );
-                      }
-                    },
-                  ),
+                FloatingActionButton(
+                  heroTag: 'upload_file',
+                  child: const Icon(Icons.file_upload_outlined),
+                  onPressed: () async {
+                    final XFile? file = await openFile();
+                    if (file != null) {
+                      Main.uploadFile(
+                        p.join(_driveDir.key, p.basename(file.path)),
+                        File(file.path),
+                      );
+                    }
+                  },
+                ),
                 SizedBox(height: 16),
                 FloatingActionButton(
                   heroTag: 'upload_directory',

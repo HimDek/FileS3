@@ -2,12 +2,12 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:ini/ini.dart';
 import 'package:crypto/crypto.dart';
-import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
+import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
 
@@ -226,15 +226,13 @@ abstract class IniManager {
   static late File _file;
   static Config? config;
 
-  static Future<void> init() async {
-    _file = File(
-      '${(await getApplicationDocumentsDirectory()).path}/config.ini',
-    );
+  static void init() {
+    _file = File('${Main.documentsDir}/config.ini');
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
       _file.writeAsStringSync(
-        '[aws]\n[s3]\n[directories]\n[modes]\n[ui]\n[download]',
+        '[profiles]\n[directories]\n[modes]\n[ui]\n[download]',
       );
     }
 
@@ -267,40 +265,96 @@ abstract class IniManager {
 }
 
 abstract class ConfigManager {
+  static bool initialized = false;
   static const _storage = FlutterSecureStorage();
 
-  static Future<S3Config> loadS3Config() async {
-    final accessKey = await _storage.read(key: 'aws_access_key') ?? '';
-    final secretKey = await _storage.read(key: 'aws_secret_key') ?? '';
-
-    final region = IniManager.config?.get("aws", "region") ?? '';
-    final bucket = IniManager.config?.get("s3", "bucket") ?? '';
-    final prefix = IniManager.config?.get("s3", "prefix") ?? '';
-    final host = IniManager.config?.get("s3", "host") ?? '';
-
-    return S3Config(
-      accessKey: accessKey,
-      secretKey: secretKey,
-      region: region,
-      bucket: bucket,
-      prefix: prefix,
-      host: host,
-    );
+  static Future<void> init() async {
+    if (!initialized || IniManager.config == null) {
+      if (IniManager.config == null) {
+        IniManager.init();
+      }
+      await _migrateIfNeeded();
+      initialized = true;
+    }
   }
 
-  static Future<void> saveS3Config(S3Config config) async {
-    await _storage.write(key: 'aws_access_key', value: config.accessKey);
-    await _storage.write(key: 'aws_secret_key', value: config.secretKey);
-    if (!IniManager.config!.sections().contains("aws")) {
-      IniManager.config!.addSection("aws");
+  static bool _is_1_0() {
+    return IniManager.config!.sections().contains('aws') &&
+        IniManager.config!.sections().contains('s3');
+  }
+
+  static bool _is_1_1() {
+    return IniManager.config!.sections().contains('profiles');
+  }
+
+  // ignore: non_constant_identifier_names
+  static Future<void> _migrate_1_0_to_1_1() async {
+    final legacyAccessKey = await _storage.read(key: 'aws_access_key') ?? '';
+    final legacySecretKey = await _storage.read(key: 'aws_secret_key') ?? '';
+
+    final legacyRegion = IniManager.config?.get('aws', 'region') ?? '';
+    final legacyBucket = IniManager.config?.get('s3', 'bucket') ?? '';
+    final legacyPrefix = IniManager.config?.get('s3', 'prefix') ?? '';
+    final legacyHost = IniManager.config?.get('s3', 'host') ?? '';
+
+    if (legacyAccessKey.isNotEmpty && legacySecretKey.isNotEmpty) {
+      final defaultConfig = S3Config(
+        accessKey: legacyAccessKey,
+        secretKey: legacySecretKey,
+        region: legacyRegion,
+        bucket: legacyBucket,
+        prefix: legacyPrefix,
+        host: legacyHost,
+      );
+      await saveS3Config('default', defaultConfig);
+      await _storage.delete(key: 'aws_access_key');
+      await _storage.delete(key: 'aws_secret_key');
+      IniManager.config!.removeSection('aws');
+      IniManager.config!.removeSection('s3');
+      IniManager.save();
     }
-    IniManager.config!.set("aws", "region", config.region);
-    if (!IniManager.config!.sections().contains("s3")) {
-      IniManager.config!.addSection("s3");
+  }
+
+  static Future<void> _migrateIfNeeded() async {
+    if (!_is_1_1() && _is_1_0()) {
+      await _migrate_1_0_to_1_1();
     }
-    IniManager.config!.set("s3", "bucket", config.bucket);
-    IniManager.config!.set("s3", "prefix", config.prefix);
-    IniManager.config!.set("s3", "host", config.host);
+  }
+
+  static Future<Map<String, S3Config>> loadS3Config() async {
+    Map<String, S3Config> configs = {};
+    for (String profileName in IniManager.config?.options('profiles') ?? []) {
+      final accessKey =
+          await _storage.read(key: 'aws_access_key_$profileName') ?? '';
+      final secretKey =
+          await _storage.read(key: 'aws_secret_key_$profileName') ?? '';
+      final config = IniManager.config?.get('profiles', profileName) ?? '';
+      final parts = config.split('|');
+      final region = parts.isNotEmpty ? parts[0] : '';
+      final bucket = parts.length > 1 ? parts[1] : '';
+      final prefix = parts.length > 2 ? parts[2] : '';
+      final host = parts.length > 3 ? parts[3] : '';
+      configs[profileName] = S3Config(
+        accessKey: accessKey,
+        secretKey: secretKey,
+        region: region,
+        bucket: bucket,
+        prefix: prefix,
+        host: host,
+      );
+    }
+    return configs;
+  }
+
+  static Future<void> saveS3Config(String name, S3Config config) async {
+    if (!IniManager.config!.sections().contains("profiles")) {
+      IniManager.config!.addSection("profiles");
+    }
+    final profileStr =
+        '${config.region}|${config.bucket}|${config.prefix}|${config.host}';
+    IniManager.config!.set("profiles", name, profileStr);
+    await _storage.write(key: 'aws_access_key_$name', value: config.accessKey);
+    await _storage.write(key: 'aws_secret_key_$name', value: config.secretKey);
     IniManager.save();
   }
 
@@ -371,53 +425,52 @@ abstract class ConfigManager {
   }
 }
 
-abstract class DeletionRegistrar {
-  static late File _file;
-  static Config? config;
-  static DateTime lastPulled = DateTime.fromMillisecondsSinceEpoch(0).toUtc();
+class DeletionRegistrar {
+  final Profile profile;
+  late File _file;
+  late String _key;
+  Config? _config;
+  DateTime _lastPulled = DateTime.fromMillisecondsSinceEpoch(0).toUtc();
 
-  static Future<void> init() async {
-    _file = File(
-      '${(await getApplicationDocumentsDirectory()).path}/deletion-register.ini',
-    );
+  DeletionRegistrar({required this.profile}) {
+    _key = '${profile.name}/deletion-register.ini';
+    _file = File('${Main.documentsDir}/$_key');
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
       _file.writeAsStringSync('[register]');
     }
 
-    config = Config.fromStrings(await _file.readAsLines());
+    _config = Config.fromStrings(_file.readAsLinesSync());
   }
 
-  static void save() {
-    _file.writeAsStringSync(config.toString());
+  void save() {
+    _file.writeAsStringSync(_config.toString());
   }
 
-  static void logDeletions(List<String> keys) {
-    if (!config!.sections().contains('register')) {
-      config!.addSection('register');
+  void logDeletions(List<String> keys) {
+    if (!_config!.sections().contains('register')) {
+      _config!.addSection('register');
     }
     for (String key in keys) {
-      config!.set('register', key, DateTime.now().toUtc().toIso8601String());
+      _config!.set('register', key, DateTime.now().toUtc().toIso8601String());
     }
     save();
   }
 
-  static Future<Map<String, DateTime>> pullDeletions() async {
-    await Main.refreshRemote(dir: 'deletion-register.ini');
+  Future<Map<String, DateTime>> pullDeletions() async {
+    await profile.refreshRemote(dir: _key);
 
-    if (Main.remoteFiles.every((file) => file.key != 'deletion-register.ini')) {
+    if (Main.remoteFiles.every((file) => file.key != _key)) {
       if (kDebugMode) {
         debugPrint("Remote deletion register does not exist.");
       }
       return {};
     }
 
-    final remoteFile = Main.remoteFiles.firstWhere(
-      (file) => file.key == 'deletion-register.ini',
-    );
+    final remoteFile = Main.remoteFiles.firstWhere((file) => file.key == _key);
 
-    if (lastPulled.toUtc().isAfter(
+    if (_lastPulled.toUtc().isAfter(
           remoteFile.lastModified?.toUtc() ??
               DateTime.fromMillisecondsSinceEpoch(0).toUtc(),
         ) &&
@@ -426,14 +479,14 @@ abstract class DeletionRegistrar {
         debugPrint("Local deletion register is up to date.");
       }
       return {
-        for (var entry in config!.options('register')!)
-          entry: DateTime.parse(config!.get('register', entry)!).toUtc(),
+        for (var entry in _config!.options('register')!)
+          entry: DateTime.parse(_config!.get('register', entry)!).toUtc(),
       };
     }
 
     Job job = DownloadJob(
       localFile: _file,
-      remoteKey: 'deletion-register.ini',
+      remoteKey: _key,
       bytes: remoteFile.size,
       md5: () {
         final hex = remoteFile.etag.replaceAll('"', '');
@@ -449,6 +502,7 @@ abstract class DeletionRegistrar {
 
         return Digest(bytes);
       }(),
+      profile: profile,
       onStatus: (job, result) {},
     );
 
@@ -456,24 +510,25 @@ abstract class DeletionRegistrar {
     Job.jobs.remove(job);
 
     if (_file.existsSync()) {
-      config = Config.fromStrings(_file.readAsLinesSync());
+      _config = Config.fromStrings(_file.readAsLinesSync());
     }
 
-    lastPulled = DateTime.now().toUtc();
+    _lastPulled = DateTime.now().toUtc();
 
     return {
-      for (var entry in config!.options('register')!)
-        entry: DateTime.parse(config!.get('register', entry)!).toUtc(),
+      for (var entry in _config!.options('register')!)
+        entry: DateTime.parse(_config!.get('register', entry)!).toUtc(),
     };
   }
 
-  static Future<void> pushDeletions() async {
+  Future<void> pushDeletions() async {
     Job job = UploadJob(
       localFile: _file,
-      remoteKey: 'deletion-register.ini',
+      remoteKey: _key,
       bytes: _file.lengthSync(),
       onStatus: (job, result) {},
       md5: await HashUtil(_file).md5Hash(),
+      profile: profile,
     );
     await job.start();
     Job.jobs.remove(job);
