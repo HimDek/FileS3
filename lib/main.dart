@@ -593,7 +593,7 @@ class _HomeState extends State<Home> {
 
     final List<RemoteFile> files = Main.remoteFiles
         .where(
-          (file) => keys.contains(file.key) || file.key.endsWith('/')
+          (file) => keys.contains(file.key) || !file.key.endsWith('/')
               ? keys.any((d) => p.isWithin(d, file.key))
               : false,
         )
