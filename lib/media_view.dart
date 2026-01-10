@@ -335,16 +335,25 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             staypaused: !widget.isActive,
           )
         : _provider.isText
-        ? TextInteractiveMedia(mediaProvider: _provider)
+        ? Hero(
+            tag: widget.heroTag ?? _provider.hashCode,
+            child: TextInteractiveMedia(mediaProvider: _provider),
+          )
         : _provider is TextMediaProvider
-        ? Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Material(
-              type: MaterialType.transparency,
-              child: SelectableText((_provider as TextMediaProvider).text),
+        ? Hero(
+            tag: widget.heroTag ?? _provider.hashCode,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Material(
+                type: MaterialType.transparency,
+                child: SelectableText((_provider as TextMediaProvider).text),
+              ),
             ),
           )
-        : fallback(context, _provider, _progress);
+        : Hero(
+            tag: widget.heroTag ?? _provider.hashCode,
+            child: fallback(context, _provider, _progress),
+          );
   }
 }
 
@@ -482,6 +491,26 @@ class GalleryState extends State<Gallery> {
                       );
                     }
                   },
+                  onVerticalDragEnd: (details) {
+                    if (details.primaryVelocity != null &&
+                        details.primaryVelocity! > 10) {
+                      Navigator.of(context).pop();
+                    }
+                    if (details.primaryVelocity != null &&
+                        details.primaryVelocity! < -10) {
+                      if (_allowPaging) {
+                        chromeVisible.value = true;
+                        sheetController.animateTo(
+                          0.7,
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOut,
+                        );
+                        SystemChrome.setEnabledSystemUIMode(
+                          SystemUiMode.edgeToEdge,
+                        );
+                      }
+                    }
+                  },
                   child: _itemBuilder(context, index),
                 ),
               ),
@@ -489,9 +518,9 @@ class GalleryState extends State<Gallery> {
                 controller: sheetController,
                 initialChildSize: 0,
                 minChildSize: 0,
-                maxChildSize: 0.6,
+                maxChildSize: 0.7,
                 snap: true,
-                snapSizes: const [0.125, 0.6],
+                snapSizes: const [0.125, 0.7],
                 snapAnimationDuration: const Duration(milliseconds: 100),
                 builder: (context, scrollController) {
                   return Container(
@@ -556,27 +585,26 @@ class MediaPreviewState extends State<MediaPreview> {
   bool _isLoading = true;
   double _progress = 0.0;
 
-  Future<void> _loadMedia() async {
-    _provider = widget.mediaProvider;
-    if (_provider is MemoryMediaProvider) {
-      setState(() {
-        _isLoading = false;
-      });
-      return;
-    }
-    if (_provider is MyUrlMediaProvider) {
-      _provider = await ((_provider as MyUrlMediaProvider)).toMemoryProvider(
-        onProgress: (int received, int total) {
-          _progress = total != 0 ? received / total : 0.0;
-        },
-      );
-    } else {
-      _provider = await _provider.toMemoryProvider();
-    }
-    setState(() {
-      _isLoading = false;
-    });
-  }
+  // Future<void> _loadMedia() async {
+  //   if (_provider is MemoryMediaProvider) {
+  //     setState(() {
+  //       _isLoading = false;
+  //     });
+  //     return;
+  //   }
+  //   if (_provider is MyUrlMediaProvider) {
+  //     _provider = await ((_provider as MyUrlMediaProvider)).toMemoryProvider(
+  //       onProgress: (int received, int total) {
+  //         _progress = total != 0 ? received / total : 0.0;
+  //       },
+  //     );
+  //   } else {
+  //     _provider = await _provider.toMemoryProvider();
+  //   }
+  //   setState(() {
+  //     _isLoading = false;
+  //   });
+  // }
 
   Widget fallback(_, media, progress) => Icon(
     media.isImage
@@ -603,39 +631,29 @@ class MediaPreviewState extends State<MediaPreview> {
   @override
   void initState() {
     super.initState();
-    _loadMedia();
+    _provider = widget.mediaProvider;
+    // _loadMedia();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return fallback(context, widget.mediaProvider, _progress);
-    }
-    if (_provider.isImage) {
-      return ImagePreview(
-        mediaProvider: _provider,
-        width: widget.width,
-        height: widget.height,
-      );
-    }
-    if (_provider is TextMediaProvider) {
-      return Material(
-        type: MaterialType.transparency,
-        child: SizedBox(
-          width: widget.width,
-          height: widget.height,
-          child: Column(
-            children: [
-              Text(
-                _provider.name,
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    return fallback(context, widget.mediaProvider, _progress);
+    return _provider.isImage
+        ? (_provider is UrlMediaProvider)
+              ? Image(
+                  image: NetworkImage((_provider as UrlMediaProvider).url),
+                  fit: BoxFit.cover,
+                )
+              : Image(
+                  image: FileImage((_provider as FileMediaProvider).file),
+                  fit: BoxFit.cover,
+                )
+        : _provider.mediaType == 'application/pdf'
+        ? fallback(context, _provider, _progress)
+        : _provider.isAudio
+        ? fallback(context, _provider, _progress)
+        : _provider.isVideo
+        ? fallback(context, _provider, _progress)
+        : fallback(context, _provider, _progress);
   }
 }
 

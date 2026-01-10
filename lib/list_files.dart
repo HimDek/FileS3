@@ -171,16 +171,21 @@ class ListFiles extends StatelessWidget {
           })
           .toList();
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => Gallery(
-            files: galleryFiles,
-            initialIndex: galleryFiles.indexWhere(
-              (f) => f.file.key == item.key,
-            ),
-            buildContextMenu: (file) {
-              return buildContextMenu(context, file);
-            },
-          ),
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) {
+            return HeroControllerScope(
+              controller: MaterialApp.createMaterialHeroController(),
+              child: Gallery(
+                files: galleryFiles,
+                initialIndex: galleryFiles.indexWhere(
+                  (f) => f.file.key == item.key,
+                ),
+                buildContextMenu: (file) {
+                  return buildContextMenu(context, file);
+                },
+              ),
+            );
+          },
         ),
       );
     };
@@ -305,90 +310,85 @@ class ListFiles extends StatelessWidget {
                     icon: Icon(Icons.more_vert),
                   ),
           )
-        : Hero(
-            tag: item.key,
-            child: Material(
-              child: InkWell(
-                onTap: galleryBuilder(context, item),
-                child: ListTile(
-                  dense: MediaQuery.of(context).size.width < 600 ? true : false,
-                  visualDensity: MediaQuery.of(context).size.width < 600
-                      ? VisualDensity.compact
-                      : VisualDensity.standard,
-                  selected: selection.any((selected) {
-                    return selected.key == item.key;
-                  }),
-                  selectedTileColor: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.1),
-                  selectedColor: Theme.of(context).colorScheme.primary,
-                  leading: GestureDetector(
-                    onTap: galleryBuilder(context, item),
-                    child: preview(item),
-                  ),
-                  title: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Text(
-                      p.isWithin(relativeto.key, item.key)
-                          ? p.relative(item.key, from: relativeto.key)
-                          : item.file!.key,
-                    ),
-                  ),
-                  subtitle: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        Text(timeToReadable(item.file!.lastModified!)),
-                        SizedBox(width: 8),
-                        Text(bytesToReadable(item.size)),
-                        SizedBox(width: 8),
-                        File(
-                              Main.pathFromKey(item.key) ?? item.key,
-                            ).existsSync()
-                            ? Icon(Icons.download_done, size: 16)
-                            : Icon(
-                                Icons.cloud_download,
-                                color: Theme.of(context).colorScheme.primary,
-                                size: 16,
-                              ),
-                        SizedBox(width: 8),
-                        Text(
-                          item.key.split('.').length > 1
-                              ? '.${item.key.split('.').last}'
-                              : '',
-                        ),
-                      ],
-                    ),
-                  ),
-                  trailing: selection.isNotEmpty
-                      ? selection.any((selected) {
-                              return selected.key == item.key;
-                            })
-                            ? Icon(Icons.check_circle)
-                            : selectionAction == SelectionAction.none
-                            ? Icon(Icons.circle_outlined)
-                            : null
-                      : IconButton(
-                          onPressed: () async {
-                            showContextMenu(item.file!);
-                          },
-                          icon: Icon(Icons.more_vert),
-                        ),
-                  onTap:
-                      selection.isNotEmpty &&
-                          selectionAction == SelectionAction.none
-                      ? () {
-                          select(item.file!);
-                        }
-                      : selectionAction != SelectionAction.none
-                      ? null
-                      : galleryBuilder(context, item),
-                  onLongPress: selectionAction == SelectionAction.none
-                      ? () {
-                          select(item.file!);
-                        }
-                      : null,
+        : Material(
+            child: InkWell(
+              onTap: galleryBuilder(context, item),
+              child: ListTile(
+                dense: MediaQuery.of(context).size.width < 600 ? true : false,
+                visualDensity: MediaQuery.of(context).size.width < 600
+                    ? VisualDensity.compact
+                    : VisualDensity.standard,
+                selected: selection.any((selected) {
+                  return selected.key == item.key;
+                }),
+                selectedTileColor: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.1),
+                selectedColor: Theme.of(context).colorScheme.primary,
+                leading: GestureDetector(
+                  onTap: galleryBuilder(context, item),
+                  child: Hero(tag: item.key, child: preview(item)),
                 ),
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(
+                    p.isWithin(relativeto.key, item.key)
+                        ? p.relative(item.key, from: relativeto.key)
+                        : item.file!.key,
+                  ),
+                ),
+                subtitle: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Text(timeToReadable(item.file!.lastModified!)),
+                      SizedBox(width: 8),
+                      Text(bytesToReadable(item.size)),
+                      SizedBox(width: 8),
+                      File(Main.pathFromKey(item.key) ?? item.key).existsSync()
+                          ? Icon(Icons.download_done, size: 16)
+                          : Icon(
+                              Icons.cloud_download,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 16,
+                            ),
+                      SizedBox(width: 8),
+                      Text(
+                        item.key.split('.').length > 1
+                            ? '.${item.key.split('.').last}'
+                            : '',
+                      ),
+                    ],
+                  ),
+                ),
+                trailing: selection.isNotEmpty
+                    ? selection.any((selected) {
+                            return selected.key == item.key;
+                          })
+                          ? Icon(Icons.check_circle)
+                          : selectionAction == SelectionAction.none
+                          ? Icon(Icons.circle_outlined)
+                          : null
+                    : IconButton(
+                        onPressed: () async {
+                          showContextMenu(item.file!);
+                        },
+                        icon: Icon(Icons.more_vert),
+                      ),
+                onTap:
+                    selection.isNotEmpty &&
+                        selectionAction == SelectionAction.none
+                    ? () {
+                        select(item.file!);
+                      }
+                    : selectionAction != SelectionAction.none
+                    ? null
+                    : galleryBuilder(context, item),
+                onLongPress: selectionAction == SelectionAction.none
+                    ? () {
+                        select(item.file!);
+                      }
+                    : null,
               ),
             ),
           );
@@ -465,78 +465,73 @@ class ListFiles extends StatelessWidget {
                   : Icons.cloud_circle_rounded,
             ),
           )
-        : Hero(
-            tag: item.key,
-            child: MyGridTile(
-              selected: selection.any((selected) {
-                return selected.key == item.key;
-              }),
-              footer: Column(
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Text(
-                      p.isWithin(relativeto.key, item.key)
-                          ? p.relative(item.key, from: relativeto.key)
-                          : item.file!.key,
-                    ),
+        : MyGridTile(
+            selected: selection.any((selected) {
+              return selected.key == item.key;
+            }),
+            footer: Column(
+              children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(
+                    p.isWithin(relativeto.key, item.key)
+                        ? p.relative(item.key, from: relativeto.key)
+                        : item.file!.key,
                   ),
-                ],
-              ),
-              topLeftBadge: Padding(
-                padding: EdgeInsets.all(16),
-                child: File(Main.pathFromKey(item.key) ?? item.key).existsSync()
-                    ? Icon(Icons.download_done, size: 16)
-                    : Icon(
-                        Icons.cloud_download,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 16,
-                      ),
-              ),
-              topRightBadge: selection.isNotEmpty
-                  ? selectionAction == SelectionAction.none
-                        ? IconButton(
-                            icon: Icon(
-                              selection.isEmpty ||
-                                      selection.any((selected) {
-                                        return selected.key == item.key;
-                                      })
-                                  ? Icons.check_circle
-                                  : Icons.circle_outlined,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            onPressed: () {
-                              select(item.file!);
-                            },
-                          )
-                        : selection.any((selected) {
-                            return selected.key == item.key;
-                          })
-                        ? IconButton(
-                            icon: Icon(Icons.check_circle),
-                            onPressed: null,
-                            color: Theme.of(context).colorScheme.primary,
-                            disabledColor: Theme.of(
-                              context,
-                            ).colorScheme.primary,
-                          )
-                        : null
-                  : IconButton(
-                      onPressed: () async {
-                        showContextMenu(item.file!);
-                      },
-                      icon: Icon(Icons.more_vert),
-                    ),
-              onLongPress: selectionAction == SelectionAction.none
-                  ? () {
-                      select(item.file!);
-                    }
-                  : null,
-              child: Material(
-                child: InkWell(
-                  onTap: galleryBuilder(context, item),
-                  child: preview(item),
                 ),
+              ],
+            ),
+            topLeftBadge: Padding(
+              padding: EdgeInsets.all(16),
+              child: File(Main.pathFromKey(item.key) ?? item.key).existsSync()
+                  ? Icon(Icons.download_done, size: 16)
+                  : Icon(
+                      Icons.cloud_download,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 16,
+                    ),
+            ),
+            topRightBadge: selection.isNotEmpty
+                ? selectionAction == SelectionAction.none
+                      ? IconButton(
+                          icon: Icon(
+                            selection.isEmpty ||
+                                    selection.any((selected) {
+                                      return selected.key == item.key;
+                                    })
+                                ? Icons.check_circle
+                                : Icons.circle_outlined,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          onPressed: () {
+                            select(item.file!);
+                          },
+                        )
+                      : selection.any((selected) {
+                          return selected.key == item.key;
+                        })
+                      ? IconButton(
+                          icon: Icon(Icons.check_circle),
+                          onPressed: null,
+                          color: Theme.of(context).colorScheme.primary,
+                          disabledColor: Theme.of(context).colorScheme.primary,
+                        )
+                      : null
+                : IconButton(
+                    onPressed: () async {
+                      showContextMenu(item.file!);
+                    },
+                    icon: Icon(Icons.more_vert),
+                  ),
+            onLongPress: selectionAction == SelectionAction.none
+                ? () {
+                    select(item.file!);
+                  }
+                : null,
+            child: Material(
+              child: InkWell(
+                onTap: galleryBuilder(context, item),
+                child: Hero(tag: item.key, child: preview(item)),
               ),
             ),
           );

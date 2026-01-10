@@ -2026,9 +2026,6 @@ class _HomeState extends State<Home> {
                           (file) =>
                               p.normalize(p.dirname(file.key)) ==
                                   p.normalize(_driveDir.key) &&
-                              !Main.ignoreKeyRegexps.any(
-                                (regexp) => RegExp(regexp).hasMatch(file.key),
-                              ) &&
                               !Job.jobs.any(
                                 (job) =>
                                     job.remoteKey == file.key &&
