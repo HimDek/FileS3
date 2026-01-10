@@ -803,7 +803,7 @@ class FileContextOption {
       rename(handler, context),
       if (handler.removable())
         deleteUploaded(handler, context)
-      else
+      else if (handler.downloaded())
         deleteLocal(handler, context),
       delete(handler, context),
     ];
@@ -1137,7 +1137,8 @@ class FilesContextOption {
       copy(copyKey),
       if (handler.removableFiles().isNotEmpty)
         deleteUploaded(context, handler, handler.removableFiles()),
-      deleteLocalAll(context, handler, handler.downloadedFiles()),
+      if (handler.downloadedFiles().isNotEmpty)
+        deleteLocalAll(context, handler, handler.downloadedFiles()),
       deleteAll(context, handler, clearSelection),
     ];
   }
@@ -1412,7 +1413,7 @@ class DirectoryContextOption {
       if (handler.rename('any name') != null) rename(context, handler),
       if (handler.removableFiles().isNotEmpty)
         deleteUploaded(context, handler, handler.removableFiles()),
-      deleteLocal(context, handler),
+      if (handler.localExists()) deleteLocal(context, handler),
       delete(context, handler),
     ];
   }
@@ -1708,7 +1709,8 @@ class DirectoriesContextOption {
       copy(copyKey),
       if (handler.removableFiles().isNotEmpty)
         deleteUploaded(handler, context, handler.removableFiles()),
-      deleteLocal(handler, context, handler.localDirectories()),
+      if (handler.localDirectories().isNotEmpty)
+        deleteLocal(handler, context, handler.localDirectories()),
       deleteAll(handler, context, clearSelection),
     ];
   }
@@ -2054,7 +2056,9 @@ class BulkContextOption {
       if (directoriesHandler.removableFiles().isNotEmpty ||
           filesHandler.removableFiles().isNotEmpty)
         deleteUploaded(directoriesHandler, filesHandler, context),
-      deleteLocalAll(directoriesHandler, filesHandler, context),
+      if (directoriesHandler.localDirectories().isNotEmpty ||
+          filesHandler.downloadedFiles().isNotEmpty)
+        deleteLocalAll(directoriesHandler, filesHandler, context),
       deleteAll(directoriesHandler, filesHandler, context, clearSelection),
     ];
   }
