@@ -196,6 +196,17 @@ abstract class Main {
 
   static Future<void> listDirectories({bool background = false}) async {
     setLoadingState?.call(true);
+
+    if (!background) {
+      Main.remoteFiles = (await ConfigManager.loadRemoteFiles())
+          .where(
+            (file) => profiles.any(
+              (profile) => profile.name == file.key.split('/').first,
+            ),
+          )
+          .toList();
+    }
+
     for (final profile in profiles) {
       await profile.listDirectories(background: background);
     }

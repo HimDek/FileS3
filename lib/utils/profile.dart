@@ -59,10 +59,6 @@ class Profile {
   Future<void> listDirectories({bool background = false}) async {
     setLoadingState?.call(true);
 
-    if (!background) {
-      Main.remoteFiles = await ConfigManager.loadRemoteFiles();
-    }
-
     if (fileManager == null) {
       accessible = false;
       setLoadingState?.call(false);
