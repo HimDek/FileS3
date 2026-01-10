@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:files3/models.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -25,6 +26,127 @@ class GalleryProps {
     required this.url,
     required this.path,
   });
+}
+
+enum DragDirection { none, vertical, horizontal }
+
+class PointerGestureRouter extends StatefulWidget {
+  final Widget child;
+
+  /// Whether tap should be accepted
+  final bool Function() allowTap;
+
+  /// Whether vertical drag should be intercepted
+  final bool Function() allowVerticalDrag;
+
+  final VoidCallback? onTap;
+
+  /// Per-frame vertical delta
+  final ValueChanged<double>? onVerticalDrag;
+
+  /// Called when finger is released, total signed dy
+  final ValueChanged<double>? onVerticalDragEnd;
+
+  final ValueChanged<DragDirection>? onDragStart;
+
+  const PointerGestureRouter({
+    required this.child,
+    required this.allowTap,
+    required this.allowVerticalDrag,
+    this.onTap,
+    this.onVerticalDrag,
+    this.onVerticalDragEnd,
+    this.onDragStart,
+    super.key,
+  });
+
+  @override
+  State<PointerGestureRouter> createState() => _PointerGestureRouterState();
+}
+
+class _PointerGestureRouterState extends State<PointerGestureRouter> {
+  static const double _tapSlop = 12; // same as Flutter
+  static const double _dragStart = 18; // when direction locks
+
+  Offset _start = Offset.zero;
+  Offset _last = Offset.zero;
+
+  int _pointers = 0;
+  bool _moved = false;
+  bool _dragging = false;
+
+  double _totalDy = 0;
+  DragDirection _direction = DragDirection.none;
+
+  DateTime _downTime = DateTime.now();
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+
+      onPointerDown: (e) {
+        _pointers++;
+        if (_pointers == 1) {
+          _start = e.position;
+          _last = e.position;
+          _downTime = DateTime.now();
+          _moved = false;
+          _dragging = false;
+          _totalDy = 0;
+          _direction = DragDirection.none;
+        }
+      },
+
+      onPointerMove: (e) {
+        if (_pointers != 1) return;
+
+        final total = e.position - _start;
+        final delta = e.position - _last;
+
+        // Lock direction once movement exceeds threshold
+        if (_direction == DragDirection.none && total.distance > _dragStart) {
+          _direction = total.dy.abs() > total.dx.abs()
+              ? DragDirection.vertical
+              : DragDirection.horizontal;
+          widget.onDragStart?.call(_direction);
+        }
+
+        if (_direction == DragDirection.vertical &&
+            widget.allowVerticalDrag()) {
+          _dragging = true;
+          _totalDy += delta.dy;
+          widget.onVerticalDrag?.call(delta.dy);
+        } else if (total.distance > _tapSlop) {
+          _moved = true;
+        }
+
+        _last = e.position;
+      },
+
+      onPointerUp: (e) {
+        _pointers--;
+        if (_pointers == 0) {
+          final elapsed = DateTime.now().difference(_downTime).inMilliseconds;
+
+          if (_dragging) {
+            widget.onVerticalDragEnd?.call(_totalDy);
+          } else if (!_moved && elapsed < 220 && widget.allowTap()) {
+            widget.onTap?.call();
+          }
+        }
+      },
+
+      onPointerCancel: (_) {
+        _pointers = 0;
+        _dragging = false;
+        _moved = false;
+        _direction = DragDirection.none;
+      },
+
+      child: widget.child,
+    );
+  }
 }
 
 class AudioVideoInteractiveMedia extends StatefulWidget {
@@ -190,6 +312,7 @@ class InteractiveMediaView extends StatefulWidget {
   final MediaProvider mediaProvider;
   final String? heroTag;
   final Function(bool paging)? setPaging;
+  final Function(bool contextMenu)? setContextMenu;
   final bool isActive;
 
   const InteractiveMediaView({
@@ -197,6 +320,7 @@ class InteractiveMediaView extends StatefulWidget {
     this.heroTag,
     required this.mediaProvider,
     this.setPaging,
+    this.setContextMenu,
     this.isActive = false,
   });
 
@@ -208,6 +332,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
   late MediaProvider _provider;
   bool _loading = true;
   double _progress = 0.0;
+  double pdfscale = 1;
 
   final PhotoViewController _photoViewController = PhotoViewController();
   final PhotoViewScaleStateController _photoViewScaleStateController =
@@ -262,18 +387,17 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
     super.initState();
     _provider = widget.mediaProvider;
     // _loadMedia();
-    _pdfViewerController.addListener(() {
-      if (widget.setPaging != null) {
-        widget.setPaging!(_pdfViewerController.currentZoom <= 1.0);
-      }
-    });
-
-    _photoViewScaleStateController.outputScaleStateStream.listen((value) {
-      if (widget.setPaging != null) {
-        widget.setPaging!(
-          _photoViewScaleStateController.scaleState ==
-              PhotoViewScaleState.initial,
-        );
+    // Force correct default state when page becomes active
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_provider.isImage) {
+        widget.setContextMenu?.call(true);
+        widget.setPaging?.call(true);
+      } else if (_provider.mediaType == 'application/pdf') {
+        widget.setContextMenu?.call(false);
+        widget.setPaging?.call(true);
+      } else {
+        widget.setContextMenu?.call(true);
+        widget.setPaging?.call(true);
       }
     });
   }
@@ -295,14 +419,9 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             ),
             basePosition: Alignment.center,
             enableRotation: true,
-            scaleStateChangedCallback: (scaleState) {
-              if (scaleState == PhotoViewScaleState.initial &&
-                  widget.setPaging != null) {
-                widget.setPaging!(true);
-              } else if (scaleState != PhotoViewScaleState.initial &&
-                  widget.setPaging != null) {
-                widget.setPaging!(false);
-              }
+            scaleStateChangedCallback: (value) {
+              widget.setPaging?.call(value == PhotoViewScaleState.initial);
+              widget.setContextMenu?.call(true);
             },
           )
         : _provider.mediaType == 'application/pdf'
@@ -312,6 +431,16 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
                 _provider is UrlMediaProvider || _provider is FileMediaProvider
                 ? PdfViewer(
                     controller: _pdfViewerController,
+                    params: PdfViewerParams(
+                      enableTextSelection: true,
+                      onInteractionUpdate: (details) {
+                        widget.setPaging?.call(details.scale <= 1.0);
+                        widget.setContextMenu?.call(false);
+                        setState(() {
+                          pdfscale = details.scale;
+                        });
+                      },
+                    ),
                     _provider is UrlMediaProvider
                         ? PdfDocumentRefUri(
                             Uri.parse((_provider as UrlMediaProvider).url),
@@ -380,19 +509,28 @@ class GalleryState extends State<Gallery> {
       DraggableScrollableController();
   late int _currentIndex;
   bool _allowPaging = true;
+  bool _allowContextMenu = true;
+  double dismissOffset = 0.0;
+
+  void _showContextMenu() {
+    sheetController.animateTo(
+      0.7,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
 
   void _setPaging(bool paging) {
     setState(() {
       _allowPaging = paging;
-      if (!_allowPaging) {
-        chromeVisible.value = false;
-        sheetController.animateTo(
-          0.0,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeIn,
-        );
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
-      }
+      chromeVisible.value = _allowPaging ? chromeVisible.value : false;
+    });
+  }
+
+  void _setContextMenu(bool allow) {
+    setState(() {
+      _allowContextMenu = allow;
     });
   }
 
@@ -424,6 +562,7 @@ class GalleryState extends State<Gallery> {
         description: widget.files[index].description,
       ),
       setPaging: _setPaging,
+      setContextMenu: _setContextMenu,
       isActive: index == _currentIndex,
     );
   }
@@ -435,6 +574,23 @@ class GalleryState extends State<Gallery> {
       _currentIndex = widget.initialIndex;
     });
     _pageController = PageController(initialPage: _currentIndex);
+    chromeVisible.addListener(() {
+      if (chromeVisible.value) {
+        sheetController.animateTo(
+          0.125,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
+        );
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      } else {
+        sheetController.animateTo(
+          0.0,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeIn,
+        );
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+      }
+    });
   }
 
   @override
@@ -443,6 +599,7 @@ class GalleryState extends State<Gallery> {
       valueListenable: chromeVisible,
       builder: (context, value, child) {
         return Scaffold(
+          backgroundColor: Colors.black,
           appBar: PreferredSize(
             preferredSize: const Size.fromHeight(kToolbarHeight),
             child: AnimatedSlide(
@@ -451,7 +608,9 @@ class GalleryState extends State<Gallery> {
               curve: Curves.easeInOut,
               child: AppBar(
                 backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
-                title: Text("${_currentIndex + 1} / ${widget.files.length}"),
+                title: Text(
+                  "${chromeVisible.value} Paging: ${_allowPaging} Context Menu: ${_allowContextMenu}",
+                ),
               ),
             ),
           ),
@@ -465,54 +624,69 @@ class GalleryState extends State<Gallery> {
                     : const NeverScrollableScrollPhysics(),
                 itemCount: widget.files.length,
                 onPageChanged: (i) => setState(() => _currentIndex = i),
-                itemBuilder: (context, index) => GestureDetector(
-                  behavior: HitTestBehavior.translucent,
+                itemBuilder: (context, index) => PointerGestureRouter(
+                  allowTap: () => _allowPaging,
+                  allowVerticalDrag: () => _allowPaging && _allowContextMenu,
                   onTap: () {
-                    chromeVisible.value = _allowPaging
-                        ? !chromeVisible.value
-                        : false;
-                    if (chromeVisible.value) {
-                      sheetController.animateTo(
-                        0.125,
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeOut,
-                      );
-                      SystemChrome.setEnabledSystemUIMode(
-                        SystemUiMode.edgeToEdge,
-                      );
+                    chromeVisible.value = !chromeVisible.value;
+                  },
+                  onVerticalDrag: (dy) {
+                    dismissOffset += dy * 0.7; // resistance
+                    dismissOffset = dismissOffset.clamp(-200, 300);
+                    setState(() {});
+                  },
+                  onVerticalDragEnd: (totalDy) {
+                    if (totalDy > 100) {
+                      chromeVisible.value = false;
+                      Navigator.pop(context);
+                      dismissOffset = 0;
+                    } else if (totalDy < -100) {
+                      chromeVisible.value = true;
+                      _showContextMenu();
+                      dismissOffset = 0;
                     } else {
-                      sheetController.animateTo(
-                        0.0,
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeIn,
-                      );
-                      SystemChrome.setEnabledSystemUIMode(
-                        SystemUiMode.immersive,
-                      );
+                      dismissOffset = 0;
+                      setState(() {});
                     }
                   },
-                  onVerticalDragEnd: (details) {
-                    if (details.primaryVelocity != null &&
-                        details.primaryVelocity! > 10) {
-                      Navigator.of(context).pop();
-                    }
-                    if (details.primaryVelocity != null &&
-                        details.primaryVelocity! < -10) {
-                      if (_allowPaging) {
-                        chromeVisible.value = true;
-                        sheetController.animateTo(
-                          0.7,
-                          duration: const Duration(milliseconds: 260),
-                          curve: Curves.easeOut,
-                        );
-                        SystemChrome.setEnabledSystemUIMode(
-                          SystemUiMode.edgeToEdge,
-                        );
-                      }
-                    }
-                  },
-                  child: _itemBuilder(context, index),
+                  child: Transform.translate(
+                    offset: Offset(0, dismissOffset),
+                    child: Transform.scale(
+                      scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.1),
+                      child: _itemBuilder(context, index),
+                    ),
+                  ),
                 ),
+
+                //  GestureDetector(
+                //   behavior: HitTestBehavior.opaque,
+                //   onTap: () {
+                //     chromeVisible.value = _allowPaging
+                //         ? !chromeVisible.value
+                //         : false;
+                //   },
+                //   onVerticalDragEnd: _allowPaging && _allowContextMenu
+                //       ? (details) {
+                //           if (details.primaryVelocity != null &&
+                //               details.primaryVelocity! > 10) {
+                //             Navigator.of(context).pop();
+                //           }
+                //           if (details.primaryVelocity != null &&
+                //               details.primaryVelocity! < -10) {
+                //             chromeVisible.value = true;
+                //             sheetController.animateTo(
+                //               0.7,
+                //               duration: const Duration(milliseconds: 260),
+                //               curve: Curves.easeOut,
+                //             );
+                //             SystemChrome.setEnabledSystemUIMode(
+                //               SystemUiMode.edgeToEdge,
+                //             );
+                //           }
+                //         }
+                //       : null,
+                //   child: _itemBuilder(context, index),
+                // ),
               ),
               DraggableScrollableSheet(
                 controller: sheetController,
