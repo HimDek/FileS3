@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:files3/models.dart';
 import 'package:flutter/gestures.dart';
@@ -607,10 +608,8 @@ class GalleryState extends State<Gallery> {
               duration: const Duration(milliseconds: 100),
               curve: Curves.easeInOut,
               child: AppBar(
-                backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
-                title: Text(
-                  "${chromeVisible.value} Paging: ${_allowPaging} Context Menu: ${_allowContextMenu}",
-                ),
+                backgroundColor: Colors.black,
+                title: Text("${_currentIndex + 1} / ${widget.files.length}"),
               ),
             ),
           ),
@@ -652,7 +651,7 @@ class GalleryState extends State<Gallery> {
                   child: Transform.translate(
                     offset: Offset(0, dismissOffset),
                     child: Transform.scale(
-                      scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.1),
+                      scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
                       child: _itemBuilder(context, index),
                     ),
                   ),
@@ -699,9 +698,7 @@ class GalleryState extends State<Gallery> {
                 builder: (context, scrollController) {
                   return Container(
                     decoration: BoxDecoration(
-                      color:
-                          Theme.of(context).bottomSheetTheme.backgroundColor ??
-                          Theme.of(context).colorScheme.surface,
+                      color: Colors.black,
                       borderRadius:
                           Theme.of(context).bottomSheetTheme.shape
                               is RoundedRectangleBorder
@@ -814,7 +811,9 @@ class MediaPreviewState extends State<MediaPreview> {
     return _provider.isImage
         ? (_provider is UrlMediaProvider)
               ? Image(
-                  image: NetworkImage((_provider as UrlMediaProvider).url),
+                  image: CachedNetworkImageProvider(
+                    (_provider as UrlMediaProvider).url,
+                  ),
                   fit: BoxFit.cover,
                 )
               : Image(

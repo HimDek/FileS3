@@ -332,8 +332,9 @@ abstract class Main {
     Job.onProgressUpdate = () {
       setHomeState?.call();
     };
-    await refreshProfiles();
-    await listDirectories(background: background);
+    refreshProfiles().then((_) {
+      listDirectories(background: background);
+    });
   }
 }
 

@@ -1143,6 +1143,8 @@ class _HomeState extends State<Home> {
       }
     }
 
+    await Main.init();
+
     final uiConfig = ConfigManager.loadUiConfig();
     themeController.update(uiConfig.colorMode);
     ultraDarkController.update(uiConfig.ultraDark);
@@ -1160,7 +1162,6 @@ class _HomeState extends State<Home> {
     Main.setHomeState = () {
       setState(() {});
     };
-    await Main.init();
 
     setState(() {
       _loading.value = false;
