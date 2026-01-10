@@ -454,7 +454,6 @@ abstract class Job {
         await task!.start();
         status = JobStatus.stopped;
         if (bytesCompleted >= bytes) {
-          jobs.remove(this);
           status = JobStatus.completed;
           bytesCompleted = bytes;
           onStatus?.call(this, null);
@@ -721,11 +720,12 @@ class Watcher {
     for (File file in [...result.newFile, ...result.modifiedLocally]) {
       final key = Main.keyFromPath(file.path) ?? '';
       if (Job.jobs.any(
-        (job) =>
-            job.localFile.path == file.path &&
-            job.remoteKey == key &&
-            job.status != JobStatus.completed,
-      )) {
+            (job) =>
+                job.localFile.path == file.path &&
+                job.remoteKey == key &&
+                job.status != JobStatus.completed,
+          ) ||
+          Main.ignoreKeyRegexps.any((regexp) => RegExp(regexp).hasMatch(key))) {
         continue;
       }
       BackupMode mode = Main.backupMode(Main.keyFromPath(file.path) ?? '');
@@ -736,8 +736,12 @@ class Watcher {
 
     for (RemoteFile file in result.modifiedRemotely) {
       if (Job.jobs.any(
-        (job) => job.remoteKey == file.key && job.status != JobStatus.completed,
-      )) {
+            (job) =>
+                job.remoteKey == file.key && job.status != JobStatus.completed,
+          ) ||
+          Main.ignoreKeyRegexps.any(
+            (regexp) => RegExp(regexp).hasMatch(file.key),
+          )) {
         continue;
       }
       BackupMode mode = Main.backupMode(file.key);
@@ -748,8 +752,12 @@ class Watcher {
 
     for (RemoteFile file in result.remoteOnly) {
       if (Job.jobs.any(
-        (job) => job.remoteKey == file.key && job.status != JobStatus.completed,
-      )) {
+            (job) =>
+                job.remoteKey == file.key && job.status != JobStatus.completed,
+          ) ||
+          Main.ignoreKeyRegexps.any(
+            (regexp) => RegExp(regexp).hasMatch(file.key),
+          )) {
         continue;
       }
       if (Main.backupMode(file.key) == BackupMode.sync) {

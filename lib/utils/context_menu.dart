@@ -974,7 +974,9 @@ class FilesContextOption {
               ),
             );
             if (yes ?? false) {
-              handler.deleteUploaded(handler.removableFiles(), true)!.call();
+              await handler
+                  .deleteUploaded(handler.removableFiles(), true)!
+                  .call();
               showSnackBar(
                 const SnackBar(
                   content: Text('Local copies of uploaded files deleted'),
@@ -1014,7 +1016,7 @@ class FilesContextOption {
               ),
             );
             if (yes ?? false) {
-              handler.deleteLocal(true)!.call();
+              await handler.deleteLocal(true)!.call();
               showSnackBar(
                 const SnackBar(
                   content: Text('Local copies of selected files deleted'),
@@ -1074,7 +1076,7 @@ class FilesContextOption {
               ),
             );
             if (yes ?? false) {
-              handler.deleteS3(handler.cloudDeletable(), true)!.call();
+              await handler.deleteS3(handler.cloudDeletable(), true)!.call();
               showSnackBar(
                 const SnackBar(content: Text('Selected files deleted from S3')),
               );
@@ -1113,7 +1115,7 @@ class FilesContextOption {
               ),
             );
             if (yes ?? false) {
-              handler.delete(true)!.call();
+              await handler.delete(true)!.call();
               clearSelection();
               showSnackBar(
                 const SnackBar(
@@ -1513,11 +1515,7 @@ class DirectoriesContextOption {
     icon: handler.download() == null
         ? Icons.file_download_off
         : Icons.file_download_outlined,
-    action: handler.download() == null
-        ? null
-        : () {
-            handler.download();
-          },
+    action: handler.download,
   );
 
   static DirectoriesContextOption saveAllTo(
@@ -1669,7 +1667,7 @@ class DirectoriesContextOption {
               ),
             );
             if (yes ?? false) {
-              handler.deleteLocal(true)!.call();
+              await handler.deleteLocal(true)!.call();
               showSnackBar(
                 const SnackBar(
                   content: Text('Local copies of selected directories deleted'),
@@ -1729,7 +1727,7 @@ class DirectoriesContextOption {
               ),
             );
             if (yes ?? false) {
-              handler.deleteS3(handler.cloudDeletable(), true)!.call();
+              await handler.deleteS3(handler.cloudDeletable(), true)!.call();
               showSnackBar(
                 const SnackBar(
                   content: Text('Selected directories deleted from S3'),
@@ -1769,7 +1767,7 @@ class DirectoriesContextOption {
               ),
             );
             if (yes ?? false) {
-              handler.delete(true)!.call();
+              await handler.delete(true)!.call();
               clearSelection();
               showSnackBar(
                 const SnackBar(
@@ -1968,10 +1966,10 @@ class BulkContextOption {
         ),
       );
       if (yes ?? false) {
-        directoriesHandler
+        await directoriesHandler
             .deleteUploaded(directoriesHandler.removableFiles(), true)!
             .call();
-        filesHandler
+        await filesHandler
             .deleteUploaded(filesHandler.removableFiles(), true)!
             .call();
         showSnackBar(
@@ -2013,7 +2011,7 @@ class BulkContextOption {
       );
       if (yes ?? false) {
         for (final handler in [directoriesHandler, filesHandler]) {
-          handler.deleteLocal(true)!.call();
+          await handler.deleteLocal(true)!.call();
         }
         showSnackBar(
           const SnackBar(
@@ -2056,7 +2054,7 @@ class BulkContextOption {
           false;
       if (yes) {
         for (final handler in [directoriesHandler, filesHandler]) {
-          handler.delete(true)!.call();
+          await handler.delete(true)!.call();
         }
         clearSelection();
         showSnackBar(
@@ -2167,8 +2165,8 @@ Widget buildFileContextMenu(
                       : null,
                   onTap: option.action == null
                       ? null
-                      : () {
-                          option.action!();
+                      : () async {
+                          await option.action!();
                           globalNavigator?.pop();
                         },
                   enabled: option.action != null,
@@ -2398,8 +2396,8 @@ Widget buildDirectoryContextMenu(
                         )
                       : null,
                   onTap: option.action != null
-                      ? () {
-                          option.action!();
+                      ? () async {
+                          await option.action!();
                           globalNavigator?.pop();
                         }
                       : null,
@@ -2451,8 +2449,8 @@ Widget buildDirectoriesContextMenu(
                     ? Text(option.subtitle!)
                     : null,
                 onTap: option.action != null
-                    ? () {
-                        option.action!();
+                    ? () async {
+                        await option.action!();
                         globalNavigator?.pop();
                       }
                     : null,
@@ -2550,8 +2548,8 @@ Widget buildBulkContextMenu(
                       ? Text(option.subtitle!)
                       : null,
                   onTap: option.action != null
-                      ? () {
-                          option.action!(context);
+                      ? () async {
+                          await option.action!(context);
                           globalNavigator?.pop();
                         }
                       : null,
