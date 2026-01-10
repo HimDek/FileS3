@@ -197,6 +197,7 @@ class ListFiles extends StatelessWidget {
             height: 24,
             width: 24,
             child: MediaPreview(
+              remoteKey: item.key,
               height: 24,
               width: 24,
               mediaProvider: getMediaProvider(

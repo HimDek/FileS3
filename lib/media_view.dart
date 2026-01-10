@@ -734,6 +734,7 @@ class GalleryState extends State<Gallery> {
 }
 
 class MediaPreview extends StatefulWidget {
+  final String remoteKey;
   final MediaProvider mediaProvider;
   final double? width;
   final double? height;
@@ -741,6 +742,7 @@ class MediaPreview extends StatefulWidget {
 
   const MediaPreview({
     super.key,
+    required this.remoteKey,
     required this.mediaProvider,
     this.width,
     this.height,
@@ -812,6 +814,7 @@ class MediaPreviewState extends State<MediaPreview> {
         ? (_provider is UrlMediaProvider)
               ? Image(
                   image: CachedNetworkImageProvider(
+                    cacheKey: widget.remoteKey,
                     (_provider as UrlMediaProvider).url,
                   ),
                   fit: BoxFit.cover,
