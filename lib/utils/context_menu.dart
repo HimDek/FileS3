@@ -17,7 +17,6 @@ abstract class ContextActionHandler {
 
   void Function()? download();
   String Function()? saveAs(String? path);
-  Future<String> Function()? deleteLocal(bool? yes);
   Future<String> Function()? delete(bool? yes);
 }
 
@@ -43,8 +42,12 @@ class FileContextActionHandler extends ContextActionHandler {
     return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
   }
 
+  bool downloaded() {
+    return File(Main.pathFromKey(file.key) ?? file.key).existsSync();
+  }
+
   bool removable() {
-    return file.key.endsWith('/') &&
+    return !file.key.endsWith('/') &&
         File(Main.pathFromKey(file.key) ?? file.key).existsSync() &&
         Main.backupMode(file.key) == BackupMode.upload;
   }
@@ -64,9 +67,7 @@ class FileContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return !rootExists() ||
-            File(Main.pathFromKey(file.key) ?? file.key).existsSync() ||
-            downloadFile == null
+    return !rootExists() || downloaded() || downloadFile == null
         ? null
         : () {
             downloadFile!(file);
@@ -119,9 +120,11 @@ class FileContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  @override
   Future<String> Function()? deleteLocal(bool? yes) {
-    return (yes ?? false) && deleteLocalFile != null && !removable()
+    return (yes ?? false) &&
+            deleteLocalFile != null &&
+            !removable() &&
+            downloaded()
         ? () async {
             await deleteLocalFile!(file.key);
             return 'Deleted local copy of ${file.key.split('/').last}';
@@ -165,9 +168,9 @@ class FilesContextActionHandler extends ContextActionHandler {
         .toList();
   }
 
-  List<bool> downloaded() {
+  List<RemoteFile> downloadedFiles() {
     return files
-        .map(
+        .where(
           (file) => File(Main.pathFromKey(file.key) ?? file.key).existsSync(),
         )
         .toList();
@@ -186,9 +189,7 @@ class FilesContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return downloaded().every((exists) => exists) ||
-            rootExists().every((exists) => !exists) ||
-            downloadFile == null
+    return downloadedFiles().length == files.length || downloadFile == null
         ? null
         : () {
             files
@@ -214,7 +215,7 @@ class FilesContextActionHandler extends ContextActionHandler {
   }
 
   List<XFile> Function()? getXFiles() {
-    return downloaded().any((exists) => exists)
+    return downloadedFiles().isNotEmpty
         ? () {
             return files
                 .where(
@@ -242,7 +243,9 @@ class FilesContextActionHandler extends ContextActionHandler {
     List<RemoteFile> removableFiles,
     bool? yes,
   ) {
-    return (yes ?? false) && deleteLocalFile != null
+    return (yes ?? false) &&
+            deleteLocalFile != null &&
+            removableFiles.isNotEmpty
         ? () async {
             for (final file in removableFiles) {
               await deleteLocalFile!(file.key);
@@ -252,17 +255,18 @@ class FilesContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  @override
-  Future<String> Function()? deleteLocal(bool? yes) {
-    return (yes ?? false) && deleteLocalFile != null
+  Future<String> Function()? deleteLocal(
+    bool? yes,
+    List<RemoteFile> downloadedFiles,
+  ) {
+    return (yes ?? false) &&
+            deleteLocalFile != null &&
+            downloadedFiles.isNotEmpty
         ? () async {
-            for (final file in files.where(
-              (file) =>
-                  File(Main.pathFromKey(file.key) ?? file.key).existsSync(),
-            )) {
+            for (final file in downloadedFiles) {
               await deleteLocalFile!(file.key);
             }
-            return 'Deleted local copies of ${files.length} files';
+            return 'Deleted local copies of ${downloadedFiles.length} files';
           }
         : null;
   }
@@ -305,6 +309,10 @@ class DirectoryContextActionHandler extends ContextActionHandler {
               Main.backupMode(f.key) == BackupMode.upload,
         )
         .toList();
+  }
+
+  bool localExists() {
+    return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync();
   }
 
   bool rootExists() {
@@ -354,7 +362,9 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     List<RemoteFile> removableFiles,
     bool? yes,
   ) {
-    return (yes ?? false) && deleteLocalDirectory != null
+    return (yes ?? false) &&
+            deleteLocalDirectory != null &&
+            removableFiles.isNotEmpty
         ? () async {
             for (final file in removableFiles) {
               deleteLocalDirectory!(file.key);
@@ -364,9 +374,8 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  @override
   Future<String> Function()? deleteLocal(bool? yes) {
-    return (yes ?? false) && deleteLocalDirectory != null
+    return (yes ?? false) && deleteLocalDirectory != null && localExists()
         ? () async {
             final key = file.key.endsWith('/') ? file.key : '${file.key}/';
             deleteLocalDirectory!(key);
@@ -407,6 +416,14 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   List<bool> rootExists() {
     return directories
         .map((dir) => p.isAbsolute(Main.pathFromKey(dir.key) ?? dir.key))
+        .toList();
+  }
+
+  List<RemoteFile> localDirectories() {
+    return directories
+        .where(
+          (dir) => Directory(Main.pathFromKey(dir.key) ?? dir.key).existsSync(),
+        )
         .toList();
   }
 
@@ -468,15 +485,19 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  @override
-  Future<String> Function()? deleteLocal(bool? yes) {
-    return (yes ?? false) && deleteLocalDirectory != null
+  Future<String> Function()? deleteLocal(
+    bool? yes,
+    List<RemoteFile> localDirs,
+  ) {
+    return (yes ?? false) &&
+            deleteLocalDirectory != null &&
+            localDirs.isNotEmpty
         ? () async {
-            for (final dir in directories) {
+            for (final dir in localDirs) {
               final key = dir.key.endsWith('/') ? dir.key : '${dir.key}/';
               deleteLocalDirectory!(key);
             }
-            return 'Deleted local copies of ${directories.length} folders';
+            return 'Deleted local copies of ${localDirs.length} folders';
           }
         : null;
   }
@@ -806,17 +827,17 @@ class FilesContextOption {
       FilesContextOption(
         title: handler.download() != null
             ? 'Download'
-            : handler.downloaded().every((downloaded) => downloaded)
+            : handler.downloadedFiles().length == handler.files.length
             ? 'Downloaded'
             : 'Cannot Download',
         subtitle: handler.download() != null
             ? "Only missing files with backup folder set will be downloaded"
-            : handler.downloaded().every((downloaded) => downloaded)
+            : handler.downloadedFiles().length == handler.files.length
             ? null
             : 'Set backup folder to enable downloads',
         icon: handler.download() != null
             ? Icons.file_download_rounded
-            : handler.downloaded().every((downloaded) => downloaded)
+            : handler.downloadedFiles().length == handler.files.length
             ? Icons.file_download_done_rounded
             : Icons.file_download_off_rounded,
         action: handler.download(),
@@ -853,7 +874,7 @@ class FilesContextOption {
         icon: Icons.share_rounded,
         subtitle: handler.getXFiles() == null
             ? 'No downloaded files to share'
-            : handler.downloaded().every((d) => d)
+            : handler.downloadedFiles().length == handler.files.length
             ? null
             : 'Only downloaded files will be shared',
         action: handler.getXFiles() != null
@@ -987,7 +1008,7 @@ class FilesContextOption {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Are you sure you want to delete the local copies of ${handler.files.length} selected files? This action cannot be undone.',
+                      'Are you sure you want to delete the local copies of ${handler.downloadedFiles().length} downloaded files? This action cannot be undone.',
                     ),
                     Container(
                       height: 200,
@@ -998,9 +1019,9 @@ class FilesContextOption {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              for (final file in handler.files)
+                              for (final file in handler.downloadedFiles())
                                 Text(Main.pathFromKey(file.key) ?? file.key),
-                              if (handler.files.isEmpty)
+                              if (handler.downloadedFiles().isEmpty)
                                 const Text('No files to delete'),
                             ],
                           ),
@@ -1022,7 +1043,9 @@ class FilesContextOption {
               ),
             );
             if (yes ?? false) {
-              await handler.deleteLocal(true)!.call();
+              await handler
+                  .deleteLocal(true, handler.downloadedFiles())!
+                  .call();
               showSnackBar(
                 const SnackBar(
                   content: Text('Local copies of selected files deleted'),
@@ -1552,7 +1575,7 @@ class DirectoriesContextOption {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Are you sure you want to delete the local copies of the ${handler.directories.length} selected directories? This action cannot be undone.',
+                      'Are you sure you want to delete the local copies of the ${handler.localDirectories().length} selected directories? This action cannot be undone.',
                     ),
                     Container(
                       height: 200,
@@ -1563,12 +1586,13 @@ class DirectoriesContextOption {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              for (final directory in handler.directories)
+                              for (final directory
+                                  in handler.localDirectories())
                                 Text(
                                   Main.pathFromKey(directory.key) ??
                                       directory.key,
                                 ),
-                              if (handler.directories.isEmpty)
+                              if (handler.localDirectories().isEmpty)
                                 const Text('No directories to delete'),
                             ],
                           ),
@@ -1590,11 +1614,13 @@ class DirectoriesContextOption {
               ),
             );
             if (yes ?? false) {
-              await handler.deleteLocal(true)!.call();
+              await handler
+                  .deleteLocal(true, handler.localDirectories())!
+                  .call();
               showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Local copies of ${handler.directories.length} selected directories deleted',
+                    'Local copies of ${handler.localDirectories().length} selected directories deleted',
                   ),
                 ),
               );
@@ -1885,7 +1911,7 @@ class BulkContextOption {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Are you sure you want to delete the local copies of ${directoriesHandler.directories.length + filesHandler.files.length} selected items? This action cannot be undone.',
+                'Are you sure you want to delete the local copies of ${directoriesHandler.localDirectories().length + filesHandler.downloadedFiles().length} selected items? This action cannot be undone.',
               ),
               Container(
                 height: 200,
@@ -1896,14 +1922,15 @@ class BulkContextOption {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (final directory in directoriesHandler.directories)
+                        for (final directory
+                            in directoriesHandler.localDirectories())
                           Text(
                             Main.pathFromKey(directory.key) ?? directory.key,
                           ),
-                        for (final file in filesHandler.files)
+                        for (final file in filesHandler.downloadedFiles())
                           Text(Main.pathFromKey(file.key) ?? file.key),
-                        if (directoriesHandler.directories.isEmpty &&
-                            filesHandler.files.isEmpty)
+                        if (directoriesHandler.localDirectories().isEmpty &&
+                            filesHandler.downloadedFiles().isEmpty)
                           const Text('No items to delete'),
                       ],
                     ),
@@ -1925,9 +1952,12 @@ class BulkContextOption {
         ),
       );
       if (yes ?? false) {
-        for (final handler in [directoriesHandler, filesHandler]) {
-          await handler.deleteLocal(true)!.call();
-        }
+        await directoriesHandler
+            .deleteLocal(true, directoriesHandler.localDirectories())!
+            .call();
+        await filesHandler
+            .deleteLocal(true, filesHandler.downloadedFiles())!
+            .call();
         showSnackBar(
           const SnackBar(
             content: Text('Local copies of selected items deleted'),
