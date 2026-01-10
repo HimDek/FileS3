@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:files3/utils/job.dart';
 
@@ -30,6 +32,39 @@ enum SortMode {
   sizeDesc,
   typeAsc,
   typeDesc,
+}
+
+enum ViewMode { list, grid }
+
+class ListOptions {
+  SortMode sortMode;
+  ViewMode viewMode;
+  bool foldersFirst;
+
+  ListOptions({
+    this.sortMode = SortMode.nameAsc,
+    this.viewMode = ViewMode.list,
+    this.foldersFirst = true,
+  });
+
+  factory ListOptions.fromJson(String json) {
+    final Map<String, dynamic> data = Map<String, dynamic>.from(
+      jsonDecode(json) as Map,
+    );
+    return ListOptions(
+      sortMode: SortMode.values[data['sortMode'] as int],
+      viewMode: ViewMode.values[data['viewMode'] as int],
+      foldersFirst: data['foldersFirst'] as bool,
+    );
+  }
+
+  String toJson() {
+    return jsonEncode({
+      'sortMode': sortMode.index,
+      'viewMode': viewMode.index,
+      'foldersFirst': foldersFirst,
+    });
+  }
 }
 
 class BackupMode {

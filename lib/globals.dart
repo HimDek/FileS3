@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
-GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-BuildContext? get globalContext => navigatorKey.currentContext;
+GlobalKey globalKey = GlobalKey();
+BuildContext? get globalContext => globalKey.currentContext;
 ScaffoldMessengerState? get globalScaffoldMessenger =>
     globalContext == null ? null : ScaffoldMessenger.of(globalContext!);
-NavigatorState? get globalNavigator => navigatorKey.currentState;
+NavigatorState? get globalNavigator =>
+    globalContext == null ? null : Navigator.of(globalContext!);
 ThemeData? get globalTheme =>
     globalContext == null ? null : Theme.of(globalContext!);
 

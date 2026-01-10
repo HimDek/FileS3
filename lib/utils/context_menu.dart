@@ -2159,16 +2159,16 @@ Widget buildFileContextMenu(
                   visualDensity: VisualDensity.comfortable,
                   leading: Icon(option.icon),
                   title: Text(option.title),
-                  subtitle: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: option.subtitle != null
-                        ? Text(option.subtitle!)
-                        : null,
-                  ),
+                  subtitle: option.subtitle != null
+                      ? SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Text(option.subtitle!),
+                        )
+                      : null,
                   onTap: option.action == null
                       ? null
-                      : () async {
-                          await option.action!();
+                      : () {
+                          option.action!();
                           globalNavigator?.pop();
                         },
                   enabled: option.action != null,
@@ -2398,8 +2398,8 @@ Widget buildDirectoryContextMenu(
                         )
                       : null,
                   onTap: option.action != null
-                      ? () async {
-                          await option.action!();
+                      ? () {
+                          option.action!();
                           globalNavigator?.pop();
                         }
                       : null,
@@ -2451,8 +2451,8 @@ Widget buildDirectoriesContextMenu(
                     ? Text(option.subtitle!)
                     : null,
                 onTap: option.action != null
-                    ? () async {
-                        await option.action!();
+                    ? () {
+                        option.action!();
                         globalNavigator?.pop();
                       }
                     : null,
@@ -2550,8 +2550,8 @@ Widget buildBulkContextMenu(
                       ? Text(option.subtitle!)
                       : null,
                   onTap: option.action != null
-                      ? () async {
-                          await option.action!(context);
+                      ? () {
+                          option.action!(context);
                           globalNavigator?.pop();
                         }
                       : null,

@@ -1,11 +1,9 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:ini/ini.dart';
-import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:enough_media/enough_media.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
@@ -255,7 +253,7 @@ abstract class IniManager {
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
       _file.writeAsStringSync(
-        '[profiles]\n[directories]\n[modes]\n[ui]\n[download]',
+        '[profiles]\n[directories]\n[modes]\n[ui]\n[download]\n[list_options]',
       );
     }
 
@@ -555,93 +553,5 @@ class DeletionRegistrar {
     );
     await job.start();
     Job.jobs.remove(job);
-  }
-}
-
-Future<void> downloadMediaFile({
-  required String url,
-  required String savePath,
-  required Function(int, int) onProgress,
-}) async {
-  final dio = Dio();
-
-  try {
-    await dio.download(
-      url,
-      savePath,
-      onReceiveProgress: (received, total) {
-        if (total != -1) {
-          onProgress(received, total);
-        }
-      },
-
-      options: Options(
-        responseType: ResponseType.bytes,
-        followRedirects: true,
-        validateStatus: (status) => status! < 500,
-      ),
-    );
-  } catch (e) {
-    rethrow;
-  }
-}
-
-MediaProvider getMediaProvider({
-  required String name,
-  required String mediaType,
-  required String url,
-  required String path,
-  int? size,
-  String? description,
-}) {
-  if (File(path).existsSync()) {
-    return MemoryMediaProvider(
-      name,
-      mediaType,
-      File(path).readAsBytesSync(),
-      description: description,
-    );
-  }
-  return MyUrlMediaProvider(
-    name,
-    mediaType,
-    url,
-    path,
-    size: size,
-    description: description,
-  );
-}
-
-class MyUrlMediaProvider extends UrlMediaProvider {
-  final String path;
-
-  const MyUrlMediaProvider(
-    super.name,
-    super.mediaType,
-    super.url,
-    this.path, {
-    super.size,
-    super.description,
-  });
-
-  @override
-  Future<MemoryMediaProvider> toMemoryProvider() async {
-    downloadMediaFile(
-      url: url,
-      savePath: path,
-      onProgress: (received, total) {},
-    );
-    final result = File(path).existsSync()
-        ? File(path).readAsBytesSync()
-        : null;
-    if (result != null) {
-      return MemoryMediaProvider(
-        name,
-        mediaType,
-        result,
-        description: description,
-      );
-    }
-    throw StateError('Unable to download $url');
   }
 }

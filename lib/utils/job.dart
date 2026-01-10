@@ -20,6 +20,9 @@ abstract class Main {
   static Function()? setHomeState;
   static String downloadCacheDir = '';
   static String documentsDir = '';
+  static final List<String> ignoreKeyRegexps = <String>[
+    r'^.*/deletion-register\.ini$',
+  ];
 
   static Profile? profileFromKey(String key) {
     try {
