@@ -673,7 +673,7 @@ class _HomeState extends State<Home> {
       _loading.value = true;
     });
 
-    _deleteS3(dirs, refresh: false, progress: progress);
+    _deleteS3(dirs, refresh: false, progress: progress ?? _progress);
 
     for (final dir
         in dirs
