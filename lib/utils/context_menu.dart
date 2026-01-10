@@ -719,7 +719,7 @@ class FileContextOption {
     title: 'Delete Local Copy',
     subtitle: 'Delete from device',
     icon: Icons.delete_rounded,
-    action: handler.deleteLocalFile == null
+    action: handler.deleteLocal(true) == null
         ? null
         : () async {
             final handle = handler.deleteLocal(
@@ -756,7 +756,7 @@ class FileContextOption {
     title: 'Permanently Delete',
     icon: Icons.delete_forever_rounded,
     subtitle: 'Delete from device as well as S3',
-    action: handler.deleteFiles == null
+    action: handler.delete(true) == null
         ? null
         : () async {
             final handle = handler.delete(
@@ -934,7 +934,7 @@ class FilesContextOption {
     title: 'Remover from Device',
     subtitle: 'Only uploaded files',
     icon: Icons.phonelink_off_rounded,
-    action: handler.deleteLocalFile == null
+    action: handler.deleteUploaded(removableFiles, true) == null
         ? null
         : () async {
             final yes = await showDialog<bool>(
@@ -993,11 +993,12 @@ class FilesContextOption {
   static FilesContextOption deleteLocalAll(
     BuildContext context,
     FilesContextActionHandler handler,
+    List<RemoteFile> downloadedFiles,
   ) => FilesContextOption(
     title: 'Delete Local Copies',
     subtitle: 'Delete from device',
     icon: Icons.delete_rounded,
-    action: handler.deleteLocalFile == null
+    action: handler.deleteLocal(true, downloadedFiles) == null
         ? null
         : () async {
             final yes = await showDialog<bool>(
@@ -1008,7 +1009,7 @@ class FilesContextOption {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Are you sure you want to delete the local copies of ${handler.downloadedFiles().length} downloaded files? This action cannot be undone.',
+                      'Are you sure you want to delete the local copies of ${downloadedFiles.length} downloaded files? This action cannot be undone.',
                     ),
                     Container(
                       height: 200,
@@ -1019,9 +1020,9 @@ class FilesContextOption {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              for (final file in handler.downloadedFiles())
+                              for (final file in downloadedFiles)
                                 Text(Main.pathFromKey(file.key) ?? file.key),
-                              if (handler.downloadedFiles().isEmpty)
+                              if (downloadedFiles.isEmpty)
                                 const Text('No files to delete'),
                             ],
                           ),
@@ -1043,12 +1044,12 @@ class FilesContextOption {
               ),
             );
             if (yes ?? false) {
-              await handler
-                  .deleteLocal(true, handler.downloadedFiles())!
-                  .call();
+              await handler.deleteLocal(true, downloadedFiles)!.call();
               showSnackBar(
-                const SnackBar(
-                  content: Text('Local copies of selected files deleted'),
+                SnackBar(
+                  content: Text(
+                    'Local copies of ${downloadedFiles.length} selected files deleted',
+                  ),
                 ),
               );
             }
@@ -1063,7 +1064,7 @@ class FilesContextOption {
     title: 'Permanently Delete Files',
     icon: Icons.delete_forever_rounded,
     subtitle: 'Delete from device as well as S3',
-    action: handler.deleteFiles == null
+    action: handler.delete(true) == null
         ? null
         : () async {
             final yes = await showDialog<bool>(
@@ -1136,7 +1137,7 @@ class FilesContextOption {
       copy(copyKey),
       if (handler.removableFiles().isNotEmpty)
         deleteUploaded(context, handler, handler.removableFiles()),
-      deleteLocalAll(context, handler),
+      deleteLocalAll(context, handler, handler.downloadedFiles()),
       deleteAll(context, handler, clearSelection),
     ];
   }
@@ -1260,8 +1261,7 @@ class DirectoryContextOption {
     title: 'Remove from Device',
     subtitle: 'Only uploaded files',
     icon: Icons.phonelink_off_rounded,
-    action:
-        handler.removableFiles().isEmpty || handler.deleteLocalDirectory == null
+    action: handler.deleteUploaded(removableFiles, true) == null
         ? null
         : () async {
             bool? yes = await showDialog<bool>(
@@ -1330,7 +1330,7 @@ class DirectoryContextOption {
     title: 'Delete Local Copy',
     subtitle: 'Delete from device',
     icon: Icons.folder_delete_rounded,
-    action: handler.deleteLocalDirectory == null
+    action: handler.deleteLocal(true) == null
         ? null
         : () async {
             final yes = await showDialog<bool>(
@@ -1367,7 +1367,7 @@ class DirectoryContextOption {
     title: 'Permanently Delete',
     icon: Icons.delete_forever_rounded,
     subtitle: 'Delete from device as well as S3',
-    action: handler.deleteDirectories == null
+    action: handler.delete(true) == null
         ? null
         : () async {
             final yes = await showDialog<bool>(
@@ -1493,9 +1493,7 @@ class DirectoriesContextOption {
     title: 'Remove from Device',
     subtitle: 'Only uploaded files',
     icon: Icons.phonelink_off_rounded,
-    action:
-        handler.removableFiles().isNotEmpty ||
-            handler.deleteLocalDirectory == null
+    action: handler.deleteUploaded(removableFiles, true) == null
         ? () async {
             bool? yes = await showDialog<bool>(
               context: context,
@@ -1560,11 +1558,12 @@ class DirectoriesContextOption {
   static DirectoriesContextOption deleteLocal(
     DirectoriesContextActionHandler handler,
     BuildContext context,
+    List<RemoteFile> localDirectories,
   ) => DirectoriesContextOption(
     title: 'Delete Local Copies',
     subtitle: 'Delete from device',
     icon: Icons.folder_delete_rounded,
-    action: handler.deleteLocalDirectory == null
+    action: handler.deleteLocal(true, localDirectories) == null
         ? null
         : () async {
             final yes = await showDialog<bool>(
@@ -1575,7 +1574,7 @@ class DirectoriesContextOption {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Are you sure you want to delete the local copies of the ${handler.localDirectories().length} selected directories? This action cannot be undone.',
+                      'Are you sure you want to delete the local copies of the ${localDirectories.length} selected directories? This action cannot be undone.',
                     ),
                     Container(
                       height: 200,
@@ -1586,13 +1585,12 @@ class DirectoriesContextOption {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              for (final directory
-                                  in handler.localDirectories())
+                              for (final directory in localDirectories)
                                 Text(
                                   Main.pathFromKey(directory.key) ??
                                       directory.key,
                                 ),
-                              if (handler.localDirectories().isEmpty)
+                              if (localDirectories.isEmpty)
                                 const Text('No directories to delete'),
                             ],
                           ),
@@ -1614,13 +1612,11 @@ class DirectoriesContextOption {
               ),
             );
             if (yes ?? false) {
-              await handler
-                  .deleteLocal(true, handler.localDirectories())!
-                  .call();
+              await handler.deleteLocal(true, localDirectories)!.call();
               showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Local copies of ${handler.localDirectories().length} selected directories deleted',
+                    'Local copies of ${localDirectories.length} selected directories deleted',
                   ),
                 ),
               );
@@ -1712,7 +1708,7 @@ class DirectoriesContextOption {
       copy(copyKey),
       if (handler.removableFiles().isNotEmpty)
         deleteUploaded(handler, context, handler.removableFiles()),
-      deleteLocal(handler, context),
+      deleteLocal(handler, context, handler.localDirectories()),
       deleteAll(handler, context, clearSelection),
     ];
   }
