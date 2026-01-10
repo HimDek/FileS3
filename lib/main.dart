@@ -592,7 +592,11 @@ class _HomeState extends State<Home> {
     });
 
     final List<RemoteFile> files = Main.remoteFiles
-        .where((file) => keys.contains(file.key))
+        .where(
+          (file) => keys.contains(file.key) || file.key.endsWith('/')
+              ? keys.any((d) => p.isWithin(d, file.key))
+              : false,
+        )
         .toList();
 
     final Map<Profile, List<RemoteFile>> profileFiles = {};
@@ -1014,7 +1018,6 @@ class _HomeState extends State<Home> {
                 _loading.value ? null : _cut,
                 _loading.value ? null : _copy,
                 _loading.value ? null : _deleteLocal,
-                _loading.value ? null : _deleteS3,
                 _loading.value
                     ? null
                     : (keys) async => await _deleteFiles(keys, refresh: true),
@@ -1040,7 +1043,6 @@ class _HomeState extends State<Home> {
                     : (List<String> dirs, List<String> newDirs) async =>
                           await _moveDirectories(dirs, newDirs, refresh: true),
                 _loading.value ? null : _deleteLocal,
-                _loading.value ? null : _deleteS3,
                 _loading.value
                     ? null
                     : (List<String> dirs) async =>
