@@ -474,6 +474,8 @@ class DeletionRegistrar {
     _config = Config.fromStrings(_file.readAsLinesSync());
   }
 
+  String get key => _key;
+
   void save() {
     _file.writeAsStringSync(_config.toString());
   }
@@ -562,5 +564,12 @@ class DeletionRegistrar {
     );
     await job.start();
     Job.jobs.remove(job);
+  }
+
+  Future<void> clear() async {
+    _config!.removeSection('register');
+    _config!.addSection('register');
+    save();
+    await pushDeletions();
   }
 }

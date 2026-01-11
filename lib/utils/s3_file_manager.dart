@@ -95,7 +95,7 @@ class S3FileManager {
       _prefix,
       p.s3(p.relative(dir, from: _profile.name)),
     );
-    prefix = prefix.isEmpty ? null : p.asDir(prefix);
+    prefix = prefix.isEmpty ? null : prefix;
     final ListObjectsOutput resp = await _s3.listObjects(
       bucket: _bucket,
       prefix: prefix,

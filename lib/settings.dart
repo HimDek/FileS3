@@ -483,6 +483,103 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                     );
                   },
                 ),
+              if (widget.profile != null &&
+                  Main.remoteFiles.any(
+                    (file) => file.key == widget.profile!.deletionRegistrar.key,
+                  ))
+                ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  title: Text(widget.profile!.deletionRegistrar.key),
+                  subtitle: Text(
+                    'This file is used to track and sync deleted files. Tap to view deletions. This file can be safely deleted if you do not want to sync the deletions in it.',
+                  ),
+                  trailing: IconButton(
+                    onPressed: () async {
+                      final yes = await showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text('Delete Deletion Registrar File?'),
+                          content: Text(
+                            'Are you sure you want to delete the ${widget.profile!.deletionRegistrar.key}? This will stop syncing deletions tracked in this file.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (yes) {
+                        setState(() {
+                          _loading = true;
+                        });
+                        await widget.profile!.deletionRegistrar.clear();
+                        setState(() {
+                          _loading = false;
+                        });
+                        showSnackBar(
+                          SnackBar(
+                            content: Text('Deletion registrar file deleted'),
+                          ),
+                        );
+                        setState(() {});
+                      }
+                    },
+                    icon: Icon(Icons.delete_sweep_rounded),
+                  ),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => Scaffold(
+                        appBar: AppBar(
+                          title: Text('Deletion Register'),
+                          bottom: PreferredSize(
+                            preferredSize: Size.fromHeight(14),
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                left: 16,
+                                right: 16,
+                                bottom: 8.0,
+                              ),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: Text(
+                                  widget.profile!.deletionRegistrar.key,
+                                  textAlign: TextAlign.start,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        body: FutureBuilder<Map<String, DateTime>>(
+                          future: widget.profile!.deletionRegistrar
+                              .pullDeletions(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData) {
+                              return ListView(
+                                children: [
+                                  for (final entry in snapshot.data!.entries)
+                                    ListTile(
+                                      title: Text(entry.key),
+                                      subtitle: Text(
+                                        entry.value.toLocal().toString(),
+                                      ),
+                                    ),
+                                ],
+                              );
+                            }
+                            return Center(child: CircularProgressIndicator());
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

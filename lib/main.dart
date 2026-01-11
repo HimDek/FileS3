@@ -781,7 +781,10 @@ class _HomeState extends State<Home> {
           (file) =>
               p.isWithin(dir.key, file.key) &&
               file.key != dir.key &&
-              !p.isDir(file.key),
+              !p.isDir(file.key) &&
+              Main.ignoreKeyRegexps.every(
+                (String regexp) => !RegExp(regexp).hasMatch(file.key),
+              ),
         )
         .toList();
     int progressCount = 0;
