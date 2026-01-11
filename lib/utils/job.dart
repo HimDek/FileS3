@@ -27,7 +27,7 @@ abstract class Main {
   static Profile? profileFromKey(String key) {
     try {
       return profiles.firstWhere(
-        (profile) => profile.name == key.split('/').first,
+        (profile) => profile.name == p.split(key).first,
       );
     } catch (e) {
       return null;
@@ -36,10 +36,10 @@ abstract class Main {
 
   static String? pathFromKey(String key) {
     final localDir = IniManager.config
-        ?.get('directories', "${key.split('/').first}/")
-        ?.replaceAll('\\', '/');
+        ?.get('directories', "${p.split(key).first}${p.separator}")
+        ?.replaceAll('\\', p.separator);
     if (localDir != null) {
-      return p.join(localDir, key.split('/').sublist(1).join('/'));
+      return p.join(localDir, p.split(key).sublist(1).join(p.separator));
     } else {
       return null;
     }
@@ -63,7 +63,7 @@ abstract class Main {
   }
 
   static Watcher? watcherFromKey(String key) {
-    final dirKey = '${key.split('/').first}/';
+    final dirKey = '${p.split(key).first}${p.separator}';
     return watcherMap[dirKey];
   }
 
@@ -131,7 +131,7 @@ abstract class Main {
 
     for (final obj in remoteFiles.toList()) {
       final normalized = p.normalize(obj.key);
-      final isDir = normalized.endsWith('/');
+      final isDir = p.isDir(normalized);
 
       final basePath = isDir
           ? p.dirname(normalized.substring(0, normalized.length - 1))
@@ -169,8 +169,8 @@ abstract class Main {
     watcherMap.clear();
 
     final dirs = remoteFiles
-        .where((dir) => dir.key.endsWith('/'))
-        .map((file) => '${file.key.split('/').first}/')
+        .where((dir) => p.isDir(dir.key))
+        .map((file) => '${p.split(file.key).first}${p.separator}')
         .toSet()
         .toList();
 
@@ -201,7 +201,7 @@ abstract class Main {
       Main.remoteFiles = (await ConfigManager.loadRemoteFiles())
           .where(
             (file) => profiles.any(
-              (profile) => profile.name == file.key.split('/').first,
+              (profile) => profile.name == p.split(file.key).first,
             ),
           )
           .toList();

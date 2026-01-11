@@ -137,7 +137,7 @@ class ListFiles extends StatelessWidget {
     return () {
       final galleryFiles = files
           .where((f) {
-            return !f.key.endsWith('/');
+            return !p.isDir(f.key);
           })
           .map((f) {
             String url =
@@ -219,7 +219,7 @@ class ListFiles extends StatelessWidget {
   Widget listItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
         ? JobView(job: item.job!, relativeTo: relativeto, onUpdate: onUpdate)
-        : item.key.endsWith('/')
+        : p.isDir(item.key)
         ? ListTile(
             dense: MediaQuery.of(context).size.width < 600 ? true : false,
             visualDensity: MediaQuery.of(context).size.width < 600
@@ -354,11 +354,7 @@ class ListFiles extends StatelessWidget {
                               size: 16,
                             ),
                       SizedBox(width: 8),
-                      Text(
-                        item.key.split('.').length > 1
-                            ? '.${item.key.split('.').last}'
-                            : '',
-                      ),
+                      Text(p.extension(item.key)),
                     ],
                   ),
                 ),
@@ -398,7 +394,7 @@ class ListFiles extends StatelessWidget {
   Widget gridItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
         ? SizedBox(height: 100, width: 100)
-        : item.key.endsWith('/')
+        : p.isDir(item.key)
         ? MyGridTile(
             selected: selection.any((selected) {
               return selected.key == item.key;
@@ -561,7 +557,7 @@ class ListFiles extends StatelessWidget {
                 job: file,
                 url: url,
               )
-            : file.key.endsWith('/')
+            : p.isDir(file.key)
             ? FileProps(key: file.key, size: file.size, file: file, url: url)
             : FileProps(key: file.key, size: file.size, file: file, url: url);
       }),

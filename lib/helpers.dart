@@ -118,16 +118,25 @@ String timeToReadable(DateTime time) {
 
 String? getMediaType(String name) {
   Map<String, List<String>> types = {
-    'image/': ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff', 'svg'],
-    'video/': ['mp4', 'mkv', 'mov', 'avi', 'wmv', 'flv', 'webm'],
-    'audio/': ['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a'],
-    'text/': ['txt', 'md', 'csv', 'log', 'json', 'xml', 'yaml', 'ini'],
-    'application/pdf': ['pdf'],
-    'application/zip': ['zip', 'rar', '7z', 'tar', 'gz'],
+    'image/': [
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.bmp',
+      '.webp',
+      '.tiff',
+      '.svg',
+    ],
+    'video/': ['.mp4', '.mkv', '.mov', '.avi', '.wmv', '.flv', '.webm'],
+    'audio/': ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a'],
+    'text/': ['.txt', '.md', '.csv', '.log', '.json', '.xml', '.yaml', '.ini'],
+    'application/pdf': ['.pdf'],
+    'application/zip': ['.zip', '.rar', '.7z', '.tar', '.gz'],
   };
 
   if (name.contains('.')) {
-    final ext = name.split('.').last.toLowerCase();
+    final ext = p.extension(name);
     for (var entry in types.entries) {
       if (entry.value.contains(ext)) {
         return entry.key;
@@ -144,8 +153,8 @@ List<FileProps> sort(
 ) {
   List<FileProps> sortedItems = List.from(items);
   sortedItems.sort((a, b) {
-    var aIsDir = a.key.endsWith('/');
-    var bIsDir = b.key.endsWith('/');
+    var aIsDir = p.isDir(a.key);
+    var bIsDir = p.isDir(b.key);
 
     if (foldersFirst) {
       if (aIsDir && !bIsDir) return -1;
@@ -179,18 +188,18 @@ List<FileProps> sort(
         return b.size.compareTo(a.size);
       case SortMode.typeAsc:
         String aExt = a.key.contains('.')
-            ? a.key.split('.').last.toLowerCase()
+            ? p.extension(a.key).toLowerCase()
             : '';
         String bExt = b.key.contains('.')
-            ? b.key.split('.').last.toLowerCase()
+            ? p.extension(b.key).toLowerCase()
             : '';
         return aExt.compareTo(bExt);
       case SortMode.typeDesc:
         String aExt = a.key.contains('.')
-            ? a.key.split('.').last.toLowerCase()
+            ? p.extension(a.key).toLowerCase()
             : '';
         String bExt = b.key.contains('.')
-            ? b.key.split('.').last.toLowerCase()
+            ? p.extension(b.key).toLowerCase()
             : '';
         return bExt.compareTo(aExt);
     }

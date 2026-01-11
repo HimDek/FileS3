@@ -63,7 +63,7 @@ class S3FileManager {
   }
 
   Future<dynamic> createDirectory(String dir) async {
-    String key = !dir.endsWith('/') ? '$dir/' : dir;
+    String key = !p.isDir(dir) ? '$dir/' : dir;
 
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
@@ -94,7 +94,7 @@ class S3FileManager {
     String? prefix = p.join(_prefix, p.relative(dir, from: _profile.name));
     prefix = prefix.isEmpty
         ? null
-        : prefix.endsWith('/')
+        : p.isDir(prefix)
         ? prefix
         : '$prefix/';
     final ListObjectsOutput resp = await _s3.listObjects(
@@ -108,7 +108,7 @@ class S3FileManager {
           (item) => RemoteFile(
             key:
                 p.join(_profile.name, p.relative(item.key!, from: _prefix)) +
-                (item.key!.endsWith('/') ? '/' : ''),
+                (p.isDir(item.key!) ? '/' : ''),
             size: item.size ?? 0,
             etag: item.eTag != null && item.eTag!.isNotEmpty
                 ? item.eTag!.substring(1, item.eTag!.length - 1)

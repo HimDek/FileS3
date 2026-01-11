@@ -610,6 +610,7 @@ class GalleryState extends State<Gallery> {
               child: AppBar(
                 backgroundColor: Colors.black,
                 title: Text("${_currentIndex + 1} / ${widget.files.length}"),
+                actions: [],
               ),
             ),
           ),
@@ -813,13 +814,19 @@ class MediaPreviewState extends State<MediaPreview> {
     return _provider.isImage
         ? (_provider is UrlMediaProvider)
               ? Image(
+                  width: 256,
+                  height: 256,
                   image: CachedNetworkImageProvider(
+                    maxWidth: 256,
+                    maxHeight: 256,
                     cacheKey: widget.remoteKey,
                     (_provider as UrlMediaProvider).url,
                   ),
                   fit: BoxFit.cover,
                 )
               : Image(
+                  width: 256,
+                  height: 256,
                   image: FileImage((_provider as FileMediaProvider).file),
                   fit: BoxFit.cover,
                 )

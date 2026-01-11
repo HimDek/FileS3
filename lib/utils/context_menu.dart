@@ -47,7 +47,7 @@ class FileContextActionHandler extends ContextActionHandler {
   }
 
   bool removable() {
-    return !file.key.endsWith('/') &&
+    return !p.isDir(file.key) &&
         File(Main.pathFromKey(file.key) ?? file.key).existsSync() &&
         Main.backupMode(file.key) == BackupMode.upload;
   }
@@ -107,7 +107,7 @@ class FileContextActionHandler extends ContextActionHandler {
               newName.replaceAll('/', '_'),
             );
             await moveFiles!([file.key], [newKey]);
-            return 'Renamed ${file.key.split('/').last} to $newName';
+            return 'Renamed ${p.basename(file.key)} to $newName';
           };
   }
 
@@ -115,7 +115,7 @@ class FileContextActionHandler extends ContextActionHandler {
     return (yes ?? false) && deleteLocalFile != null && removable()
         ? () async {
             await deleteLocalFile!(file.key);
-            return 'Deleted local copy of ${file.key.split('/').last}';
+            return 'Deleted local copy of ${p.basename(file.key)}';
           }
         : null;
   }
@@ -127,7 +127,7 @@ class FileContextActionHandler extends ContextActionHandler {
             downloaded()
         ? () async {
             await deleteLocalFile!(file.key);
-            return 'Deleted local copy of ${file.key.split('/').last}';
+            return 'Deleted local copy of ${p.basename(file.key)}';
           }
         : null;
   }
@@ -137,7 +137,7 @@ class FileContextActionHandler extends ContextActionHandler {
     return (yes ?? false) && deleteFiles != null
         ? () async {
             await deleteFiles!([file.key]);
-            return 'Deleted ${file.key.split('/').last}';
+            return 'Deleted ${p.basename(file.key)}';
           }
         : null;
   }
@@ -180,7 +180,7 @@ class FilesContextActionHandler extends ContextActionHandler {
     return files
         .where(
           (f) =>
-              !f.key.endsWith('/') &&
+              !p.isDir(f.key) &&
               File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
               Main.backupMode(f.key) == BackupMode.upload,
         )
@@ -207,7 +207,7 @@ class FilesContextActionHandler extends ContextActionHandler {
     return path != null && saveFile != null
         ? () {
             for (final file in files) {
-              saveFile!(file, p.join(path, file.key.split('/').last));
+              saveFile!(file, p.join(path, p.basename(file.key)));
             }
             return 'Saving ${files.length} files to $path';
           }
@@ -304,7 +304,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         .where(
           (f) =>
               p.isWithin(file.key, f.key) &&
-              !f.key.endsWith('/') &&
+              !p.isDir(f.key) &&
               File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
               Main.backupMode(f.key) == BackupMode.upload,
         )
@@ -342,7 +342,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         ? null
         : () {
             saveDirectory!(file, path);
-            return 'Saving ${file.key.split('/').last} to $path';
+            return 'Saving ${p.basename(file.key)} to $path';
           };
   }
 
@@ -350,11 +350,11 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     return moveDirectories == null || p.dirname(file.key).isEmpty
         ? null
         : () async {
-            final key = file.key.endsWith('/') ? file.key : '${file.key}/';
+            final key = p.isDir(file.key) ? file.key : '${file.key}/';
             final newKey =
                 '${p.join(p.dirname(key), newName.replaceAll('/', '_'))}/';
             await moveDirectories!([key], [newKey]);
-            return 'Renamed ${file.key.split('/').last} to $newName';
+            return 'Renamed ${p.basename(file.key)} to $newName';
           };
   }
 
@@ -377,7 +377,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   Future<String> Function()? deleteLocal(bool? yes) {
     return (yes ?? false) && deleteLocalDirectory != null && localExists()
         ? () async {
-            final key = file.key.endsWith('/') ? file.key : '${file.key}/';
+            final key = p.isDir(file.key) ? file.key : '${file.key}/';
             deleteLocalDirectory!(key);
             return 'Deleted local copy of ${p.basename(key)}';
           }
@@ -388,7 +388,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   Future<String> Function()? delete(bool? yes) {
     return (yes ?? false) && deleteDirectories != null
         ? () async {
-            final key = file.key.endsWith('/') ? file.key : '${file.key}/';
+            final key = p.isDir(file.key) ? file.key : '${file.key}/';
             deleteDirectories!([key]);
             return 'Deleted ${p.basename(key)}';
           }
@@ -432,7 +432,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
         .where(
           (f) =>
               directories.any((dir) => p.isWithin(dir.key, f.key)) &&
-              !f.key.endsWith('/') &&
+              !p.isDir(f.key) &&
               File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
               Main.backupMode(f.key) == BackupMode.upload,
         )
@@ -473,7 +473,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     return (yes ?? false) && deleteLocalDirectory != null
         ? () async {
             for (final dir in directories) {
-              final key = dir.key.endsWith('/') ? dir.key : '${dir.key}/';
+              final key = p.isDir(dir.key) ? dir.key : '${dir.key}/';
               for (final file in removableFiles) {
                 if (p.isWithin(key, file.key)) {
                   deleteLocalDirectory!(file.key);
@@ -494,7 +494,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
             localDirs.isNotEmpty
         ? () async {
             for (final dir in localDirs) {
-              final key = dir.key.endsWith('/') ? dir.key : '${dir.key}/';
+              final key = p.isDir(dir.key) ? dir.key : '${dir.key}/';
               deleteLocalDirectory!(key);
             }
             return 'Deleted local copies of ${localDirs.length} folders';
@@ -507,7 +507,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     return (yes ?? false) && deleteDirectories != null
         ? () async {
             final keys = directories
-                .map((dir) => dir.key.endsWith('/') ? dir.key : '${dir.key}/')
+                .map((dir) => p.isDir(dir.key) ? dir.key : '${dir.key}/')
                 .toList();
             await deleteDirectories!(keys);
             return 'Deleted ${directories.length} folders';
@@ -521,12 +521,18 @@ class FileContextOption {
   final IconData icon;
   final String? subtitle;
   final dynamic Function()? action;
+  final dynamic Function()? secondaryAction;
+  final IconData? secondaryIcon;
+  final bool popOnInvoked;
 
   FileContextOption({
     required this.title,
     required this.icon,
     this.subtitle,
     this.action,
+    this.secondaryAction,
+    this.secondaryIcon,
+    this.popOnInvoked = false,
   });
 
   static FileContextOption open(FileContextActionHandler handler) =>
@@ -542,6 +548,7 @@ class FileContextOption {
         subtitle: Main.pathFromKey(handler.file.key),
         icon: Icons.open_in_new_rounded,
         action: handler.open(),
+        popOnInvoked: false,
       );
 
   static FileContextOption download(FileContextActionHandler handler) =>
@@ -562,6 +569,7 @@ class FileContextOption {
                   : Icons.file_download_off_rounded
             : Icons.file_download_rounded,
         action: handler.download(),
+        popOnInvoked: false,
       );
 
   static FileContextOption saveAs(
@@ -575,7 +583,7 @@ class FileContextOption {
         : () async {
             final String Function()? handle = handler.saveAs(
               (await getSaveLocation(
-                suggestedName: handler.file.key.split('/').last,
+                suggestedName: p.basename(handler.file.key),
                 canCreateDirectories: true,
               ))?.path,
             );
@@ -583,6 +591,7 @@ class FileContextOption {
               showSnackBar(SnackBar(content: Text(handle())));
             }
           },
+    popOnInvoked: false,
   );
 
   static FileContextOption share(FileContextActionHandler handler) =>
@@ -602,6 +611,7 @@ class FileContextOption {
                 }
               : null;
         }(),
+        popOnInvoked: false,
       );
 
   static FileContextOption copyLink(
@@ -624,6 +634,20 @@ class FileContextOption {
         showSnackBar(SnackBar(content: Text('Failed to generate link: $e')));
       }
     },
+    secondaryIcon: Icons.share_rounded,
+    secondaryAction: () async {
+      try {
+        final link = handler.getLinkToCopy(await expiryDialog(context))()!;
+        Clipboard.setData(ClipboardData(text: link));
+        showSnackBar(
+          const SnackBar(content: Text('File link copied to clipboard')),
+        );
+        SharePlus.instance.share(ShareParams(uri: Uri.tryParse(link)));
+      } catch (e) {
+        showSnackBar(SnackBar(content: Text('Failed to generate link: $e')));
+      }
+    },
+    popOnInvoked: false,
   );
 
   static FileContextOption cut(
@@ -637,6 +661,7 @@ class FileContextOption {
         : () {
             cutKey(handler.file);
           },
+    popOnInvoked: true,
   );
 
   static FileContextOption copy(
@@ -650,6 +675,7 @@ class FileContextOption {
         : () {
             copyKey(handler.file);
           },
+    popOnInvoked: true,
   );
 
   static FileContextOption rename(
@@ -663,16 +689,17 @@ class FileContextOption {
         : () async {
             final newName = await renameDialog(
               context,
-              handler.file.key.split('/').last,
+              p.basename(handler.file.key),
             );
             if (newName != null &&
                 newName.isNotEmpty &&
-                newName != handler.file.key.split('/').last) {
+                newName != p.basename(handler.file.key)) {
               showSnackBar(
                 SnackBar(content: Text(await handler.rename(newName)!())),
               );
             }
           },
+    popOnInvoked: true,
   );
 
   static FileContextOption deleteUploaded(
@@ -691,7 +718,7 @@ class FileContextOption {
                 builder: (context) => AlertDialog(
                   title: const Text('Remove from Device'),
                   content: Text(
-                    'Are you sure you want to delete the local copy of ${handler.file.key.split('/').last}? This file has been uploaded and can be downloaded again later.',
+                    'Are you sure you want to delete the local copy of ${p.basename(handler.file.key)}? This file has been uploaded and can be downloaded again later.',
                   ),
                   actions: [
                     TextButton(
@@ -710,6 +737,7 @@ class FileContextOption {
               showSnackBar(SnackBar(content: Text(await handle())));
             }
           },
+    popOnInvoked: false,
   );
 
   static FileContextOption deleteLocal(
@@ -728,7 +756,7 @@ class FileContextOption {
                 builder: (context) => AlertDialog(
                   title: const Text('Delete Local Copy'),
                   content: Text(
-                    'Are you sure you want to delete the local copy of ${handler.file.key.split('/').last}? This action cannot be undone.',
+                    'Are you sure you want to delete the local copy of ${p.basename(handler.file.key)}? This action cannot be undone.',
                   ),
                   actions: [
                     TextButton(
@@ -747,6 +775,7 @@ class FileContextOption {
               showSnackBar(SnackBar(content: Text(await handle())));
             }
           },
+    popOnInvoked: false,
   );
 
   static FileContextOption delete(
@@ -765,7 +794,7 @@ class FileContextOption {
                 builder: (context) => AlertDialog(
                   title: const Text('Permanently Delete File'),
                   content: Text(
-                    'Are you sure you want to delete ${handler.file.key.split('/').last} from your device and S3? This action cannot be undone.',
+                    'Are you sure you want to delete ${p.basename(handler.file.key)} from your device and S3? This action cannot be undone.',
                   ),
                   actions: [
                     TextButton(
@@ -784,6 +813,7 @@ class FileContextOption {
               showSnackBar(SnackBar(content: Text(await handle())));
             }
           },
+    popOnInvoked: true,
   );
 
   static List<FileContextOption> allOptions(
@@ -815,12 +845,18 @@ class FilesContextOption {
   final IconData icon;
   final String? subtitle;
   final dynamic Function()? action;
+  final dynamic Function()? secondaryAction;
+  final IconData? secondaryIcon;
+  final bool popOnInvoked;
 
   FilesContextOption({
     required this.title,
     required this.icon,
     this.subtitle,
     this.action,
+    this.secondaryAction,
+    this.secondaryIcon,
+    this.popOnInvoked = false,
   });
 
   static FilesContextOption downloadAll(FilesContextActionHandler handler) =>
@@ -841,6 +877,7 @@ class FilesContextOption {
             ? Icons.file_download_done_rounded
             : Icons.file_download_off_rounded,
         action: handler.download(),
+        popOnInvoked: false,
       );
 
   static FilesContextOption saveAllTo(
@@ -866,6 +903,7 @@ class FilesContextOption {
               );
             }
           },
+    popOnInvoked: false,
   );
 
   static FilesContextOption shareAll(FilesContextActionHandler handler) =>
@@ -902,6 +940,18 @@ class FilesContextOption {
         );
       }
     },
+    secondaryIcon: Icons.share_rounded,
+    secondaryAction: () async {
+      int? seconds = await expiryDialog(context);
+      String allLinks = handler.getLinksToCopy(seconds)();
+      if (allLinks.isNotEmpty) {
+        Clipboard.setData(ClipboardData(text: allLinks));
+        showSnackBar(
+          const SnackBar(content: Text('File links copied to clipboard')),
+        );
+        SharePlus.instance.share(ShareParams(text: allLinks));
+      }
+    },
   );
 
   static FilesContextOption cut(Function(RemoteFile?)? cutKey) =>
@@ -913,6 +963,7 @@ class FilesContextOption {
             : () {
                 cutKey(null);
               },
+        popOnInvoked: true,
       );
 
   static FilesContextOption copy(Function(RemoteFile?)? copyKey) =>
@@ -924,6 +975,7 @@ class FilesContextOption {
             : () {
                 copyKey(null);
               },
+        popOnInvoked: true,
       );
 
   static FilesContextOption deleteUploaded(
@@ -1119,6 +1171,7 @@ class FilesContextOption {
               );
             }
           },
+    popOnInvoked: true,
   );
 
   static List<FilesContextOption> allOptions(
@@ -1149,12 +1202,14 @@ class DirectoryContextOption {
   final IconData icon;
   final String? subtitle;
   final dynamic Function()? action;
+  final bool popOnInvoked;
 
   DirectoryContextOption({
     required this.title,
     required this.icon,
     this.subtitle,
     this.action,
+    this.popOnInvoked = false,
   });
 
   static DirectoryContextOption open(DirectoryContextActionHandler handler) =>
@@ -1216,6 +1271,7 @@ class DirectoryContextOption {
         : () {
             cutKey(handler.file);
           },
+    popOnInvoked: true,
   );
 
   static DirectoryContextOption copy(
@@ -1229,6 +1285,7 @@ class DirectoryContextOption {
         : () {
             copyKey(handler.file);
           },
+    popOnInvoked: true,
   );
 
   static DirectoryContextOption rename(
@@ -1252,6 +1309,7 @@ class DirectoryContextOption {
               );
             }
           },
+    popOnInvoked: true,
   );
 
   static DirectoryContextOption deleteUploaded(
@@ -1396,6 +1454,7 @@ class DirectoryContextOption {
               );
             }
           },
+    popOnInvoked: true,
   );
 
   static List<DirectoryContextOption> allOptions(
@@ -1424,6 +1483,15 @@ class DirectoriesContextOption {
   final IconData icon;
   final String? subtitle;
   final dynamic Function()? action;
+  final bool popOnInvoked;
+
+  DirectoriesContextOption({
+    required this.title,
+    required this.icon,
+    this.subtitle,
+    this.action,
+    this.popOnInvoked = false,
+  });
 
   static DirectoriesContextOption downloadAll(
     DirectoriesContextActionHandler handler,
@@ -1473,6 +1541,7 @@ class DirectoriesContextOption {
             : () {
                 cutKey(null);
               },
+        popOnInvoked: true,
       );
 
   static DirectoriesContextOption copy(Function(RemoteFile?)? copyKey) =>
@@ -1484,6 +1553,7 @@ class DirectoriesContextOption {
             : () {
                 copyKey(null);
               },
+        popOnInvoked: true,
       );
 
   static DirectoriesContextOption deleteUploaded(
@@ -1693,6 +1763,7 @@ class DirectoriesContextOption {
               );
             }
           },
+    popOnInvoked: true,
   );
 
   static List<DirectoriesContextOption> allOptions(
@@ -1714,13 +1785,6 @@ class DirectoriesContextOption {
       deleteAll(handler, context, clearSelection),
     ];
   }
-
-  DirectoriesContextOption({
-    required this.title,
-    required this.icon,
-    this.subtitle,
-    this.action,
-  });
 }
 
 class BulkContextOption {
@@ -1728,6 +1792,15 @@ class BulkContextOption {
   final IconData icon;
   final String? subtitle;
   final dynamic Function(BuildContext context)? action;
+  final bool popOnInvoked;
+
+  BulkContextOption({
+    required this.title,
+    required this.icon,
+    this.subtitle,
+    this.action,
+    this.popOnInvoked = false,
+  });
 
   static BulkContextOption downloadAll(
     DirectoriesContextActionHandler directoriesHandler,
@@ -1774,7 +1847,7 @@ class BulkContextOption {
           handle = handler.saveAs(
             directory == null
                 ? null
-                : p.join(directory, handler.file.key.split('/').last),
+                : p.join(directory, p.basename(handler.file.key)),
           );
         } else {
           handle = handler.saveAs(
@@ -1808,6 +1881,7 @@ class BulkContextOption {
             : (BuildContext context) {
                 cutKey(null);
               },
+        popOnInvoked: true,
       );
 
   static BulkContextOption copy(Function(RemoteFile?)? copyKey) =>
@@ -1819,6 +1893,7 @@ class BulkContextOption {
             : (BuildContext context) {
                 copyKey(null);
               },
+        popOnInvoked: true,
       );
 
   static BulkContextOption deleteUploaded(
@@ -2038,6 +2113,7 @@ class BulkContextOption {
         );
       }
     },
+    popOnInvoked: true,
   );
 
   static List<BulkContextOption> allOptions(
@@ -2062,13 +2138,6 @@ class BulkContextOption {
       deleteAll(directoriesHandler, filesHandler, context, clearSelection),
     ];
   }
-
-  BulkContextOption({
-    required this.title,
-    required this.icon,
-    this.subtitle,
-    this.action,
-  });
 }
 
 Widget buildFileContextMenu(
@@ -2114,11 +2183,7 @@ Widget buildFileContextMenu(
                           const SizedBox(width: 8),
                           Text(bytesToReadable(item.size)),
                           const SizedBox(width: 8),
-                          Text(
-                            item.key.split('.').length > 1
-                                ? '.${item.key.split('.').last}'
-                                : '',
-                          ),
+                          Text(p.extension(item.key)),
                         ],
                       ),
                     ),
@@ -2139,11 +2204,17 @@ Widget buildFileContextMenu(
                           child: Text(option.subtitle!),
                         )
                       : null,
+                  trailing: option.secondaryAction != null
+                      ? IconButton(
+                          onPressed: option.secondaryAction,
+                          icon: Icon(option.secondaryIcon),
+                        )
+                      : null,
                   onTap: option.action == null
                       ? null
                       : () async {
                           await option.action!();
-                          globalNavigator?.pop();
+                          if (option.popOnInvoked) globalNavigator?.pop();
                         },
                   enabled: option.action != null,
                 ),
@@ -2192,10 +2263,16 @@ Widget buildFilesContextMenu(
                 subtitle: option.subtitle != null
                     ? Text(option.subtitle!)
                     : null,
+                trailing: option.secondaryAction != null
+                    ? IconButton(
+                        onPressed: option.secondaryAction,
+                        icon: Icon(option.secondaryIcon),
+                      )
+                    : null,
                 onTap: option.action != null
                     ? () async {
                         await option.action!();
-                        globalNavigator?.pop();
+                        if (option.popOnInvoked) globalNavigator?.pop();
                       }
                     : null,
                 enabled: option.action != null,
@@ -2370,7 +2447,7 @@ Widget buildDirectoryContextMenu(
                   onTap: option.action != null
                       ? () async {
                           await option.action!();
-                          globalNavigator?.pop();
+                          if (option.popOnInvoked) globalNavigator?.pop();
                         }
                       : null,
                   enabled: option.action != null,
@@ -2421,7 +2498,7 @@ Widget buildDirectoriesContextMenu(
                 onTap: option.action != null
                     ? () async {
                         await option.action!();
-                        globalNavigator?.pop();
+                        if (option.popOnInvoked) globalNavigator?.pop();
                       }
                     : null,
                 enabled: option.action != null,
@@ -2448,7 +2525,7 @@ Widget buildBulkContextMenu(
   Future<void> Function(List<String>)? deleteDirectories,
   Function() clearSelection,
 ) {
-  if (!items.any((item) => item.key.endsWith('/'))) {
+  if (!items.any((item) => p.isDir(item.key))) {
     return buildFilesContextMenu(
       context,
       items.cast<RemoteFile>(),
@@ -2462,7 +2539,7 @@ Widget buildBulkContextMenu(
       deleteFiles,
       clearSelection,
     );
-  } else if (items.every((item) => item.key.endsWith('/'))) {
+  } else if (items.every((item) => p.isDir(item.key))) {
     return buildDirectoriesContextMenu(
       context,
       items,
@@ -2478,7 +2555,7 @@ Widget buildBulkContextMenu(
   } else {
     DirectoriesContextActionHandler dirHandler =
         DirectoriesContextActionHandler(
-          directories: items.where((item) => item.key.endsWith('/')).toList(),
+          directories: items.where((item) => p.isDir(item.key)).toList(),
           downloadDirectory: downloadDirectory,
           saveDirectory: saveDirectory,
           moveDirectories: moveDirectories,
@@ -2486,7 +2563,7 @@ Widget buildBulkContextMenu(
           deleteDirectories: deleteDirectories,
         );
     FilesContextActionHandler fileHandler = FilesContextActionHandler(
-      files: items.where((item) => !item.key.endsWith('/')).toList(),
+      files: items.where((item) => !p.isDir(item.key)).toList(),
       getLink: getLink,
       downloadFile: downloadFile,
       saveFile: saveFile,
@@ -2515,7 +2592,7 @@ Widget buildBulkContextMenu(
                   onTap: option.action != null
                       ? () async {
                           await option.action!(context);
-                          globalNavigator?.pop();
+                          if (option.popOnInvoked) globalNavigator?.pop();
                         }
                       : null,
                   enabled: option.action != null,

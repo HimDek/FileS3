@@ -1,12 +1,16 @@
 import 'package:path/path.dart' as p;
 
-String Function(String) convert = (String path) {
-  return path.startsWith('./') || path.startsWith('.\\')
-      ? path.substring(2)
-      : path == '.'
-      ? ''
-      : path;
-};
+String Function(String) convert = (String path) =>
+    path.startsWith('./') || path.startsWith('.\\')
+    ? path.substring(2)
+    : path == '.'
+    ? ''
+    : path;
+
+bool Function(String) isDir = (String path) =>
+    path.endsWith('/') || path.endsWith('\\');
+
+String separator = p.separator;
 
 String Function(String) context = p.context.normalize;
 

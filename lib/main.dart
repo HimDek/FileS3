@@ -250,7 +250,7 @@ class _HomeState extends State<Home> {
   String _dirModified(RemoteFile dir) {
     DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
     for (final file in Main.remoteFiles.where(
-      (file) => p.isWithin(dir.key, file.key) && !file.key.endsWith('/'),
+      (file) => p.isWithin(dir.key, file.key) && !p.isDir(file.key),
     )) {
       if (file.lastModified!.isAfter(latest)) {
         latest = file.lastModified!;
@@ -267,7 +267,7 @@ class _HomeState extends State<Home> {
           file.key != dir.key &&
           (recursive ||
               p.normalize(p.dirname(file.key)) == p.normalize(dir.key))) {
-        if (file.key.endsWith('/')) {
+        if (p.isDir(file.key)) {
           dirCount += 1;
         } else {
           fileCount += 1;
@@ -394,7 +394,7 @@ class _HomeState extends State<Home> {
       await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
       Main.remoteFiles.add(
         RemoteFile(
-          key: dir.endsWith('/') ? dir : '$dir/',
+          key: p.isDir(dir) ? dir : '$dir/',
           size: 0,
           etag: '',
           lastModified: DateTime.now(),
@@ -481,7 +481,7 @@ class _HomeState extends State<Home> {
           (file) =>
               p.isWithin(dir, file.key) &&
               file.key != dir &&
-              !file.key.endsWith('/'),
+              !p.isDir(file.key),
         )
         .toList();
     int progressCount = 0;
@@ -504,7 +504,7 @@ class _HomeState extends State<Home> {
   }
 
   void _deleteLocal(String key) {
-    if (key.endsWith('/')) {
+    if (p.isDir(key)) {
       if (Directory(Main.pathFromKey(key) ?? key).existsSync()) {
         if (Main.backupMode(key) != BackupMode.upload) {
           _setBackupMode(
@@ -541,7 +541,7 @@ class _HomeState extends State<Home> {
     });
 
     final List<String> files = Main.remoteFiles
-        .where((file) => keys.contains(file.key) && !file.key.endsWith('/'))
+        .where((file) => keys.contains(file.key) && !p.isDir(file.key))
         .map((e) => e.key)
         .toList();
 
@@ -593,7 +593,7 @@ class _HomeState extends State<Home> {
 
     final List<RemoteFile> files = Main.remoteFiles
         .where(
-          (file) => keys.contains(file.key) || !file.key.endsWith('/')
+          (file) => keys.contains(file.key) || !p.isDir(file.key)
               ? keys.any((d) => p.isWithin(d, file.key))
               : false,
         )
@@ -619,9 +619,7 @@ class _HomeState extends State<Home> {
       await profile.deletionRegistrar.pushDeletions();
 
       for (final file
-          in filesForProfile
-              .where((file) => !file.key.endsWith('/'))
-              .toList()) {
+          in filesForProfile.where((file) => !p.isDir(file.key)).toList()) {
         progressCount += 1;
         (progress ?? _progress).value =
             progressCount / profileFiles.values.expand((e) => e).length;
@@ -631,14 +629,14 @@ class _HomeState extends State<Home> {
       Main.remoteFiles.removeWhere(
         (file) =>
             filesForProfile.map((e) => e.key).contains(file.key) &&
-            !file.key.endsWith('/'),
+            !p.isDir(file.key),
       );
 
       final dirsForProfile = Main.remoteFiles
           .where(
             (file) =>
                 filesForProfile.map((e) => e.key).contains(file.key) &&
-                file.key.endsWith('/'),
+                p.isDir(file.key),
           )
           .toList();
       dirsForProfile.sort((a, b) => b.key.length.compareTo(a.key.length));
@@ -783,7 +781,7 @@ class _HomeState extends State<Home> {
           (file) =>
               p.isWithin(dir.key, file.key) &&
               file.key != dir.key &&
-              !file.key.endsWith('/'),
+              !p.isDir(file.key),
         )
         .toList();
     int progressCount = 0;
@@ -826,7 +824,8 @@ class _HomeState extends State<Home> {
       (_selectionAction == SelectionAction.none ||
           _selection.isEmpty ||
           _navIndex != 0 ||
-          _profile == null)
+          _profile == null ||
+          !(_profile?.accessible ?? false))
       ? null
       : () async {
           try {
@@ -847,7 +846,7 @@ class _HomeState extends State<Home> {
                 if (item.key == newKey) {
                   continue;
                 }
-                if (!item.key.endsWith('/')) {
+                if (!p.isDir(item.key)) {
                   await _copyFile(item.key, newKey);
                 } else {
                   await _copyDirectory(item.key, newKey);
@@ -857,7 +856,7 @@ class _HomeState extends State<Home> {
               final dirs = selection
                   .where(
                     (item) =>
-                        item.key.endsWith('/') &&
+                        p.isDir(item.key) &&
                         p.normalize(p.dirname(item.key)) !=
                             p.normalize(_driveDir.key),
                   )
@@ -865,7 +864,7 @@ class _HomeState extends State<Home> {
               final files = selection
                   .where(
                     (item) =>
-                        !item.key.endsWith('/') &&
+                        !p.isDir(item.key) &&
                         p.normalize(p.dirname(item.key)) !=
                             p.normalize(_driveDir.key),
                   )
@@ -1030,7 +1029,7 @@ class _HomeState extends State<Home> {
                   setState(() {});
                 },
               )
-            : file.key.endsWith('/')
+            : p.isDir(file.key)
             ? buildDirectoryContextMenu(
                 context,
                 file,
@@ -1308,14 +1307,14 @@ class _HomeState extends State<Home> {
                                 ? ''
                                 : _selectionAction == SelectionAction.cut
                                 ? 'Moving '
-                                : 'Copying '}${_selection.where((item) => item.key.endsWith('/')).isNotEmpty ? '${_selection.where((item) => item.key.endsWith('/')).length} Folders ' : ''}${_selection.where((item) => !item.key.endsWith('/')).isNotEmpty ? '${_selection.where((item) => !item.key.endsWith('/')).length} Files ' : ''}",
+                                : 'Copying '}${_selection.where((item) => p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => p.isDir(item.key)).length} Folders ' : ''}${_selection.where((item) => !p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => !p.isDir(item.key)).length} Files ' : ''}",
 
                             style: Theme.of(context).textTheme.bodySmall,
                           )
                         : _navIndex == 0
                         ? Text(
                             _searching
-                                ? "${_searchResults.where((item) => item is RemoteFile && item.key.endsWith('/')).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && item.key.endsWith('/')).length} Folders ' : ''}${_searchResults.where((item) => item is RemoteFile && !item.key.endsWith('/')).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && !item.key.endsWith('/')).length} Files ' : ''}found"
+                                ? "${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).length} Folders ' : ''}${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).length} Files ' : ''}found"
                                 : _dirCount > 0 || _fileCount > 0
                                 ? "${_dirCount > 0 ? '$_dirCount Folders ' : ''}${_fileCount > 0 ? '$_fileCount Files' : ''}"
                                 : "Empty",
@@ -1807,8 +1806,8 @@ class _HomeState extends State<Home> {
                                                   ),
                                                 ]
                                                 .followedBy(
-                                                  _driveDir.key
-                                                      .split('/')
+                                                  p
+                                                      .split(_driveDir.key)
                                                       .where(
                                                         (dir) => dir.isNotEmpty,
                                                       )
@@ -1827,11 +1826,10 @@ class _HomeState extends State<Home> {
                                                                   String
                                                                   newPath = '';
                                                                   for (final part
-                                                                      in _driveDir
-                                                                          .key
-                                                                          .split(
-                                                                            '/',
-                                                                          )) {
+                                                                      in p.split(
+                                                                        _driveDir
+                                                                            .key,
+                                                                      )) {
                                                                     if (part
                                                                         .isEmpty) {
                                                                       continue;
@@ -1991,7 +1989,7 @@ class _HomeState extends State<Home> {
                             .where(
                               (file) =>
                                   p.dirname(file.key).isEmpty &&
-                                  file.key.endsWith('/'),
+                                  p.isDir(file.key),
                             )
                             .map<RemoteFile>((file) => file),
                       ).toList();

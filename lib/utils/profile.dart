@@ -34,10 +34,6 @@ class Profile {
     }
   }
 
-  String profileKey(String key) {
-    return p.relative(key, from: name);
-  }
-
   Future<void> refreshRemote({required String dir}) async {
     try {
       final fetchedRemoteFiles = await fileManager!.listObjects(dir);
