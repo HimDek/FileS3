@@ -63,7 +63,7 @@ class S3FileManager {
   }
 
   Future<dynamic> createDirectory(String dir) async {
-    String key = !p.isDir(dir) ? '$dir/' : dir;
+    String key = p.asDir(dir);
 
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
@@ -95,11 +95,7 @@ class S3FileManager {
       _prefix,
       p.s3(p.relative(dir, from: _profile.name)),
     );
-    prefix = prefix.isEmpty
-        ? null
-        : p.isDir(prefix)
-        ? prefix
-        : '$prefix/';
+    prefix = prefix.isEmpty ? null : p.asDir(prefix);
     final ListObjectsOutput resp = await _s3.listObjects(
       bucket: _bucket,
       prefix: prefix,
@@ -109,12 +105,10 @@ class S3FileManager {
         .where((item) => item.key != null)
         .map(
           (item) => RemoteFile(
-            key:
-                p.join(
-                  _profile.name,
-                  p.s3(p.relative(item.key!, from: _prefix)),
-                ) +
-                (p.isDir(item.key!) ? '/' : ''),
+            key: p.join(
+              _profile.name,
+              p.s3(p.relative(item.key!, from: _prefix)),
+            ),
             size: item.size ?? 0,
             etag: item.eTag != null && item.eTag!.isNotEmpty
                 ? item.eTag!.substring(1, item.eTag!.length - 1)
