@@ -195,8 +195,7 @@ class ListFiles extends StatelessWidget {
         Scrollable.ensureVisible(
           keys[galleryFiles[newIndex].file.key]!.currentContext!,
           duration: const Duration(milliseconds: 0),
-          curve: Curves.easeOut,
-          alignment: 0.5, // center in viewport
+          alignment: 0.5,
         );
       }
     };

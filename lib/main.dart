@@ -1253,6 +1253,7 @@ class _HomeState extends State<Home> {
           Scrollable.ensureVisible(
             _keys[newKey]?.currentContext ?? context,
             duration: const Duration(milliseconds: 0),
+            alignment: 0.5,
           );
           _changeDirectory(RemoteFile(key: newKey, size: 0, etag: ''))?.call();
           return;
