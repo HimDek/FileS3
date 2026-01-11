@@ -161,7 +161,7 @@ class ListFiles extends StatelessWidget {
                     )
                   : f,
               title: p.isWithin(relativeto.key, f.key)
-                  ? p.relative(f.key, from: relativeto.key)
+                  ? p.s3(p.relative(f.key, from: relativeto.key))
                   : f.key,
               url: url,
               path: File(Main.pathFromKey(f.key) ?? f.key).existsSync()
@@ -202,7 +202,7 @@ class ListFiles extends StatelessWidget {
               width: 24,
               mediaProvider: getMediaProvider(
                 name: p.isWithin(relativeto.key, item.key)
-                    ? p.relative(item.key, from: relativeto.key)
+                    ? p.s3(p.relative(item.key, from: relativeto.key))
                     : item.file!.key,
                 mediaType: getMediaType(item.key)!,
                 url: item.url!,
@@ -239,8 +239,8 @@ class ListFiles extends StatelessWidget {
             ),
             title: Text(
               p.isWithin(relativeto.key, item.key)
-                  ? "${p.relative(item.key, from: relativeto.key)}/"
-                  : "${item.key}/",
+                  ? p.s3(p.asDir(p.relative(item.key, from: relativeto.key)))
+                  : item.key,
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -266,7 +266,7 @@ class ListFiles extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (p.dirname(item.file!.key).isEmpty)
+                if (p.s3(p.dirname(item.file!.key)).isEmpty)
                   Row(
                     children: [
                       Text('${Main.backupMode(item.file!.key).name}:'),
@@ -334,7 +334,7 @@ class ListFiles extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   child: Text(
                     p.isWithin(relativeto.key, item.key)
-                        ? p.relative(item.key, from: relativeto.key)
+                        ? p.s3(p.relative(item.key, from: relativeto.key))
                         : item.file!.key,
                   ),
                 ),
@@ -405,8 +405,10 @@ class ListFiles extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   child: Text(
                     p.isWithin(relativeto.key, item.key)
-                        ? "${p.relative(item.key, from: relativeto.key)}/"
-                        : "${item.key}/",
+                        ? p.s3(
+                            p.asDir(p.relative(item.key, from: relativeto.key)),
+                          )
+                        : item.key,
                   ),
                 ),
               ],
@@ -472,7 +474,7 @@ class ListFiles extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   child: Text(
                     p.isWithin(relativeto.key, item.key)
-                        ? p.relative(item.key, from: relativeto.key)
+                        ? p.s3(p.relative(item.key, from: relativeto.key))
                         : item.file!.key,
                   ),
                 ),

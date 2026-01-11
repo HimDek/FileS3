@@ -265,8 +265,7 @@ class _HomeState extends State<Home> {
     for (final file in Main.remoteFiles) {
       if (p.isWithin(dir.key, file.key) &&
           file.key != dir.key &&
-          (recursive ||
-              p.normalize(p.dirname(file.key)) == p.normalize(dir.key))) {
+          (recursive || p.s3(p.dirname(file.key)) == p.s3(dir.key))) {
         if (p.isDir(file.key)) {
           dirCount += 1;
         } else {
@@ -374,7 +373,7 @@ class _HomeState extends State<Home> {
                 _driveDir = () {
                   String dir = _driveDir.key;
                   while (p.isWithin(item.key, dir) || item.key == dir) {
-                    dir = p.dirname(dir);
+                    dir = p.s3(p.dirname(dir));
                     if (dir == '') {
                       break;
                     }
@@ -394,7 +393,7 @@ class _HomeState extends State<Home> {
       await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
       Main.remoteFiles.add(
         RemoteFile(
-          key: p.isDir(dir) ? dir : '$dir/',
+          key: p.asDir(dir),
           size: 0,
           etag: '',
           lastModified: DateTime.now(),
@@ -491,7 +490,7 @@ class _HomeState extends State<Home> {
       (progress ?? _progress).value = progressCount / totalFiles;
       await _copyFile(
         file.key,
-        p.join(newDir, p.relative(file.key, from: dir)),
+        p.s3(p.join(newDir, p.relative(file.key, from: dir))),
         refresh: false,
       );
     }
@@ -509,7 +508,7 @@ class _HomeState extends State<Home> {
         if (Main.backupMode(key) != BackupMode.upload) {
           _setBackupMode(
             key,
-            Main.backupMode(p.dirname(key)) == BackupMode.upload
+            Main.backupMode(p.s3(p.dirname(key))) == BackupMode.upload
                 ? null
                 : BackupMode.upload,
           );
@@ -521,7 +520,7 @@ class _HomeState extends State<Home> {
         if (Main.backupMode(key) != BackupMode.upload) {
           _setBackupMode(
             key,
-            Main.backupMode(p.dirname(key)) == BackupMode.upload
+            Main.backupMode(p.s3(p.dirname(key))) == BackupMode.upload
                 ? null
                 : BackupMode.upload,
           );
@@ -671,7 +670,7 @@ class _HomeState extends State<Home> {
       _loading.value = true;
     });
 
-    _deleteS3(dirs, refresh: false, progress: progress ?? _progress);
+    await _deleteS3(dirs, refresh: false, progress: progress ?? _progress);
 
     for (final dir
         in dirs
@@ -757,7 +756,7 @@ class _HomeState extends State<Home> {
               Main.pathFromKey(file.key)) {
         _setBackupMode(
           file.key,
-          Main.backupMode(p.dirname(file.key)) == BackupMode.sync
+          Main.backupMode(p.s3(p.dirname(file.key))) == BackupMode.sync
               ? null
               : BackupMode.sync,
         );
@@ -771,7 +770,7 @@ class _HomeState extends State<Home> {
         (localPath ?? Main.pathFromKey(dir.key)) == Main.pathFromKey(dir.key)) {
       _setBackupMode(
         dir.key,
-        Main.backupMode(p.dirname(dir.key)) == BackupMode.sync
+        Main.backupMode(p.s3(p.dirname(dir.key))) == BackupMode.sync
             ? null
             : BackupMode.sync,
       );
@@ -789,12 +788,12 @@ class _HomeState extends State<Home> {
     for (final file in files) {
       progressCount += 1;
       _progress.value = progressCount / totalFiles;
-      final relativePath = p.relative(file.key, from: dir.key);
+      final relativePath = p.s3(p.relative(file.key, from: dir.key));
       final localFilePath = p.join(
         localPath ?? Main.pathFromKey(dir.key) ?? dir.key,
         relativePath,
       );
-      final localFileDir = p.dirname(localFilePath);
+      final localFileDir = p.s3(p.dirname(localFilePath));
       if (!Directory(localFileDir).existsSync()) {
         Directory(localFileDir).createSync(recursive: true);
       }
@@ -832,9 +831,7 @@ class _HomeState extends State<Home> {
             final selection = _selection.toList();
             if (_selectionAction == SelectionAction.copy) {
               final items = selection.where(
-                (item) =>
-                    p.normalize(p.dirname(item.key)) !=
-                    p.normalize(_driveDir.key),
+                (item) => p.s3(p.dirname(item.key)) != p.s3(_driveDir.key),
               );
               int progressCount = 0;
               final totalItems = items.length;
@@ -857,16 +854,14 @@ class _HomeState extends State<Home> {
                   .where(
                     (item) =>
                         p.isDir(item.key) &&
-                        p.normalize(p.dirname(item.key)) !=
-                            p.normalize(_driveDir.key),
+                        p.s3(p.dirname(item.key)) != p.s3(_driveDir.key),
                   )
                   .toList();
               final files = selection
                   .where(
                     (item) =>
                         !p.isDir(item.key) &&
-                        p.normalize(p.dirname(item.key)) !=
-                            p.normalize(_driveDir.key),
+                        p.s3(p.dirname(item.key)) != p.s3(_driveDir.key),
                   )
                   .toList();
               final dirsDestinations = dirs
@@ -919,12 +914,11 @@ class _HomeState extends State<Home> {
         progressCount += 1;
         _progress.value = progressCount / totalFiles;
         if (entity is File) {
-          final relativePath = p.relative(
-            entity.path,
-            from: Main.pathFromKey(dir.key),
+          final relativePath = p.s3(
+            p.relative(entity.path, from: Main.pathFromKey(dir.key)),
           );
           final newFilePath = p.join(savePath, relativePath);
-          final newFileDir = p.dirname(newFilePath);
+          final newFileDir = p.s3(p.dirname(newFilePath));
           if (!Directory(newFileDir).existsSync()) {
             Directory(newFileDir).createSync(recursive: true);
           }
@@ -944,8 +938,12 @@ class _HomeState extends State<Home> {
       progressCount += 1;
       _progress.value = progressCount / totalFiles;
       if (entity is File) {
-        final relativePath = p.relative(entity.path, from: directory.path);
-        final remoteKey = p.join(key, relativePath).replaceAll('\\', '/');
+        final relativePath = p.s3(
+          p.relative(entity.path, from: directory.path),
+        );
+        final remoteKey = p
+            .join(key, relativePath)
+            .replaceAll('\\', p.separator);
         Main.uploadFile(remoteKey, entity);
       }
     }
@@ -960,7 +958,7 @@ class _HomeState extends State<Home> {
         [
           ...Main.remoteFiles.where(
             (file) =>
-                p.isWithin(p.normalize(_driveDir.key), p.normalize(file.key)) &&
+                p.isWithin(p.s3(_driveDir.key), p.s3(file.key)) &&
                 !Job.jobs.any(
                   (job) =>
                       job.remoteKey == file.key &&
@@ -969,10 +967,7 @@ class _HomeState extends State<Home> {
           ),
           ...Job.jobs.where(
             (job) =>
-                p.isWithin(
-                  p.normalize(_driveDir.key),
-                  p.normalize(job.remoteKey),
-                ) &&
+                p.isWithin(p.s3(_driveDir.key), p.s3(job.remoteKey)) &&
                 job.status != JobStatus.completed,
           ),
         ].where((item) {
@@ -1254,7 +1249,7 @@ class _HomeState extends State<Home> {
         }
         if (_driveDir.key.isNotEmpty) {
           _changeDirectory(
-            RemoteFile(key: p.dirname(_driveDir.key), size: 0, etag: ''),
+            RemoteFile(key: p.s3(p.dirname(_driveDir.key)), size: 0, etag: ''),
           )?.call();
           return;
         }
@@ -1834,8 +1829,10 @@ class _HomeState extends State<Home> {
                                                                         .isEmpty) {
                                                                       continue;
                                                                     }
-                                                                    newPath +=
-                                                                        '$part/';
+                                                                    newPath += p
+                                                                        .asDir(
+                                                                          part,
+                                                                        );
                                                                     if (part ==
                                                                         dir) {
                                                                       break;
@@ -1844,10 +1841,10 @@ class _HomeState extends State<Home> {
                                                                   _changeDirectory(
                                                                     Main.remoteFiles.firstWhere(
                                                                       (file) =>
-                                                                          p.normalize(
+                                                                          p.s3(
                                                                             file.key,
                                                                           ) ==
-                                                                          p.normalize(
+                                                                          p.s3(
                                                                             newPath,
                                                                           ),
                                                                     ),
@@ -1988,7 +1985,7 @@ class _HomeState extends State<Home> {
                         Main.remoteFiles
                             .where(
                               (file) =>
-                                  p.dirname(file.key).isEmpty &&
+                                  p.s3(p.dirname(file.key)).isEmpty &&
                                   p.isDir(file.key),
                             )
                             .map<RemoteFile>((file) => file),
@@ -2025,8 +2022,8 @@ class _HomeState extends State<Home> {
                       final files = [
                         ...Main.remoteFiles.where(
                           (file) =>
-                              p.normalize(p.dirname(file.key)) ==
-                                  p.normalize(_driveDir.key) &&
+                              p.s3(p.dirname(file.key)) ==
+                                  p.s3(_driveDir.key) &&
                               !Main.ignoreKeyRegexps.any(
                                 (regexp) => RegExp(regexp).hasMatch(file.key),
                               ) &&
@@ -2038,8 +2035,8 @@ class _HomeState extends State<Home> {
                         ),
                         ...Job.jobs.where(
                           (job) =>
-                              p.normalize(p.dirname(job.remoteKey)) ==
-                                  p.normalize(_driveDir.key) &&
+                              p.s3(p.dirname(job.remoteKey)) ==
+                                  p.s3(_driveDir.key) &&
                               job.status != JobStatus.completed,
                         ),
                       ];
@@ -2225,13 +2222,13 @@ class _HomeState extends State<Home> {
                       if (Main.remoteFiles.any(
                         (file) => [
                           p.join(_driveDir.key, dir),
-                          '${p.join(_driveDir.key, dir)}/',
+                          p.asDir(p.join(_driveDir.key, dir)),
                         ].contains(file.key),
                       )) {
                         showSnackBar(
                           SnackBar(
                             content: Text(
-                              'Directory "${p.join(_driveDir.key, dir)}" already exists.',
+                              '"${p.join(_driveDir.key, dir)}" already exists.',
                             ),
                           ),
                         );

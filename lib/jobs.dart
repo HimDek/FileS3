@@ -102,9 +102,11 @@ class JobViewState extends State<JobView> {
             scrollDirection: Axis.horizontal,
             child: Text(
               p.isWithin(widget.relativeTo?.key ?? '', widget.job.remoteKey)
-                  ? p.relative(
-                      widget.job.remoteKey,
-                      from: widget.relativeTo?.key ?? '',
+                  ? p.s3(
+                      p.relative(
+                        widget.job.remoteKey,
+                        from: widget.relativeTo?.key ?? '',
+                      ),
                     )
                   : widget.job.remoteKey,
             ),

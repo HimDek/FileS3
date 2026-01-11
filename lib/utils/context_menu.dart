@@ -103,8 +103,8 @@ class FileContextActionHandler extends ContextActionHandler {
         ? null
         : () async {
             final newKey = p.join(
-              p.dirname(file.key),
-              newName.replaceAll('/', '_'),
+              p.s3(p.dirname(file.key)),
+              newName.replaceAll('/', '_').replaceAll('\\', '_'),
             );
             await moveFiles!([file.key], [newKey]);
             return 'Renamed ${p.basename(file.key)} to $newName';
@@ -347,12 +347,18 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   }
 
   Future<String> Function()? rename(String newName) {
-    return moveDirectories == null || p.dirname(file.key).isEmpty
+    return moveDirectories == null || p.s3(p.dirname(file.key)).isEmpty
         ? null
         : () async {
-            final key = p.isDir(file.key) ? file.key : '${file.key}/';
-            final newKey =
-                '${p.join(p.dirname(key), newName.replaceAll('/', '_'))}/';
+            final key = file.key;
+            final newKey = p.s3(
+              p.asDir(
+                p.join(
+                  p.s3(p.dirname(key)),
+                  newName.replaceAll('/', '_').replaceAll('\\', '_'),
+                ),
+              ),
+            );
             await moveDirectories!([key], [newKey]);
             return 'Renamed ${p.basename(file.key)} to $newName';
           };
@@ -377,7 +383,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   Future<String> Function()? deleteLocal(bool? yes) {
     return (yes ?? false) && deleteLocalDirectory != null && localExists()
         ? () async {
-            final key = p.isDir(file.key) ? file.key : '${file.key}/';
+            final key = file.key;
             deleteLocalDirectory!(key);
             return 'Deleted local copy of ${p.basename(key)}';
           }
@@ -388,7 +394,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   Future<String> Function()? delete(bool? yes) {
     return (yes ?? false) && deleteDirectories != null
         ? () async {
-            final key = p.isDir(file.key) ? file.key : '${file.key}/';
+            final key = file.key;
             deleteDirectories!([key]);
             return 'Deleted ${p.basename(key)}';
           }
@@ -473,7 +479,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     return (yes ?? false) && deleteLocalDirectory != null
         ? () async {
             for (final dir in directories) {
-              final key = p.isDir(dir.key) ? dir.key : '${dir.key}/';
+              final key = dir.key;
               for (final file in removableFiles) {
                 if (p.isWithin(key, file.key)) {
                   deleteLocalDirectory!(file.key);
@@ -494,7 +500,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
             localDirs.isNotEmpty
         ? () async {
             for (final dir in localDirs) {
-              final key = p.isDir(dir.key) ? dir.key : '${dir.key}/';
+              final key = dir.key;
               deleteLocalDirectory!(key);
             }
             return 'Deleted local copies of ${localDirs.length} folders';
@@ -506,9 +512,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   Future<String> Function()? delete(bool? yes) {
     return (yes ?? false) && deleteDirectories != null
         ? () async {
-            final keys = directories
-                .map((dir) => p.isDir(dir.key) ? dir.key : '${dir.key}/')
-                .toList();
+            final keys = directories.map((dir) => dir.key).toList();
             await deleteDirectories!(keys);
             return 'Deleted ${directories.length} folders';
           }
@@ -1299,7 +1303,7 @@ class DirectoryContextOption {
         : () async {
             final newName = await renameDialog(
               context,
-              p.basename(handler.file.key),
+              p.basenameWithoutExtension(handler.file.key),
             );
             if (newName != null &&
                 newName.isNotEmpty &&
@@ -2213,8 +2217,8 @@ Widget buildFileContextMenu(
                   onTap: option.action == null
                       ? null
                       : () async {
-                          await option.action!();
                           if (option.popOnInvoked) globalNavigator?.pop();
+                          await option.action!();
                         },
                   enabled: option.action != null,
                 ),
@@ -2271,8 +2275,8 @@ Widget buildFilesContextMenu(
                     : null,
                 onTap: option.action != null
                     ? () async {
-                        await option.action!();
                         if (option.popOnInvoked) globalNavigator?.pop();
+                        await option.action!();
                       }
                     : null,
                 enabled: option.action != null,
@@ -2446,8 +2450,8 @@ Widget buildDirectoryContextMenu(
                       : null,
                   onTap: option.action != null
                       ? () async {
-                          await option.action!();
                           if (option.popOnInvoked) globalNavigator?.pop();
+                          await option.action!();
                         }
                       : null,
                   enabled: option.action != null,
@@ -2497,8 +2501,8 @@ Widget buildDirectoriesContextMenu(
                     : null,
                 onTap: option.action != null
                     ? () async {
-                        await option.action!();
                         if (option.popOnInvoked) globalNavigator?.pop();
+                        await option.action!();
                       }
                     : null,
                 enabled: option.action != null,
@@ -2591,8 +2595,8 @@ Widget buildBulkContextMenu(
                       : null,
                   onTap: option.action != null
                       ? () async {
-                          await option.action!(context);
                           if (option.popOnInvoked) globalNavigator?.pop();
+                          await option.action!(context);
                         }
                       : null,
                   enabled: option.action != null,

@@ -394,7 +394,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                 decoration: InputDecoration(
                   prefixIcon: Icon(Icons.folder),
                   labelText: 'Prefix (optional)',
-                  hintText: 'e.g. myfolder/',
+                  hintText: 'e.g. myfolder',
                   helperText:
                       'Folder prefix within the bucket will be used as root',
                 ),

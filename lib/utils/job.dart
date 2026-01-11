@@ -21,13 +21,13 @@ abstract class Main {
   static String downloadCacheDir = '';
   static String documentsDir = '';
   static final List<String> ignoreKeyRegexps = <String>[
-    r'^.*/deletion-register\.ini$',
+    r'^.*[/\\]deletion-register\.ini$',
   ];
 
   static Profile? profileFromKey(String key) {
     try {
       return profiles.firstWhere(
-        (profile) => profile.name == p.split(key).first,
+        (profile) => profile.name == p.split(key).firstOrNull,
       );
     } catch (e) {
       return null;
@@ -36,10 +36,11 @@ abstract class Main {
 
   static String? pathFromKey(String key) {
     final localDir = IniManager.config
-        ?.get('directories', "${p.split(key).first}${p.separator}")
+        ?.get('directories', p.s3(p.asDir(p.split(key).firstOrNull ?? '')))
         ?.replaceAll('\\', p.separator);
     if (localDir != null) {
-      return p.join(localDir, p.split(key).sublist(1).join(p.separator));
+      final path = p.joinAll([localDir, ...p.split(key).sublist(1)]);
+      return p.normalize(p.isDir(key) ? p.asDir(path) : path);
     } else {
       return null;
     }
@@ -49,13 +50,13 @@ abstract class Main {
     for (String dir in IniManager.config!.options('directories')!) {
       final localDir = IniManager.config!
           .get('directories', dir)
-          ?.replaceAll('\\', '/');
+          ?.replaceAll('\\', p.separator);
       if (localDir != null) {
         if (p.isWithin(localDir, path) || localDir == path) {
           final relativePath = p
-              .relative(path, from: localDir)
-              .replaceAll('\\', '/');
-          return p.join(dir, relativePath).replaceAll('\\', '/');
+              .s3(p.relative(path, from: localDir))
+              .replaceAll('\\', p.separator);
+          return p.s3(p.join(dir, relativePath).replaceAll('\\', p.separator));
         }
       }
     }
@@ -63,16 +64,22 @@ abstract class Main {
   }
 
   static Watcher? watcherFromKey(String key) {
-    final dirKey = '${p.split(key).first}${p.separator}';
+    final dirKey = p.s3(p.asDir(p.split(key).firstOrNull ?? ''));
     return watcherMap[dirKey];
   }
 
   static String cachePathFromKey(String key) {
-    return '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tmp';
+    return p.join(
+      Main.downloadCacheDir,
+      'app_${sha1.convert(utf8.encode(key)).toString()}.tmp',
+    );
   }
 
   static String tagPathFromKey(String key) {
-    return '${Main.downloadCacheDir}/app_${sha1.convert(utf8.encode(key)).toString()}.tag';
+    return p.join(
+      Main.downloadCacheDir,
+      'app_${sha1.convert(utf8.encode(key)).toString()}.tag',
+    );
   }
 
   static Future<void> onJobStatus(Job job, dynamic result) async {
@@ -97,7 +104,7 @@ abstract class Main {
   static BackupMode backupMode(String key) {
     String? value = IniManager.config?.get('modes', key);
     if (value == null && p.split(key).length > 1) {
-      return backupMode(p.dirname(key));
+      return backupMode(p.s3(p.dirname(key)));
     } else {
       return BackupMode.fromValue(int.parse(value ?? '1'));
     }
@@ -134,8 +141,8 @@ abstract class Main {
       final isDir = p.isDir(normalized);
 
       final basePath = isDir
-          ? p.dirname(normalized.substring(0, normalized.length - 1))
-          : p.dirname(normalized);
+          ? p.s3(p.dirname(normalized.substring(0, normalized.length - 1)))
+          : p.s3(p.dirname(normalized));
 
       if (basePath.isEmpty) continue;
 
@@ -146,7 +153,7 @@ abstract class Main {
         if (part.isEmpty) continue;
 
         current = p.join(current, part);
-        final dirPath = '$current/';
+        final dirPath = p.asDir(current);
 
         if (!existingPaths.contains(dirPath)) {
           final dirObject = RemoteFile(
@@ -170,7 +177,7 @@ abstract class Main {
 
     final dirs = remoteFiles
         .where((dir) => p.isDir(dir.key))
-        .map((file) => '${p.split(file.key).first}${p.separator}')
+        .map((file) => p.s3(p.asDir(p.split(file.key).firstOrNull ?? '')))
         .toSet()
         .toList();
 
@@ -201,7 +208,7 @@ abstract class Main {
       Main.remoteFiles = (await ConfigManager.loadRemoteFiles())
           .where(
             (file) => profiles.any(
-              (profile) => profile.name == p.split(file.key).first,
+              (profile) => profile.name == p.split(file.key).firstOrNull,
             ),
           )
           .toList();
@@ -274,7 +281,7 @@ abstract class Main {
               (remoteFile) => remoteFile.key == candidateKey,
             ) ==
             true) {
-          candidateKey = p.join(p.dirname(key), '$base${'($count)'}$ext');
+          candidateKey = p.join(p.s3(p.dirname(key)), '$base${'($count)'}$ext');
           count++;
         }
         return candidateKey;
@@ -299,7 +306,7 @@ abstract class Main {
               (remoteFile) => remoteFile.key == candidateKey,
             ) ==
             true) {
-          candidateKey = p.join(p.dirname(key), '$base${'($count)'}$ext');
+          candidateKey = p.join(p.s3(p.dirname(key)), '$base${'($count)'}$ext');
           count++;
         }
         return candidateKey;
@@ -432,7 +439,7 @@ abstract class Job {
         // final ifModifiedSince = await localFile.exists()
         //     ? localFile.lastModifiedSync()
         //     : null;
-        final dir = Directory(p.dirname(localFile.path));
+        final dir = Directory(p.s3(p.dirname(localFile.path)));
         if (!dir.existsSync()) {
           dir.createSync(recursive: true);
         }
@@ -696,10 +703,12 @@ class Watcher {
       localRoot: localDir,
       remoteFiles: Main.remoteFiles
           .where(
-            (file) => p.isWithin(
-              localDir.path,
-              Main.pathFromKey(file.key) ?? file.key,
-            ),
+            (file) =>
+                p.isWithin(
+                  localDir.path,
+                  Main.pathFromKey(file.key) ?? file.key,
+                ) &&
+                !p.isDir(file.key),
           )
           .toList(),
     );

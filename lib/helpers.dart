@@ -257,7 +257,7 @@ abstract class IniManager {
   static Config? config;
 
   static void init() {
-    _file = File('${Main.documentsDir}/config.ini');
+    _file = File(p.join(Main.documentsDir, 'config.ini'));
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
@@ -463,8 +463,8 @@ class DeletionRegistrar {
   DateTime _lastPulled = DateTime.fromMillisecondsSinceEpoch(0).toUtc();
 
   DeletionRegistrar({required this.profile}) {
-    _key = '${profile.name}/deletion-register.ini';
-    _file = File('${Main.documentsDir}/$_key');
+    _key = p.join(profile.name, 'deletion-register.ini');
+    _file = File(p.join(Main.documentsDir, _key));
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);

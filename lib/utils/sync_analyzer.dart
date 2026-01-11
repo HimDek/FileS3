@@ -61,7 +61,7 @@ class SyncAnalyzer {
       if (ent is File) {
         final rel = p
             .relative(ent.path, from: localRoot.path)
-            .replaceAll('\\', '/');
+            .replaceAll('\\', p.separator);
         localMap[p.join(Main.keyFromPath(localRoot.path) ?? '', rel)] = ent;
       }
     }
