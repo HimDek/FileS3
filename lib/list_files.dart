@@ -113,6 +113,7 @@ class ListFiles extends StatelessWidget {
   final int Function(RemoteFile) dirSize;
   final String Function(RemoteFile) dirModified;
   final String? Function(RemoteFile, int?) getLink;
+  List<GalleryProps>? _galleryFiles;
 
   ListFiles({
     super.key,
@@ -137,7 +138,7 @@ class ListFiles extends StatelessWidget {
 
   Future<void> Function() galleryBuilder(BuildContext context, FileProps item) {
     return () async {
-      final galleryFiles = files
+      _galleryFiles ??= files
           .where((f) {
             return !p.isDir(f.key);
           })
@@ -172,14 +173,15 @@ class ListFiles extends StatelessWidget {
             );
           })
           .toList();
-      final newIndex = await Navigator.of(context).push(
-        PageRouteBuilder(
+      Navigator.of(context).push(
+        PageRouteBuilder<int>(
           pageBuilder: (_, __, ___) {
             return HeroControllerScope(
               controller: MaterialApp.createMaterialHeroController(),
               child: Gallery(
-                files: galleryFiles,
-                initialIndex: galleryFiles.indexWhere(
+                keys: keys,
+                files: _galleryFiles!,
+                initialIndex: _galleryFiles!.indexWhere(
                   (f) => f.file.key == item.key,
                 ),
                 buildContextMenu: (file) {
@@ -190,14 +192,6 @@ class ListFiles extends StatelessWidget {
           },
         ),
       );
-      if (newIndex != null &&
-          keys[galleryFiles[newIndex].file.key]?.currentContext != null) {
-        Scrollable.ensureVisible(
-          keys[galleryFiles[newIndex].file.key]!.currentContext!,
-          duration: const Duration(milliseconds: 0),
-          alignment: 0.5,
-        );
-      }
     };
   }
 

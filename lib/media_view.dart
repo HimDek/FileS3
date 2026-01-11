@@ -490,12 +490,14 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
 }
 
 class Gallery extends StatefulWidget {
+  final Map<String, GlobalKey> keys;
   final List<GalleryProps> files;
   final int initialIndex;
   final Widget Function(RemoteFile file)? buildContextMenu;
 
   const Gallery({
     super.key,
+    required this.keys,
     required this.files,
     this.initialIndex = 0,
     this.buildContextMenu,
@@ -566,7 +568,6 @@ class GalleryState extends State<Gallery> {
         if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-
         return InteractiveMediaView(
           heroTag: widget.files[index].file.key,
           mediaProvider: getMediaProvider(
@@ -649,7 +650,21 @@ class GalleryState extends State<Gallery> {
                       ? const BouncingScrollPhysics()
                       : const NeverScrollableScrollPhysics(),
                   itemCount: widget.files.length,
-                  onPageChanged: (i) => setState(() => _currentIndex = i),
+                  onPageChanged: (i) {
+                    setState(() => _currentIndex = i);
+                    if (widget
+                            .keys[widget.files[_currentIndex].file.key]
+                            ?.currentContext !=
+                        null) {
+                      Scrollable.ensureVisible(
+                        widget
+                            .keys[widget.files[_currentIndex].file.key]!
+                            .currentContext!,
+                        duration: const Duration(milliseconds: 0),
+                        alignment: 0.5,
+                      );
+                    }
+                  },
                   itemBuilder: (context, index) => PointerGestureRouter(
                     allowTap: () => _allowPaging,
                     allowVerticalDrag: () => _allowPaging && _allowContextMenu,
