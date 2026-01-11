@@ -60,6 +60,7 @@ dependencies:
   flutter_launcher_icons: 
   flutter_secure_storage:
   flutter_foreground_task:
+  image: ^4.7.2
 
 dev_dependencies:
   flutter_test:

@@ -1,17 +1,19 @@
 import 'dart:io';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
-import 'package:files3/models.dart';
-import 'package:flutter/gestures.dart';
+import 'package:image/image.dart' as img;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:photo_view/photo_view.dart';
 import 'package:chewie_audio/chewie_audio.dart';
 import 'package:enough_media/enough_media.dart';
+import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:files3/helpers.dart';
+import 'package:files3/models.dart';
 
 class GalleryProps {
   final RemoteFile file;
@@ -550,21 +552,38 @@ class GalleryState extends State<Gallery> {
   }
 
   Widget _itemBuilder(BuildContext context, int index) {
-    return InteractiveMediaView(
-      heroTag: widget.files[index].file.key,
-      mediaProvider: getMediaProvider(
-        name: widget.files[index].title,
-        mediaType:
-            getMediaType(widget.files[index].file.key) ??
-            'application/octet-stream',
-        url: widget.files[index].url,
-        path: widget.files[index].path,
-        size: widget.files[index].file.size,
-        description: widget.files[index].description,
+    final f = widget.files[index];
+    return FutureBuilder<MediaProvider>(
+      future: MediaProviderResolver.resolve(
+        name: f.title,
+        mediaType: getMediaType(f.file.key) ?? 'application/octet-stream',
+        url: f.url,
+        path: f.path,
+        size: f.file.size,
+        description: f.description,
       ),
-      setPaging: _setPaging,
-      setContextMenu: _setContextMenu,
-      isActive: index == _currentIndex,
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return InteractiveMediaView(
+          heroTag: widget.files[index].file.key,
+          mediaProvider: getMediaProvider(
+            name: widget.files[index].title,
+            mediaType:
+                getMediaType(widget.files[index].file.key) ??
+                'application/octet-stream',
+            url: widget.files[index].url,
+            path: widget.files[index].path,
+            size: widget.files[index].file.size,
+            description: widget.files[index].description,
+          ),
+          setPaging: _setPaging,
+          setContextMenu: _setContextMenu,
+          isActive: index == _currentIndex,
+        );
+      },
     );
   }
 
@@ -596,147 +615,125 @@ class GalleryState extends State<Gallery> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: chromeVisible,
-      builder: (context, value, child) {
-        return Scaffold(
-          backgroundColor: Colors.black,
-          appBar: PreferredSize(
-            preferredSize: const Size.fromHeight(kToolbarHeight),
-            child: AnimatedSlide(
-              offset: value ? Offset.zero : const Offset(0, -1),
-              duration: const Duration(milliseconds: 100),
-              curve: Curves.easeInOut,
-              child: AppBar(
-                backgroundColor: Colors.black,
-                title: Text("${_currentIndex + 1} / ${widget.files.length}"),
-                actions: [],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.of(context).pop(_currentIndex);
+        }
+      },
+      child: ValueListenableBuilder(
+        valueListenable: chromeVisible,
+        builder: (context, value, child) {
+          return Scaffold(
+            backgroundColor: Colors.black,
+            appBar: PreferredSize(
+              preferredSize: const Size.fromHeight(kToolbarHeight),
+              child: AnimatedSlide(
+                offset: value ? Offset.zero : const Offset(0, -1),
+                duration: const Duration(milliseconds: 100),
+                curve: Curves.easeInOut,
+                child: AppBar(
+                  backgroundColor: Colors.black,
+                  title: Text("${_currentIndex + 1} / ${widget.files.length}"),
+                  actions: [],
+                ),
               ),
             ),
-          ),
-          extendBodyBehindAppBar: true,
-          body: Stack(
-            children: [
-              PageView.builder(
-                controller: _pageController,
-                physics: _allowPaging
-                    ? const BouncingScrollPhysics()
-                    : const NeverScrollableScrollPhysics(),
-                itemCount: widget.files.length,
-                onPageChanged: (i) => setState(() => _currentIndex = i),
-                itemBuilder: (context, index) => PointerGestureRouter(
-                  allowTap: () => _allowPaging,
-                  allowVerticalDrag: () => _allowPaging && _allowContextMenu,
-                  onTap: () {
-                    chromeVisible.value = !chromeVisible.value;
-                  },
-                  onVerticalDrag: (dy) {
-                    dismissOffset += dy * 0.7; // resistance
-                    dismissOffset = dismissOffset.clamp(-200, 300);
-                    setState(() {});
-                  },
-                  onVerticalDragEnd: (totalDy) {
-                    if (totalDy > 100) {
-                      chromeVisible.value = false;
-                      Navigator.pop(context);
-                      dismissOffset = 0;
-                    } else if (totalDy < -100) {
-                      chromeVisible.value = true;
-                      _showContextMenu();
-                      dismissOffset = 0;
-                    } else {
-                      dismissOffset = 0;
+            extendBodyBehindAppBar: true,
+            body: Stack(
+              children: [
+                PageView.builder(
+                  controller: _pageController,
+                  physics: _allowPaging
+                      ? const BouncingScrollPhysics()
+                      : const NeverScrollableScrollPhysics(),
+                  itemCount: widget.files.length,
+                  onPageChanged: (i) => setState(() => _currentIndex = i),
+                  itemBuilder: (context, index) => PointerGestureRouter(
+                    allowTap: () => _allowPaging,
+                    allowVerticalDrag: () => _allowPaging && _allowContextMenu,
+                    onTap: () {
+                      chromeVisible.value = !chromeVisible.value;
+                    },
+                    onVerticalDrag: (dy) {
+                      dismissOffset += dy * 0.7; // resistance
+                      dismissOffset = dismissOffset.clamp(-200, 300);
                       setState(() {});
-                    }
-                  },
-                  child: Transform.translate(
-                    offset: Offset(0, dismissOffset),
-                    child: Transform.scale(
-                      scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
-                      child: _itemBuilder(context, index),
+                    },
+                    onVerticalDragEnd: (totalDy) {
+                      if (totalDy > 100) {
+                        chromeVisible.value = false;
+                        Navigator.pop(context);
+                        dismissOffset = 0;
+                      } else if (totalDy < -100) {
+                        chromeVisible.value = true;
+                        _showContextMenu();
+                        dismissOffset = 0;
+                      } else {
+                        dismissOffset = 0;
+                        setState(() {});
+                      }
+                    },
+                    child: Transform.translate(
+                      offset: Offset(0, dismissOffset),
+                      child: Transform.scale(
+                        scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
+                        child: _itemBuilder(context, index),
+                      ),
                     ),
                   ),
                 ),
-
-                //  GestureDetector(
-                //   behavior: HitTestBehavior.opaque,
-                //   onTap: () {
-                //     chromeVisible.value = _allowPaging
-                //         ? !chromeVisible.value
-                //         : false;
-                //   },
-                //   onVerticalDragEnd: _allowPaging && _allowContextMenu
-                //       ? (details) {
-                //           if (details.primaryVelocity != null &&
-                //               details.primaryVelocity! > 10) {
-                //             Navigator.of(context).pop();
-                //           }
-                //           if (details.primaryVelocity != null &&
-                //               details.primaryVelocity! < -10) {
-                //             chromeVisible.value = true;
-                //             sheetController.animateTo(
-                //               0.7,
-                //               duration: const Duration(milliseconds: 260),
-                //               curve: Curves.easeOut,
-                //             );
-                //             SystemChrome.setEnabledSystemUIMode(
-                //               SystemUiMode.edgeToEdge,
-                //             );
-                //           }
-                //         }
-                //       : null,
-                //   child: _itemBuilder(context, index),
-                // ),
-              ),
-              DraggableScrollableSheet(
-                controller: sheetController,
-                initialChildSize: 0,
-                minChildSize: 0,
-                maxChildSize: 0.7,
-                snap: true,
-                snapSizes: const [0.125, 0.7],
-                snapAnimationDuration: const Duration(milliseconds: 100),
-                builder: (context, scrollController) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius:
-                          Theme.of(context).bottomSheetTheme.shape
-                              is RoundedRectangleBorder
-                          ? (Theme.of(context).bottomSheetTheme.shape
-                                    as RoundedRectangleBorder)
-                                .borderRadius
-                          : const BorderRadius.only(
-                              topLeft: Radius.circular(32),
-                              topRight: Radius.circular(32),
-                            ),
-                    ),
-                    child: ListView(
-                      padding: EdgeInsets.zero,
-                      controller: scrollController,
-                      children: [
-                        _grabHandle(),
-                        widget.buildContextMenu != null
-                            ? widget.buildContextMenu!(
-                                widget.files[_currentIndex].file,
-                              )
-                            : const SizedBox.shrink(),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        );
-      },
+                DraggableScrollableSheet(
+                  controller: sheetController,
+                  initialChildSize: 0,
+                  minChildSize: 0,
+                  maxChildSize: 0.7,
+                  snap: true,
+                  snapSizes: const [0.125, 0.7],
+                  snapAnimationDuration: const Duration(milliseconds: 100),
+                  builder: (context, scrollController) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius:
+                            Theme.of(context).bottomSheetTheme.shape
+                                is RoundedRectangleBorder
+                            ? (Theme.of(context).bottomSheetTheme.shape
+                                      as RoundedRectangleBorder)
+                                  .borderRadius
+                            : const BorderRadius.only(
+                                topLeft: Radius.circular(32),
+                                topRight: Radius.circular(32),
+                              ),
+                      ),
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        controller: scrollController,
+                        children: [
+                          _grabHandle(),
+                          widget.buildContextMenu != null
+                              ? widget.buildContextMenu!(
+                                  widget.files[_currentIndex].file,
+                                )
+                              : const SizedBox.shrink(),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
 
 class MediaPreview extends StatefulWidget {
   final String remoteKey;
-  final MediaProvider mediaProvider;
+  final MyUrlMediaProvider mediaProvider;
   final double? width;
   final double? height;
   final void Function(MediaProvider, String)? onContextMenuSelected;
@@ -755,7 +752,7 @@ class MediaPreview extends StatefulWidget {
 }
 
 class MediaPreviewState extends State<MediaPreview> {
-  late MediaProvider _provider;
+  late MyUrlMediaProvider _provider;
   bool _isLoading = true;
   double _progress = 0.0;
 
@@ -812,24 +809,15 @@ class MediaPreviewState extends State<MediaPreview> {
   @override
   Widget build(BuildContext context) {
     return _provider.isImage
-        ? (_provider is UrlMediaProvider)
-              ? Image(
-                  width: 256,
-                  height: 256,
-                  image: CachedNetworkImageProvider(
-                    maxWidth: 256,
-                    maxHeight: 256,
-                    cacheKey: widget.remoteKey,
-                    (_provider as UrlMediaProvider).url,
-                  ),
-                  fit: BoxFit.cover,
-                )
-              : Image(
-                  width: 256,
-                  height: 256,
-                  image: FileImage((_provider as FileMediaProvider).file),
-                  fit: BoxFit.cover,
-                )
+        ? CachedNetworkImage(
+            imageUrl: _provider.url,
+            height: 256,
+            width: 256,
+            maxWidthDiskCache: 256,
+            maxHeightDiskCache: 256,
+            fit: BoxFit.cover,
+            cacheKey: widget.remoteKey,
+          )
         : _provider.mediaType == 'application/pdf'
         ? fallback(context, _provider, _progress)
         : _provider.isAudio
@@ -892,6 +880,41 @@ MediaProvider getMediaProvider({
     size: size,
     description: description,
   );
+}
+
+class MediaProviderResolver {
+  static final Map<String, Future<File?>> _fileChecks = {};
+
+  static Future<File?> _resolveFile(String path) {
+    return _fileChecks.putIfAbsent(path, () async {
+      final file = File(path);
+      return file.existsSync() ? file : null;
+    });
+  }
+
+  static Future<MediaProvider> resolve({
+    required String name,
+    required String mediaType,
+    required String url,
+    required String path,
+    int? size,
+    String? description,
+  }) async {
+    final file = await _resolveFile(path);
+
+    if (file != null) {
+      return FileMediaProvider(name, mediaType, file, description: description);
+    }
+
+    return MyUrlMediaProvider(
+      name,
+      mediaType,
+      url,
+      path,
+      size: size,
+      description: description,
+    );
+  }
 }
 
 class MyUrlMediaProvider extends UrlMediaProvider {

@@ -97,6 +97,7 @@ class MyGridTile extends StatelessWidget {
 
 class ListFiles extends StatelessWidget {
   final List<dynamic> files;
+  final Map<String, GlobalKey> keys;
   final SortMode sortMode;
   final bool foldersFirst;
   final bool gridView;
@@ -113,9 +114,10 @@ class ListFiles extends StatelessWidget {
   final String Function(RemoteFile) dirModified;
   final String? Function(RemoteFile, int?) getLink;
 
-  const ListFiles({
+  ListFiles({
     super.key,
     required this.files,
+    required this.keys,
     required this.sortMode,
     required this.foldersFirst,
     required this.gridView,
@@ -133,8 +135,8 @@ class ListFiles extends StatelessWidget {
     required this.getLink,
   });
 
-  void Function() galleryBuilder(BuildContext context, FileProps item) {
-    return () {
+  Future<void> Function() galleryBuilder(BuildContext context, FileProps item) {
+    return () async {
       final galleryFiles = files
           .where((f) {
             return !p.isDir(f.key);
@@ -170,7 +172,7 @@ class ListFiles extends StatelessWidget {
             );
           })
           .toList();
-      Navigator.of(context).push(
+      final newIndex = await Navigator.of(context).push(
         PageRouteBuilder(
           pageBuilder: (_, __, ___) {
             return HeroControllerScope(
@@ -188,6 +190,15 @@ class ListFiles extends StatelessWidget {
           },
         ),
       );
+      if (newIndex != null &&
+          keys[galleryFiles[newIndex].file.key]?.currentContext != null) {
+        Scrollable.ensureVisible(
+          keys[galleryFiles[newIndex].file.key]!.currentContext!,
+          duration: const Duration(milliseconds: 0),
+          curve: Curves.easeOut,
+          alignment: 0.5, // center in viewport
+        );
+      }
     };
   }
 
@@ -196,21 +207,34 @@ class ListFiles extends StatelessWidget {
         ? SizedBox(
             height: 24,
             width: 24,
-            child: MediaPreview(
-              remoteKey: item.key,
-              height: 24,
-              width: 24,
-              mediaProvider: getMediaProvider(
-                name: p.isWithin(relativeto.key, item.key)
-                    ? p.s3(p.relative(item.key, from: relativeto.key))
-                    : item.file!.key,
-                mediaType: getMediaType(item.key)!,
-                url: item.url!,
-                path: File(Main.pathFromKey(item.key) ?? item.key).existsSync()
-                    ? (Main.pathFromKey(item.key) ?? item.key)
-                    : Main.cachePathFromKey(item.key),
-                size: item.size,
-              ),
+            child: FutureBuilder<String>(
+              future: () async {
+                return (await File(
+                      Main.pathFromKey(item.key) ?? item.key,
+                    ).exists())
+                    ? Main.pathFromKey(item.key) ?? item.key
+                    : Main.cachePathFromKey(item.key);
+              }(),
+              builder: (context, snapshot) {
+                return MediaPreview(
+                  remoteKey: item.key,
+                  height: 24,
+                  width: 24,
+                  mediaProvider: MyUrlMediaProvider(
+                    p.isWithin(relativeto.key, item.key)
+                        ? p.s3(p.relative(item.key, from: relativeto.key))
+                        : item.file!.key,
+                    getMediaType(item.key)!,
+                    item.url!,
+                    snapshot.connectionState == ConnectionState.waiting
+                        ? Main.cachePathFromKey(item.key)
+                        : snapshot.hasData && snapshot.data != null
+                        ? snapshot.data!
+                        : Main.cachePathFromKey(item.key),
+                    size: item.size,
+                  ),
+                );
+              },
             ),
           )
         : Icon(Icons.insert_drive_file);
@@ -346,13 +370,26 @@ class ListFiles extends StatelessWidget {
                       SizedBox(width: 8),
                       Text(bytesToReadable(item.size)),
                       SizedBox(width: 8),
-                      File(Main.pathFromKey(item.key) ?? item.key).existsSync()
-                          ? Icon(Icons.download_done, size: 16)
-                          : Icon(
+                      FutureBuilder(
+                        future: File(
+                          Main.pathFromKey(item.key) ?? item.key,
+                        ).exists(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return Icon(Icons.hourglass_empty, size: 16);
+                          }
+                          if (snapshot.hasData && snapshot.data == true) {
+                            return Icon(Icons.download_done, size: 16);
+                          } else {
+                            return Icon(
                               Icons.cloud_download,
                               color: Theme.of(context).colorScheme.primary,
                               size: 16,
-                            ),
+                            );
+                          }
+                        },
+                      ),
                       SizedBox(width: 8),
                       Text(p.extension(item.key)),
                     ],
@@ -482,13 +519,23 @@ class ListFiles extends StatelessWidget {
             ),
             topLeftBadge: Padding(
               padding: EdgeInsets.all(16),
-              child: File(Main.pathFromKey(item.key) ?? item.key).existsSync()
-                  ? Icon(Icons.download_done, size: 16)
-                  : Icon(
+              child: FutureBuilder(
+                future: File(Main.pathFromKey(item.key) ?? item.key).exists(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return SizedBox.shrink();
+                  }
+                  if (snapshot.hasData && snapshot.data == true) {
+                    return Icon(Icons.download_done, size: 16);
+                  } else {
+                    return Icon(
                       Icons.cloud_download,
                       color: Theme.of(context).colorScheme.primary,
                       size: 16,
-                    ),
+                    );
+                  }
+                },
+              ),
             ),
             topRightBadge: selection.isNotEmpty
                 ? selectionAction == SelectionAction.none
@@ -573,13 +620,23 @@ class ListFiles extends StatelessWidget {
               childAspectRatio: 3 / 4,
             ),
             itemCount: sortedFiles.length,
-            itemBuilder: (context, index) =>
-                gridItemBuilder(context, sortedFiles[index]),
+            itemBuilder: (context, index) {
+              keys[sortedFiles[index].key] ??= GlobalKey();
+              return Material(
+                key: keys[sortedFiles[index].key],
+                child: gridItemBuilder(context, sortedFiles[index]),
+              );
+            },
           )
         : SliverList.builder(
             itemCount: sortedFiles.length,
-            itemBuilder: (context, index) =>
-                listItemBuilder(context, sortedFiles[index]),
+            itemBuilder: (context, index) {
+              keys[sortedFiles[index].key] ??= GlobalKey();
+              return Material(
+                key: keys[sortedFiles[index].key],
+                child: listItemBuilder(context, sortedFiles[index]),
+              );
+            },
           );
   }
 }

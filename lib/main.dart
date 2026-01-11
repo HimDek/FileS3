@@ -201,6 +201,7 @@ class _HomeState extends State<Home> {
   final TextEditingController _searchController = TextEditingController();
   final ValueNotifier<bool> _loading = ValueNotifier<bool>(true);
   final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
+  final Map<String, GlobalKey> _keys = <String, GlobalKey>{};
   Profile? _profile;
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
   List<Object> _searchResults = [];
@@ -1248,9 +1249,12 @@ class _HomeState extends State<Home> {
           return;
         }
         if (_driveDir.key.isNotEmpty) {
-          _changeDirectory(
-            RemoteFile(key: p.s3(p.dirname(_driveDir.key)), size: 0, etag: ''),
-          )?.call();
+          final newKey = p.s3(p.dirname(_driveDir.key));
+          Scrollable.ensureVisible(
+            _keys[newKey]?.currentContext ?? context,
+            duration: const Duration(milliseconds: 0),
+          );
+          _changeDirectory(RemoteFile(key: newKey, size: 0, etag: ''))?.call();
           return;
         }
       },
@@ -1957,6 +1961,7 @@ class _HomeState extends State<Home> {
                       );
                       return _searchResults;
                     }(),
+                    keys: _keys,
                     sortMode: _listOptions.sortMode,
                     foldersFirst: _listOptions.foldersFirst,
                     gridView: _listOptions.viewMode == ViewMode.grid,
@@ -1995,6 +2000,7 @@ class _HomeState extends State<Home> {
                       );
                       return files;
                     }(),
+                    keys: _keys,
                     sortMode: _listOptions.sortMode,
                     foldersFirst: _listOptions.foldersFirst,
                     gridView: _listOptions.viewMode == ViewMode.grid,
@@ -2045,6 +2051,7 @@ class _HomeState extends State<Home> {
                       );
                       return files;
                     }(),
+                    keys: _keys,
                     sortMode: _listOptions.sortMode,
                     foldersFirst: _listOptions.foldersFirst,
                     gridView: _listOptions.viewMode == ViewMode.grid,
