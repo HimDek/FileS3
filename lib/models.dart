@@ -54,10 +54,10 @@ class ListOptions {
       jsonDecode(json) as Map,
     );
     return ListOptions(
-      sortMode: SortMode.values[data['sortMode'] as int],
-      viewMode: ViewMode.values[data['viewMode'] as int],
-      foldersFirst: data['foldersFirst'] as bool,
-      group: data['group'] as bool,
+      sortMode: SortMode.values[data['sortMode'] ?? 0],
+      viewMode: ViewMode.values[data['viewMode'] ?? 0],
+      foldersFirst: data['foldersFirst'] ?? true,
+      group: data['group'] ?? false,
     );
   }
 
