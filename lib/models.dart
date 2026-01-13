@@ -40,11 +40,13 @@ class ListOptions {
   SortMode sortMode;
   ViewMode viewMode;
   bool foldersFirst;
+  bool group;
 
   ListOptions({
     this.sortMode = SortMode.nameAsc,
     this.viewMode = ViewMode.list,
     this.foldersFirst = true,
+    this.group = false,
   });
 
   factory ListOptions.fromJson(String json) {
@@ -55,6 +57,7 @@ class ListOptions {
       sortMode: SortMode.values[data['sortMode'] as int],
       viewMode: ViewMode.values[data['viewMode'] as int],
       foldersFirst: data['foldersFirst'] as bool,
+      group: data['group'] as bool,
     );
   }
 
@@ -63,6 +66,7 @@ class ListOptions {
       'sortMode': sortMode.index,
       'viewMode': viewMode.index,
       'foldersFirst': foldersFirst,
+      'group': group,
     });
   }
 }

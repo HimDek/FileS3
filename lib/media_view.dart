@@ -1,8 +1,5 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
-import 'package:image/image.dart' as img;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -333,8 +330,8 @@ class InteractiveMediaView extends StatefulWidget {
 
 class InteractiveMediaViewState extends State<InteractiveMediaView> {
   late MediaProvider _provider;
-  bool _loading = true;
-  double _progress = 0.0;
+  final bool _loading = true;
+  final double _progress = 0.0;
   double pdfscale = 1;
 
   final PhotoViewController _photoViewController = PhotoViewController();
@@ -768,8 +765,8 @@ class MediaPreview extends StatefulWidget {
 
 class MediaPreviewState extends State<MediaPreview> {
   late MyUrlMediaProvider _provider;
-  bool _isLoading = true;
-  double _progress = 0.0;
+  final bool _isLoading = true;
+  final double _progress = 0.0;
 
   // Future<void> _loadMedia() async {
   //   if (_provider is MemoryMediaProvider) {

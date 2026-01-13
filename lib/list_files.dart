@@ -95,7 +95,7 @@ class MyGridTile extends StatelessWidget {
   }
 }
 
-class ListFiles extends StatelessWidget {
+class ListFiles extends StatefulWidget {
   final List<dynamic> files;
   final Map<String, GlobalKey> keys;
   final SortMode sortMode;
@@ -113,9 +113,8 @@ class ListFiles extends StatelessWidget {
   final int Function(RemoteFile) dirSize;
   final String Function(RemoteFile) dirModified;
   final String? Function(RemoteFile, int?) getLink;
-  List<GalleryProps>? _galleryFiles;
 
-  ListFiles({
+  const ListFiles({
     super.key,
     required this.files,
     required this.keys,
@@ -136,60 +135,28 @@ class ListFiles extends StatelessWidget {
     required this.getLink,
   });
 
+  @override
+  State<StatefulWidget> createState() => ListFilesState();
+}
+
+class ListFilesState extends State<ListFiles> {
+  List<FileProps> _sortedFiles = [];
+  List<GalleryProps>? _galleryFiles;
+
   Future<void> Function() galleryBuilder(BuildContext context, FileProps item) {
     return () async {
-      _galleryFiles ??= files
-          .where((f) {
-            return !p.isDir(f.key);
-          })
-          .map((f) {
-            String url =
-                getLink(
-                  f is Job
-                      ? RemoteFile(
-                          key: f.remoteKey,
-                          size: f.bytes,
-                          etag: f.md5.toString(),
-                        )
-                      : f,
-                  null,
-                ) ??
-                '';
-            return GalleryProps(
-              file: f is Job
-                  ? RemoteFile(
-                      key: f.remoteKey,
-                      size: f.bytes,
-                      etag: f.md5.toString(),
-                    )
-                  : f,
-              title: p.isWithin(relativeto.key, f.key)
-                  ? p.s3(p.relative(f.key, from: relativeto.key))
-                  : f.key,
-              url: url,
-              path: File(Main.pathFromKey(f.key) ?? f.key).existsSync()
-                  ? (Main.pathFromKey(f.key) ?? f.key)
-                  : Main.cachePathFromKey(f.key),
-            );
-          })
-          .toList();
-      Navigator.of(context).push(
+      Navigator.of(context, rootNavigator: true).push(
         PageRouteBuilder<int>(
-          pageBuilder: (_, __, ___) {
-            return HeroControllerScope(
-              controller: MaterialApp.createMaterialHeroController(),
-              child: Gallery(
-                keys: keys,
-                files: _galleryFiles!,
-                initialIndex: _galleryFiles!.indexWhere(
-                  (f) => f.file.key == item.key,
-                ),
-                buildContextMenu: (file) {
-                  return buildContextMenu(context, file);
-                },
-              ),
-            );
-          },
+          pageBuilder: (_, _, _) => Gallery(
+            keys: widget.keys,
+            files: _galleryFiles!,
+            initialIndex: _galleryFiles!.indexWhere(
+              (f) => f.file.key == item.key,
+            ),
+            buildContextMenu: (file) {
+              return widget.buildContextMenu(context, file);
+            },
+          ),
         ),
       );
     };
@@ -214,8 +181,10 @@ class ListFiles extends StatelessWidget {
                   height: 24,
                   width: 24,
                   mediaProvider: MyUrlMediaProvider(
-                    p.isWithin(relativeto.key, item.key)
-                        ? p.s3(p.relative(item.key, from: relativeto.key))
+                    p.isWithin(widget.relativeto.key, item.key)
+                        ? p.s3(
+                            p.relative(item.key, from: widget.relativeto.key),
+                          )
                         : item.file!.key,
                     getMediaType(item.key)!,
                     item.url!,
@@ -235,14 +204,18 @@ class ListFiles extends StatelessWidget {
 
   Widget listItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
-        ? JobView(job: item.job!, relativeTo: relativeto, onUpdate: onUpdate)
+        ? JobView(
+            job: item.job!,
+            relativeTo: widget.relativeto,
+            onUpdate: widget.onUpdate,
+          )
         : p.isDir(item.key)
         ? ListTile(
             dense: MediaQuery.of(context).size.width < 600 ? true : false,
             visualDensity: MediaQuery.of(context).size.width < 600
                 ? VisualDensity.compact
                 : VisualDensity.standard,
-            selected: selection.any((selected) {
+            selected: widget.selection.any((selected) {
               return selected.key == item.key;
             }),
             selectedTileColor: Theme.of(
@@ -255,8 +228,12 @@ class ListFiles extends StatelessWidget {
                   : Icons.cloud_circle_rounded,
             ),
             title: Text(
-              p.isWithin(relativeto.key, item.key)
-                  ? p.s3(p.asDir(p.relative(item.key, from: relativeto.key)))
+              p.isWithin(widget.relativeto.key, item.key)
+                  ? p.s3(
+                      p.asDir(
+                        p.relative(item.key, from: widget.relativeto.key),
+                      ),
+                    )
                   : item.key,
             ),
             subtitle: Column(
@@ -266,12 +243,12 @@ class ListFiles extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      Text(dirModified(item.file!)),
+                      Text(widget.dirModified(item.file!)),
                       SizedBox(width: 8),
-                      Text(bytesToReadable(dirSize(item.file!))),
+                      Text(bytesToReadable(widget.dirSize(item.file!))),
                       SizedBox(width: 8),
                       Text(() {
-                        final count = this.count(item.file!, recursive: true);
+                        final count = widget.count(item.file!, recursive: true);
                         if (count.$1 == 0) {
                           return '${count.$2} files';
                         }
@@ -286,7 +263,7 @@ class ListFiles extends StatelessWidget {
                 if (p.s3(p.dirname(item.file!.key)).isEmpty)
                   Row(
                     children: [
-                      Text('${Main.backupMode(item.file!.key).name}:'),
+                      Text('${Main.backupModeFromKey(item.file!.key).name}:'),
                       SizedBox(width: 4),
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -299,125 +276,117 @@ class ListFiles extends StatelessWidget {
               ],
             ),
             onTap:
-                selection.isNotEmpty && selectionAction == SelectionAction.none
+                widget.selection.isNotEmpty &&
+                    widget.selectionAction == SelectionAction.none
                 ? () {
-                    select(item.file!);
+                    widget.select(item.file!);
                   }
-                : selection.any(
+                : widget.selection.any(
                     (s) => p.isWithin(s.key, item.key) || s.key == item.key,
                   )
                 ? null
-                : changeDirectory(item.file!),
-            onLongPress: selectionAction == SelectionAction.none
+                : widget.changeDirectory(item.file!),
+            onLongPress: widget.selectionAction == SelectionAction.none
                 ? () {
-                    select(item.file!);
+                    widget.select(item.file!);
                   }
                 : null,
-            trailing: selection.isNotEmpty
-                ? selection.any((selected) {
+            trailing: widget.selection.isNotEmpty
+                ? widget.selection.any((selected) {
                         return selected.key == item.key;
                       })
                       ? Icon(Icons.check_circle)
-                      : selectionAction == SelectionAction.none
+                      : widget.selectionAction == SelectionAction.none
                       ? Icon(Icons.circle_outlined)
                       : null
                 : IconButton(
                     onPressed: () async {
-                      showContextMenu(item.file!);
+                      widget.showContextMenu(item.file!);
                     },
                     icon: Icon(Icons.more_vert),
                   ),
           )
-        : Material(
-            child: InkWell(
-              onTap: galleryBuilder(context, item),
-              child: ListTile(
-                dense: MediaQuery.of(context).size.width < 600 ? true : false,
-                visualDensity: MediaQuery.of(context).size.width < 600
-                    ? VisualDensity.compact
-                    : VisualDensity.standard,
-                selected: selection.any((selected) {
-                  return selected.key == item.key;
-                }),
-                selectedTileColor: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.1),
-                selectedColor: Theme.of(context).colorScheme.primary,
-                leading: GestureDetector(
-                  onTap: galleryBuilder(context, item),
-                  child: Hero(tag: item.key, child: preview(item)),
-                ),
-                title: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Text(
-                    p.isWithin(relativeto.key, item.key)
-                        ? p.s3(p.relative(item.key, from: relativeto.key))
-                        : item.file!.key,
-                  ),
-                ),
-                subtitle: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      Text(timeToReadable(item.file!.lastModified!)),
-                      SizedBox(width: 8),
-                      Text(bytesToReadable(item.size)),
-                      SizedBox(width: 8),
-                      FutureBuilder(
-                        future: File(
-                          Main.pathFromKey(item.key) ?? item.key,
-                        ).exists(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return Icon(Icons.hourglass_empty, size: 16);
-                          }
-                          if (snapshot.hasData && snapshot.data == true) {
-                            return Icon(Icons.download_done, size: 16);
-                          } else {
-                            return Icon(
-                              Icons.cloud_download,
-                              color: Theme.of(context).colorScheme.primary,
-                              size: 16,
-                            );
-                          }
-                        },
-                      ),
-                      SizedBox(width: 8),
-                      Text(p.extension(item.key)),
-                    ],
-                  ),
-                ),
-                trailing: selection.isNotEmpty
-                    ? selection.any((selected) {
-                            return selected.key == item.key;
-                          })
-                          ? Icon(Icons.check_circle)
-                          : selectionAction == SelectionAction.none
-                          ? Icon(Icons.circle_outlined)
-                          : null
-                    : IconButton(
-                        onPressed: () async {
-                          showContextMenu(item.file!);
-                        },
-                        icon: Icon(Icons.more_vert),
-                      ),
-                onTap:
-                    selection.isNotEmpty &&
-                        selectionAction == SelectionAction.none
-                    ? () {
-                        select(item.file!);
-                      }
-                    : selectionAction != SelectionAction.none
-                    ? null
-                    : galleryBuilder(context, item),
-                onLongPress: selectionAction == SelectionAction.none
-                    ? () {
-                        select(item.file!);
-                      }
-                    : null,
+        : ListTile(
+            dense: MediaQuery.of(context).size.width < 600 ? true : false,
+            visualDensity: MediaQuery.of(context).size.width < 600
+                ? VisualDensity.compact
+                : VisualDensity.standard,
+            selected: widget.selection.any((selected) {
+              return selected.key == item.key;
+            }),
+            selectedTileColor: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.1),
+            selectedColor: Theme.of(context).colorScheme.primary,
+            leading: Hero(tag: item.key, child: preview(item)),
+            title: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(
+                p.isWithin(widget.relativeto.key, item.key)
+                    ? p.s3(p.relative(item.key, from: widget.relativeto.key))
+                    : item.file!.key,
               ),
             ),
+            subtitle: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Text(timeToReadable(item.file!.lastModified!)),
+                  SizedBox(width: 8),
+                  Text(bytesToReadable(item.size)),
+                  SizedBox(width: 8),
+                  FutureBuilder(
+                    future: File(
+                      Main.pathFromKey(item.key) ?? item.key,
+                    ).exists(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return Icon(Icons.hourglass_empty, size: 16);
+                      }
+                      if (snapshot.hasData && snapshot.data == true) {
+                        return Icon(Icons.download_done, size: 16);
+                      } else {
+                        return Icon(
+                          Icons.cloud_download,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 16,
+                        );
+                      }
+                    },
+                  ),
+                  SizedBox(width: 8),
+                  Text(p.extension(item.key)),
+                ],
+              ),
+            ),
+            trailing: widget.selection.isNotEmpty
+                ? widget.selection.any((selected) {
+                        return selected.key == item.key;
+                      })
+                      ? Icon(Icons.check_circle)
+                      : widget.selectionAction == SelectionAction.none
+                      ? Icon(Icons.circle_outlined)
+                      : null
+                : IconButton(
+                    onPressed: () async {
+                      widget.showContextMenu(item.file!);
+                    },
+                    icon: Icon(Icons.more_vert),
+                  ),
+            onTap:
+                widget.selection.isNotEmpty &&
+                    widget.selectionAction == SelectionAction.none
+                ? () {
+                    widget.select(item.file!);
+                  }
+                : widget.selectionAction != SelectionAction.none
+                ? null
+                : galleryBuilder(context, item),
+            onLongPress: widget.selectionAction == SelectionAction.none
+                ? () {
+                    widget.select(item.file!);
+                  }
+                : null,
           );
   }
 
@@ -426,7 +395,7 @@ class ListFiles extends StatelessWidget {
         ? SizedBox(height: 100, width: 100)
         : p.isDir(item.key)
         ? MyGridTile(
-            selected: selection.any((selected) {
+            selected: widget.selection.any((selected) {
               return selected.key == item.key;
             }),
             footer: Column(
@@ -434,9 +403,11 @@ class ListFiles extends StatelessWidget {
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(
-                    p.isWithin(relativeto.key, item.key)
+                    p.isWithin(widget.relativeto.key, item.key)
                         ? p.s3(
-                            p.asDir(p.relative(item.key, from: relativeto.key)),
+                            p.asDir(
+                              p.relative(item.key, from: widget.relativeto.key),
+                            ),
                           )
                         : item.key,
                   ),
@@ -444,24 +415,25 @@ class ListFiles extends StatelessWidget {
               ],
             ),
             onTap:
-                selection.isNotEmpty && selectionAction == SelectionAction.none
+                widget.selection.isNotEmpty &&
+                    widget.selectionAction == SelectionAction.none
                 ? null
-                : selection.any(
+                : widget.selection.any(
                     (s) => p.isWithin(s.key, item.key) || s.key == item.key,
                   )
                 ? null
-                : changeDirectory(item.file!),
-            onLongPress: selectionAction == SelectionAction.none
+                : widget.changeDirectory(item.file!),
+            onLongPress: widget.selectionAction == SelectionAction.none
                 ? () {
-                    select(item.file!);
+                    widget.select(item.file!);
                   }
                 : null,
-            topRightBadge: selection.isNotEmpty
-                ? selectionAction == SelectionAction.none
+            topRightBadge: widget.selection.isNotEmpty
+                ? widget.selectionAction == SelectionAction.none
                       ? IconButton(
                           icon: Icon(
-                            selection.isEmpty ||
-                                    selection.any((selected) {
+                            widget.selection.isEmpty ||
+                                    widget.selection.any((selected) {
                                       return selected.key == item.key;
                                     })
                                 ? Icons.check_circle
@@ -469,10 +441,10 @@ class ListFiles extends StatelessWidget {
                             color: Theme.of(context).colorScheme.primary,
                           ),
                           onPressed: () {
-                            select(item.file!);
+                            widget.select(item.file!);
                           },
                         )
-                      : selection.any((selected) {
+                      : widget.selection.any((selected) {
                           return selected.key == item.key;
                         })
                       ? IconButton(
@@ -484,7 +456,7 @@ class ListFiles extends StatelessWidget {
                       : null
                 : IconButton(
                     onPressed: () async {
-                      showContextMenu(item.file!);
+                      widget.showContextMenu(item.file!);
                     },
                     icon: Icon(Icons.more_vert),
                   ),
@@ -495,7 +467,7 @@ class ListFiles extends StatelessWidget {
             ),
           )
         : MyGridTile(
-            selected: selection.any((selected) {
+            selected: widget.selection.any((selected) {
               return selected.key == item.key;
             }),
             footer: Column(
@@ -503,8 +475,10 @@ class ListFiles extends StatelessWidget {
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(
-                    p.isWithin(relativeto.key, item.key)
-                        ? p.s3(p.relative(item.key, from: relativeto.key))
+                    p.isWithin(widget.relativeto.key, item.key)
+                        ? p.s3(
+                            p.relative(item.key, from: widget.relativeto.key),
+                          )
                         : item.file!.key,
                   ),
                 ),
@@ -530,12 +504,12 @@ class ListFiles extends StatelessWidget {
                 },
               ),
             ),
-            topRightBadge: selection.isNotEmpty
-                ? selectionAction == SelectionAction.none
+            topRightBadge: widget.selection.isNotEmpty
+                ? widget.selectionAction == SelectionAction.none
                       ? IconButton(
                           icon: Icon(
-                            selection.isEmpty ||
-                                    selection.any((selected) {
+                            widget.selection.isEmpty ||
+                                    widget.selection.any((selected) {
                                       return selected.key == item.key;
                                     })
                                 ? Icons.check_circle
@@ -543,10 +517,10 @@ class ListFiles extends StatelessWidget {
                             color: Theme.of(context).colorScheme.primary,
                           ),
                           onPressed: () {
-                            select(item.file!);
+                            widget.select(item.file!);
                           },
                         )
-                      : selection.any((selected) {
+                      : widget.selection.any((selected) {
                           return selected.key == item.key;
                         })
                       ? IconButton(
@@ -558,77 +532,99 @@ class ListFiles extends StatelessWidget {
                       : null
                 : IconButton(
                     onPressed: () async {
-                      showContextMenu(item.file!);
+                      widget.showContextMenu(item.file!);
                     },
                     icon: Icon(Icons.more_vert),
                   ),
-            onLongPress: selectionAction == SelectionAction.none
+            onLongPress: widget.selectionAction == SelectionAction.none
                 ? () {
-                    select(item.file!);
+                    widget.select(item.file!);
                   }
                 : null,
-            child: Material(
-              child: InkWell(
-                onTap: galleryBuilder(context, item),
-                child: Hero(tag: item.key, child: preview(item)),
-              ),
+            child: GestureDetector(
+              onTap: galleryBuilder(context, item),
+              child: Hero(tag: item.key, child: preview(item)),
             ),
           );
   }
 
   @override
+  void didUpdateWidget(covariant ListFiles oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.files != widget.files) {
+      _sortedFiles = sort(
+        widget.files.map((file) {
+          String url =
+              widget.getLink(
+                file is Job
+                    ? RemoteFile(
+                        key: file.remoteKey,
+                        size: file.bytes,
+                        etag: file.md5.toString(),
+                      )
+                    : file,
+                null,
+              ) ??
+              '';
+          return file is Job
+              ? FileProps(
+                  key: file.remoteKey,
+                  size: file.bytes,
+                  job: file,
+                  url: url,
+                )
+              : p.isDir(file.key)
+              ? FileProps(key: file.key, size: file.size, file: file, url: url)
+              : FileProps(key: file.key, size: file.size, file: file, url: url);
+        }),
+        widget.sortMode,
+        widget.foldersFirst,
+      );
+      _galleryFiles = _sortedFiles
+          .where((f) {
+            return !p.isDir(f.key);
+          })
+          .map(
+            (f) => GalleryProps(
+              file:
+                  f.file ??
+                  RemoteFile(
+                    key: f.key,
+                    size: f.size,
+                    etag: f.job!.md5.toString(),
+                  ),
+              title: p.isWithin(widget.relativeto.key, f.key)
+                  ? p.s3(p.relative(f.key, from: widget.relativeto.key))
+                  : f.key,
+              url: f.url!,
+              path: File(Main.pathFromKey(f.key) ?? f.key).existsSync()
+                  ? (Main.pathFromKey(f.key) ?? f.key)
+                  : Main.cachePathFromKey(f.key),
+            ),
+          )
+          .toList();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final sortedFiles = sort(
-      files.map((file) {
-        String url =
-            getLink(
-              file is Job
-                  ? RemoteFile(
-                      key: file.remoteKey,
-                      size: file.bytes,
-                      etag: file.md5.toString(),
-                    )
-                  : file,
-              null,
-            ) ??
-            '';
-        return file is Job
-            ? FileProps(
-                key: file.remoteKey,
-                size: file.bytes,
-                job: file,
-                url: url,
-              )
-            : p.isDir(file.key)
-            ? FileProps(key: file.key, size: file.size, file: file, url: url)
-            : FileProps(key: file.key, size: file.size, file: file, url: url);
-      }),
-      sortMode,
-      foldersFirst,
-    );
-    return gridView
+    return widget.gridView
         ? SliverGrid.builder(
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: MediaQuery.of(context).size.width < 600 ? 4 : 6,
               childAspectRatio: 3 / 4,
             ),
-            itemCount: sortedFiles.length,
+            itemCount: _sortedFiles.length,
             itemBuilder: (context, index) {
-              keys[sortedFiles[index].key] ??= GlobalKey();
-              return Material(
-                key: keys[sortedFiles[index].key],
-                child: gridItemBuilder(context, sortedFiles[index]),
-              );
+              widget.keys[_sortedFiles[index].key] ??= GlobalKey();
+              return gridItemBuilder(context, _sortedFiles[index]);
             },
           )
         : SliverList.builder(
-            itemCount: sortedFiles.length,
+            itemCount: _sortedFiles.length,
             itemBuilder: (context, index) {
-              keys[sortedFiles[index].key] ??= GlobalKey();
-              return Material(
-                key: keys[sortedFiles[index].key],
-                child: listItemBuilder(context, sortedFiles[index]),
-              );
+              widget.keys[_sortedFiles[index].key] ??= GlobalKey();
+              return listItemBuilder(context, _sortedFiles[index]);
             },
           );
   }

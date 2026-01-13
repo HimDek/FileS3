@@ -4,56 +4,6 @@ import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
 
-class ActiveJobs extends StatefulWidget {
-  final List<Job> jobs;
-  final Function() onUpdate;
-
-  const ActiveJobs({super.key, required this.jobs, required this.onUpdate});
-
-  @override
-  ActiveJobsState createState() => ActiveJobsState();
-}
-
-class ActiveJobsState extends State<ActiveJobs> {
-  @override
-  Widget build(BuildContext context) {
-    return SliverList.builder(
-      itemCount: widget.jobs.length,
-      itemBuilder: (context, index) {
-        final job = widget.jobs[index];
-        return JobView(job: job, onUpdate: widget.onUpdate);
-      },
-    );
-  }
-}
-
-class CompletedJobs extends StatefulWidget {
-  final List<Job> completedJobs;
-  final Function() onUpdate;
-
-  const CompletedJobs({
-    super.key,
-    required this.completedJobs,
-    required this.onUpdate,
-  });
-
-  @override
-  CompletedJobsState createState() => CompletedJobsState();
-}
-
-class CompletedJobsState extends State<CompletedJobs> {
-  @override
-  Widget build(BuildContext context) {
-    return SliverList.builder(
-      itemCount: widget.completedJobs.length,
-      itemBuilder: (context, index) {
-        final job = widget.completedJobs[index];
-        return JobView(job: job, onUpdate: widget.onUpdate);
-      },
-    );
-  }
-}
-
 class JobView extends StatefulWidget {
   final Job job;
   final RemoteFile? relativeTo;

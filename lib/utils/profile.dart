@@ -37,11 +37,10 @@ class Profile {
   Future<void> refreshRemote({required String dir}) async {
     try {
       final fetchedRemoteFiles = await fileManager!.listObjects(dir);
-      Main.remoteFiles.removeWhere(
+      Main.remoteFilesRemoveWhere(
         (file) => p.isWithin(dir, file.key) || file.key == dir || dir.isEmpty,
       );
-      Main.remoteFiles.addAll(fetchedRemoteFiles);
-      Main.ensureDirectoryObjects();
+      Main.remoteFilesAddAll(fetchedRemoteFiles);
       await ConfigManager.saveRemoteFiles(Main.remoteFiles);
       accessible = true;
     } catch (e) {

@@ -1,7 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:collection/collection.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:files3/utils/s3_transfer_task.dart';
@@ -13,20 +14,62 @@ import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 
 abstract class Main {
-  static final Set<Profile> profiles = <Profile>{};
-  static final Map<String, Watcher> watcherMap = <String, Watcher>{};
-  static List<RemoteFile> remoteFiles = <RemoteFile>[];
-  static Function(bool loading)? setLoadingState;
-  static Function()? setHomeState;
-  static String downloadCacheDir = '';
-  static String documentsDir = '';
-  static final List<String> ignoreKeyRegexps = <String>[
+  static final Set<Profile> _profiles = <Profile>{};
+  static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
+  static List<RemoteFile> _remoteFiles = <RemoteFile>[];
+  static Function(bool loading)? _setLoadingState;
+  static Function()? _setHomeState;
+  static Function()? _onRemoteFilesChanged;
+  static String _downloadCacheDir = '';
+  static String _documentsDir = '';
+  static final List<String> _ignoreKeyRegexps = <String>[
     r'^.*[/\\]deletion-register\.ini$',
   ];
 
+  static Set<Profile> get profiles => _profiles;
+
+  static List<RemoteFile> get remoteFiles => UnmodifiableListView(_remoteFiles);
+
+  static void remoteFilesAdd(RemoteFile file) {
+    _remoteFiles.add(file);
+    _ensureDirectoryObjects();
+    _onRemoteFilesChanged?.call();
+  }
+
+  static void remoteFilesAddAll(List<RemoteFile> files) {
+    _remoteFiles.addAll(files);
+    _ensureDirectoryObjects();
+    _onRemoteFilesChanged?.call();
+  }
+
+  static void remoteFilesRemoveWhere(bool Function(RemoteFile element) test) {
+    _remoteFiles.removeWhere(test);
+    _ensureDirectoryObjects();
+    _onRemoteFilesChanged?.call();
+  }
+
+  static set setLoadingState(Function(bool loading)? func) {
+    _setLoadingState = func;
+  }
+
+  static set setHomeState(Function()? func) {
+    setHomeState = func;
+  }
+
+  static set onRemoteFilesChanged(Function()? func) {
+    _onRemoteFilesChanged = func;
+  }
+
+  static String get downloadCacheDir => _downloadCacheDir;
+
+  static String get documentsDir => _documentsDir;
+
+  static List<String> get ignoreKeyRegexps =>
+      UnmodifiableListView(_ignoreKeyRegexps);
+
   static Profile? profileFromKey(String key) {
     try {
-      return profiles.firstWhere(
+      return _profiles.firstWhere(
         (profile) => profile.name == p.split(key).firstOrNull,
       );
     } catch (e) {
@@ -65,48 +108,48 @@ abstract class Main {
 
   static Watcher? watcherFromKey(String key) {
     final dirKey = p.s3(p.asDir(p.split(key).firstOrNull ?? ''));
-    return watcherMap[dirKey];
+    return _watcherMap[dirKey];
   }
 
   static String cachePathFromKey(String key) {
     return p.join(
-      Main.downloadCacheDir,
+      _downloadCacheDir,
       'app_${sha1.convert(utf8.encode(key)).toString()}.tmp',
     );
   }
 
   static String tagPathFromKey(String key) {
     return p.join(
-      Main.downloadCacheDir,
+      _downloadCacheDir,
       'app_${sha1.convert(utf8.encode(key)).toString()}.tag',
     );
+  }
+
+  static BackupMode backupModeFromKey(String key) {
+    String? value = IniManager.config?.get('modes', key);
+    if (value == null && p.split(key).length > 1) {
+      return backupModeFromKey(p.s3(p.dirname(key)));
+    } else {
+      return BackupMode.fromValue(int.parse(value ?? '1'));
+    }
   }
 
   static Future<void> onJobStatus(Job job, dynamic result) async {
     if (job is UploadJob &&
         job.status == JobStatus.completed &&
         result is RemoteFile) {
-      remoteFiles.removeWhere((file) => file.key == job.remoteKey);
-      remoteFiles.add(result);
+      _remoteFiles.removeWhere((file) => file.key == job.remoteKey);
+      _remoteFiles.add(result);
     }
-    setHomeState?.call();
+    _setHomeState?.call();
   }
 
   static Future<void> stopWatchers() async {
     if (kDebugMode) {
       debugPrint("Stopping all watchers...");
     }
-    for (final watcher in watcherMap.values.toList()) {
+    for (final watcher in _watcherMap.values.toList()) {
       await watcher.stop();
-    }
-  }
-
-  static BackupMode backupMode(String key) {
-    String? value = IniManager.config?.get('modes', key);
-    if (value == null && p.split(key).length > 1) {
-      return backupMode(p.s3(p.dirname(key)));
-    } else {
-      return BackupMode.fromValue(int.parse(value ?? '1'));
     }
   }
 
@@ -118,7 +161,7 @@ abstract class Main {
         Directory(localDir).existsSync()) {
       Watcher watcher = Watcher(remoteDir: dir);
 
-      watcherMap[dir] = watcher;
+      _watcherMap[dir] = watcher;
       if (background) {
         if (kDebugMode) {
           debugPrint("Performing background scan for $localDir");
@@ -133,10 +176,10 @@ abstract class Main {
     }
   }
 
-  static void ensureDirectoryObjects() {
-    final existingPaths = remoteFiles.map((o) => o.key).toSet();
+  static void _ensureDirectoryObjects() {
+    final existingPaths = _remoteFiles.map((o) => o.key).toSet();
 
-    for (final obj in remoteFiles.toList()) {
+    for (final obj in _remoteFiles.toList()) {
       final normalized = p.normalize(obj.key);
       final isDir = p.isDir(normalized);
 
@@ -163,7 +206,7 @@ abstract class Main {
             lastModified: DateTime.now(),
           );
 
-          remoteFiles.add(dirObject);
+          _remoteFiles.add(dirObject);
           existingPaths.add(dirPath);
         }
       }
@@ -171,11 +214,11 @@ abstract class Main {
   }
 
   static Future<void> refreshWatchers({bool background = false}) async {
-    setLoadingState?.call(true);
+    _setLoadingState?.call(true);
     await stopWatchers();
-    watcherMap.clear();
+    _watcherMap.clear();
 
-    final dirs = remoteFiles
+    final dirs = _remoteFiles
         .where((dir) => p.isDir(dir.key))
         .map((file) => p.s3(p.asDir(p.split(file.key).firstOrNull ?? '')))
         .toSet()
@@ -184,40 +227,39 @@ abstract class Main {
     for (final dir in dirs) {
       await addWatcher(dir, background: background);
     }
-    setLoadingState?.call(false);
+    _setLoadingState?.call(false);
   }
 
   static Future<void> refreshProfiles() async {
-    setLoadingState?.call(true);
+    _setLoadingState?.call(true);
     for (final entry in (await ConfigManager.loadS3Config()).entries) {
-      if (profiles.any((profile) => profile.name == entry.key)) {
-        profiles
+      if (_profiles.any((profile) => profile.name == entry.key)) {
+        _profiles
             .firstWhere((profile) => profile.name == entry.key)
             .updateConfig(entry.value);
         continue;
       }
-      profiles.add(Profile(name: entry.key, cfg: entry.value));
+      _profiles.add(Profile(name: entry.key, cfg: entry.value));
     }
-    setLoadingState?.call(false);
+    _setLoadingState?.call(false);
   }
 
   static Future<void> listDirectories({bool background = false}) async {
-    setLoadingState?.call(true);
-
+    _setLoadingState?.call(true);
     if (!background) {
-      Main.remoteFiles = (await ConfigManager.loadRemoteFiles())
+      _remoteFiles = (await ConfigManager.loadRemoteFiles())
           .where(
-            (file) => profiles.any(
+            (file) => _profiles.any(
               (profile) => profile.name == p.split(file.key).firstOrNull,
             ),
           )
           .toList();
     }
 
-    for (final profile in profiles) {
+    for (final profile in _profiles) {
       await profile.listDirectories(background: background);
     }
-    setLoadingState?.call(false);
+    _setLoadingState?.call(false);
   }
 
   static void downloadFile(RemoteFile file, {String? localPath}) {
@@ -277,7 +319,7 @@ abstract class Main {
         String ext = p.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (remoteFiles.any(
+        while (_remoteFiles.any(
               (remoteFile) => remoteFile.key == candidateKey,
             ) ==
             true) {
@@ -302,7 +344,7 @@ abstract class Main {
         String ext = p.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (remoteFiles.any(
+        while (_remoteFiles.any(
               (remoteFile) => remoteFile.key == candidateKey,
             ) ==
             true) {
@@ -323,21 +365,21 @@ abstract class Main {
   }
 
   static Future<void> init({bool background = false}) async {
-    if (downloadCacheDir.isEmpty) {
+    if (_downloadCacheDir.isEmpty) {
       final directory = await getApplicationCacheDirectory();
-      downloadCacheDir = p.join(directory.path, 'Downloads');
+      _downloadCacheDir = p.join(directory.path, 'Downloads');
     }
-    if (documentsDir.isEmpty) {
+    if (_documentsDir.isEmpty) {
       final directory = await getApplicationDocumentsDirectory();
-      documentsDir = directory.path;
+      _documentsDir = directory.path;
     }
     if (!ConfigManager.initialized) {
       await ConfigManager.init();
     }
-    Profile.setLoadingState = setLoadingState;
+    Profile.setLoadingState = _setLoadingState;
     Job.maxrun = ConfigManager.loadTransferConfig().maxConcurrentTransfers;
     Job.onProgressUpdate = () {
-      setHomeState?.call();
+      _setHomeState?.call();
     };
     refreshProfiles().then((_) {
       listDirectories(background: background);
@@ -739,7 +781,9 @@ class Watcher {
           Main.ignoreKeyRegexps.any((regexp) => RegExp(regexp).hasMatch(key))) {
         continue;
       }
-      BackupMode mode = Main.backupMode(Main.keyFromPath(file.path) ?? '');
+      BackupMode mode = Main.backupModeFromKey(
+        Main.keyFromPath(file.path) ?? '',
+      );
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
         Main.uploadFile(key, file);
       }
@@ -755,7 +799,7 @@ class Watcher {
           )) {
         continue;
       }
-      BackupMode mode = Main.backupMode(file.key);
+      BackupMode mode = Main.backupModeFromKey(file.key);
       if (mode == BackupMode.sync || mode == BackupMode.upload) {
         Main.downloadFile(file);
       }
@@ -771,7 +815,7 @@ class Watcher {
           )) {
         continue;
       }
-      if (Main.backupMode(file.key) == BackupMode.sync) {
+      if (Main.backupModeFromKey(file.key) == BackupMode.sync) {
         Main.downloadFile(file);
       }
     }

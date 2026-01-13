@@ -49,7 +49,7 @@ class FileContextActionHandler extends ContextActionHandler {
   bool removable() {
     return !p.isDir(file.key) &&
         File(Main.pathFromKey(file.key) ?? file.key).existsSync() &&
-        Main.backupMode(file.key) == BackupMode.upload;
+        Main.backupModeFromKey(file.key) == BackupMode.upload;
   }
 
   dynamic Function()? open() {
@@ -182,7 +182,7 @@ class FilesContextActionHandler extends ContextActionHandler {
           (f) =>
               !p.isDir(f.key) &&
               File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
-              Main.backupMode(f.key) == BackupMode.upload,
+              Main.backupModeFromKey(f.key) == BackupMode.upload,
         )
         .toList();
   }
@@ -306,7 +306,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
               p.isWithin(file.key, f.key) &&
               !p.isDir(f.key) &&
               File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
-              Main.backupMode(f.key) == BackupMode.upload,
+              Main.backupModeFromKey(f.key) == BackupMode.upload,
         )
         .toList();
   }
@@ -440,7 +440,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
               directories.any((dir) => p.isWithin(dir.key, f.key)) &&
               !p.isDir(f.key) &&
               File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
-              Main.backupMode(f.key) == BackupMode.upload,
+              Main.backupModeFromKey(f.key) == BackupMode.upload,
         )
         .toList();
   }
@@ -2406,7 +2406,7 @@ Widget buildDirectoryContextMenu(
                   title: const Text('Backup Mode'),
                 ),
                 RadioGroup(
-                  groupValue: Main.backupMode(file.key),
+                  groupValue: Main.backupModeFromKey(file.key),
                   onChanged: (s) {
                     setBackupMode(file.key, s!);
                     Navigator.of(context).pop();

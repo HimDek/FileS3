@@ -19,7 +19,6 @@ import 'package:files3/settings.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
-import 'package:files3/jobs.dart';
 
 /// ===============================
 /// SHARED ASYNC JOB
@@ -392,7 +391,7 @@ class _HomeState extends State<Home> {
     });
     try {
       await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
-      Main.remoteFiles.add(
+      Main.remoteFilesAdd(
         RemoteFile(
           key: p.asDir(dir),
           size: 0,
@@ -459,7 +458,7 @@ class _HomeState extends State<Home> {
       ).copySync(Main.pathFromKey(newKey) ?? newKey);
     }
 
-    Main.remoteFiles.add(newFile);
+    Main.remoteFilesAdd(newFile);
     if (refresh) {
       setState(() {
         _loading.value = false;
@@ -506,10 +505,10 @@ class _HomeState extends State<Home> {
   void _deleteLocal(String key) {
     if (p.isDir(key)) {
       if (Directory(Main.pathFromKey(key) ?? key).existsSync()) {
-        if (Main.backupMode(key) != BackupMode.upload) {
+        if (Main.backupModeFromKey(key) != BackupMode.upload) {
           _setBackupMode(
             key,
-            Main.backupMode(p.s3(p.dirname(key))) == BackupMode.upload
+            Main.backupModeFromKey(p.s3(p.dirname(key))) == BackupMode.upload
                 ? null
                 : BackupMode.upload,
           );
@@ -518,10 +517,10 @@ class _HomeState extends State<Home> {
       }
     } else {
       if (File(Main.pathFromKey(key) ?? key).existsSync()) {
-        if (Main.backupMode(key) != BackupMode.upload) {
+        if (Main.backupModeFromKey(key) != BackupMode.upload) {
           _setBackupMode(
             key,
-            Main.backupMode(p.s3(p.dirname(key))) == BackupMode.upload
+            Main.backupModeFromKey(p.s3(p.dirname(key))) == BackupMode.upload
                 ? null
                 : BackupMode.upload,
           );
@@ -572,7 +571,7 @@ class _HomeState extends State<Home> {
         }
       }
 
-      Main.remoteFiles.removeWhere((file) => keysForProfile.contains(file.key));
+      Main.remoteFilesRemoveWhere((file) => keysForProfile.contains(file.key));
     }
 
     if (refresh) {
@@ -626,7 +625,7 @@ class _HomeState extends State<Home> {
         await profile.fileManager?.deleteFile(file.key);
       }
 
-      Main.remoteFiles.removeWhere(
+      Main.remoteFilesRemoveWhere(
         (file) =>
             filesForProfile.map((e) => e.key).contains(file.key) &&
             !p.isDir(file.key),
@@ -648,7 +647,7 @@ class _HomeState extends State<Home> {
         await profile.fileManager?.deleteFile(dir.key);
       }
 
-      Main.remoteFiles.removeWhere(
+      Main.remoteFilesRemoveWhere(
         (file) => dirsForProfile.map((e) => e.key).contains(file.key),
       );
 
@@ -752,12 +751,12 @@ class _HomeState extends State<Home> {
 
   void _downloadFile(RemoteFile file, {String? localPath}) {
     if (!File(Main.pathFromKey(file.key) ?? file.key).existsSync()) {
-      if (Main.backupMode(file.key) != BackupMode.sync &&
+      if (Main.backupModeFromKey(file.key) != BackupMode.sync &&
           (localPath ?? Main.pathFromKey(file.key)) ==
               Main.pathFromKey(file.key)) {
         _setBackupMode(
           file.key,
-          Main.backupMode(p.s3(p.dirname(file.key))) == BackupMode.sync
+          Main.backupModeFromKey(p.s3(p.dirname(file.key))) == BackupMode.sync
               ? null
               : BackupMode.sync,
         );
@@ -767,11 +766,11 @@ class _HomeState extends State<Home> {
   }
 
   void _downloadDirectory(RemoteFile dir, {String? localPath}) {
-    if (Main.backupMode(dir.key) != BackupMode.sync &&
+    if (Main.backupModeFromKey(dir.key) != BackupMode.sync &&
         (localPath ?? Main.pathFromKey(dir.key)) == Main.pathFromKey(dir.key)) {
       _setBackupMode(
         dir.key,
-        Main.backupMode(p.s3(p.dirname(dir.key))) == BackupMode.sync
+        Main.backupModeFromKey(p.s3(p.dirname(dir.key))) == BackupMode.sync
             ? null
             : BackupMode.sync,
       );
@@ -951,6 +950,48 @@ class _HomeState extends State<Home> {
         Main.uploadFile(remoteKey, entity);
       }
     }
+  }
+
+  List<dynamic> _getCurrentItems() {
+    final items = _searching && _navIndex == 0
+        ? _searchResults
+        : _driveDir.key == '' && _navIndex == 0
+        ? Set<RemoteFile>.from(
+            Main.remoteFiles
+                .where(
+                  (file) =>
+                      p.s3(p.dirname(file.key)).isEmpty && p.isDir(file.key),
+                )
+                .map<RemoteFile>((file) => file),
+          ).toList()
+        : _driveDir.key != '' && _navIndex == 0
+        ? [
+            ...Main.remoteFiles.where(
+              (file) =>
+                  p.s3(p.dirname(file.key)) == p.s3(_driveDir.key) &&
+                  !Main.ignoreKeyRegexps.any(
+                    (regexp) => RegExp(regexp).hasMatch(file.key),
+                  ) &&
+                  !Job.jobs.any(
+                    (job) =>
+                        job.remoteKey == file.key &&
+                        job.status != JobStatus.completed,
+                  ),
+            ),
+            ...Job.jobs.where(
+              (job) =>
+                  p.s3(p.dirname(job.remoteKey)) == p.s3(_driveDir.key) &&
+                  job.status != JobStatus.completed,
+            ),
+          ]
+        : _navIndex == 1
+        ? Job.jobs.where((job) => job.status == JobStatus.completed).toList()
+        : _navIndex == 2
+        ? Job.jobs.where((job) => job.status != JobStatus.completed).toList()
+        : [];
+
+    _updateAllSelectableItems(items.whereType<RemoteFile>().toList());
+    return items;
   }
 
   Future<void> _search() async {
@@ -1143,6 +1184,10 @@ class _HomeState extends State<Home> {
       }
     }
 
+    setState(() {
+      _loading.value = true;
+    });
+
     await Main.init();
 
     final uiConfig = ConfigManager.loadUiConfig();
@@ -1150,16 +1195,16 @@ class _HomeState extends State<Home> {
     ultraDarkController.update(uiConfig.ultraDark);
     _changeDirectory(RemoteFile(key: '', size: 0, etag: ''))?.call();
 
-    setState(() {
-      _loading.value = true;
-    });
-
     Main.setLoadingState = (bool loading) {
       setState(() {
         _loading.value = loading;
       });
     };
     Main.setHomeState = () {
+      setState(() {});
+    };
+    Main.onRemoteFilesChanged = () {
+      _updateCounts();
       setState(() {});
     };
 
@@ -1196,11 +1241,7 @@ class _HomeState extends State<Home> {
   @override
   void setState(void Function() fn) async {
     if (mounted) {
-      super.setState(() {
-        Main.ensureDirectoryObjects();
-        fn();
-        _updateCounts();
-      });
+      super.setState(fn);
     }
     if (!(_profile?.accessible ?? false) &&
         !(_inaccessibleTimer?.isActive ?? false)) {
@@ -1889,7 +1930,7 @@ class _HomeState extends State<Home> {
                                     Row(
                                       children: [
                                         Text(
-                                          '${Main.backupMode(_driveDir.key).name}: ',
+                                          '${Main.backupModeFromKey(_driveDir.key).name}: ',
                                           style: Theme.of(
                                             context,
                                           ).textTheme.labelSmall,
@@ -1957,147 +1998,33 @@ class _HomeState extends State<Home> {
                     )
                   : null,
             ),
-            _searching && _navIndex == 0
-                ? ListFiles(
-                    files: () {
-                      _updateAllSelectableItems(
-                        _searchResults.whereType<RemoteFile>().toList(),
-                      );
-                      return _searchResults;
-                    }(),
-                    keys: _keys,
-                    sortMode: _listOptions.sortMode,
-                    foldersFirst: _listOptions.foldersFirst,
-                    gridView: _listOptions.viewMode == ViewMode.grid,
-                    relativeto: _driveDir,
-                    selection: _selection,
-                    selectionAction: _selectionAction,
-                    onUpdate: () {
-                      setState(() {});
-                    },
-                    changeDirectory: _changeDirectory,
-                    select: _select,
-                    showContextMenu: (file) async {
-                      await Main.stopWatchers();
-                      await _showContextMenu(file);
-                    },
-                    buildContextMenu: _buildContextMenu,
-                    count: _count,
-                    dirSize: _dirSize,
-                    dirModified: _dirModified,
-                    getLink: _getLink,
-                  )
-                : _driveDir.key == '' && _navIndex == 0
-                ? ListFiles(
-                    files: () {
-                      final files = Set<RemoteFile>.from(
-                        Main.remoteFiles
-                            .where(
-                              (file) =>
-                                  p.s3(p.dirname(file.key)).isEmpty &&
-                                  p.isDir(file.key),
-                            )
-                            .map<RemoteFile>((file) => file),
-                      ).toList();
-                      _updateAllSelectableItems(
-                        files.whereType<RemoteFile>().toList(),
-                      );
-                      return files;
-                    }(),
-                    keys: _keys,
-                    sortMode: _listOptions.sortMode,
-                    foldersFirst: _listOptions.foldersFirst,
-                    gridView: _listOptions.viewMode == ViewMode.grid,
-                    relativeto: _driveDir,
-                    selection: _selection,
-                    selectionAction: _selectionAction,
-                    onUpdate: () {
-                      setState(() {});
-                    },
-                    changeDirectory: _changeDirectory,
-                    select: _select,
-                    showContextMenu: (file) async {
-                      await Main.stopWatchers();
-                      await _showContextMenu(file);
-                    },
-                    buildContextMenu: _buildContextMenu,
-                    count: _count,
-                    dirSize: _dirSize,
-                    dirModified: _dirModified,
-                    getLink: _getLink,
-                  )
-                : _driveDir.key != '' && _navIndex == 0
-                ? ListFiles(
-                    files: () {
-                      final files = [
-                        ...Main.remoteFiles.where(
-                          (file) =>
-                              p.s3(p.dirname(file.key)) ==
-                                  p.s3(_driveDir.key) &&
-                              !Main.ignoreKeyRegexps.any(
-                                (regexp) => RegExp(regexp).hasMatch(file.key),
-                              ) &&
-                              !Job.jobs.any(
-                                (job) =>
-                                    job.remoteKey == file.key &&
-                                    job.status != JobStatus.completed,
-                              ),
-                        ),
-                        ...Job.jobs.where(
-                          (job) =>
-                              p.s3(p.dirname(job.remoteKey)) ==
-                                  p.s3(_driveDir.key) &&
-                              job.status != JobStatus.completed,
-                        ),
-                      ];
-                      _updateAllSelectableItems(
-                        files.whereType<RemoteFile>().toList(),
-                      );
-                      return files;
-                    }(),
-                    keys: _keys,
-                    sortMode: _listOptions.sortMode,
-                    foldersFirst: _listOptions.foldersFirst,
-                    gridView: _listOptions.viewMode == ViewMode.grid,
-                    relativeto: _driveDir,
-                    selection: _selection,
-                    selectionAction: _selectionAction,
-                    onUpdate: () {
-                      setState(() {});
-                    },
-                    changeDirectory: _changeDirectory,
-                    select: _select,
-                    showContextMenu: (file) async {
-                      await Main.stopWatchers();
-                      await _showContextMenu(file);
-                    },
-                    buildContextMenu: _buildContextMenu,
-                    count: _count,
-                    dirSize: _dirSize,
-                    dirModified: _dirModified,
-                    getLink: _getLink,
-                  )
-                : _navIndex == 1
-                ? CompletedJobs(
-                    completedJobs: Job.jobs
-                        .where((job) => job.status == JobStatus.completed)
-                        .toList(),
-                    onUpdate: () {
-                      setState(() {});
-                    },
-                  )
-                : _navIndex == 2
-                ? ActiveJobs(
-                    jobs: Job.jobs
-                        .where((job) => job.status != JobStatus.completed)
-                        .toList(),
-                    onUpdate: () {
-                      setState(() {});
-                    },
-                  )
-                : Container(),
+            ListFiles(
+              files: _getCurrentItems(),
+              keys: _keys,
+              sortMode: _listOptions.sortMode,
+              foldersFirst: _listOptions.foldersFirst,
+              gridView: _listOptions.viewMode == ViewMode.grid,
+              relativeto: _driveDir,
+              selection: _selection,
+              selectionAction: _selectionAction,
+              onUpdate: () {
+                setState(() {});
+              },
+              changeDirectory: _changeDirectory,
+              select: _select,
+              showContextMenu: (file) async {
+                await Main.stopWatchers();
+                await _showContextMenu(file);
+              },
+              buildContextMenu: _buildContextMenu,
+              count: _count,
+              dirSize: _dirSize,
+              dirModified: _dirModified,
+              getLink: _getLink,
+            ),
           ],
         ),
+
         floatingActionButton: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
