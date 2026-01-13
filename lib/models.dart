@@ -53,12 +53,16 @@ class ListOptions {
     final Map<String, dynamic> data = Map<String, dynamic>.from(
       jsonDecode(json) as Map,
     );
-    return ListOptions(
-      sortMode: SortMode.values[data['sortMode'] ?? 0],
-      viewMode: ViewMode.values[data['viewMode'] ?? 0],
-      foldersFirst: data['foldersFirst'] ?? true,
-      group: data['group'] ?? false,
-    );
+    try {
+      return ListOptions(
+        sortMode: SortMode.values[data['sortMode'] as int? ?? 0],
+        viewMode: ViewMode.values[data['viewMode'] as int? ?? 0],
+        foldersFirst: data['foldersFirst'] as bool? ?? true,
+        group: data['group'] as bool? ?? false,
+      );
+    } catch (e) {
+      return ListOptions();
+    }
   }
 
   String toJson() {
