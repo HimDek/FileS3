@@ -201,6 +201,7 @@ class _HomeState extends State<Home> {
   final DraggableScrollableController _contextMenuSheetController =
       DraggableScrollableController();
   final ValueNotifier<bool> _galleryChromeVisible = ValueNotifier<bool>(false);
+  final ValueNotifier<int?> _galleryIndex = ValueNotifier<int?>(null);
   final TextEditingController _searchController = TextEditingController();
   final ValueNotifier<bool> _loading = ValueNotifier<bool>(true);
   final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
@@ -217,7 +218,6 @@ class _HomeState extends State<Home> {
   int _navIndex = 0;
   bool _searching = false;
   bool _controlsVisible = true;
-  int? _galleryIndex;
 
   Timer? _inaccessibleTimer;
 
@@ -1313,14 +1313,14 @@ class _HomeState extends State<Home> {
           _driveDir.key.isEmpty &&
           !_searching &&
           _selection.isEmpty &&
-          (_galleryIndex == null || _galleryFiles.isEmpty),
+          (_galleryIndex.value == null || _galleryFiles.isEmpty),
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) {
           return;
         }
-        if (_galleryIndex != null) {
+        if (_galleryIndex.value != null) {
           setState(() {
-            _galleryIndex = null;
+            _galleryIndex.value = null;
           });
           return;
         }
@@ -2088,7 +2088,7 @@ class _HomeState extends State<Home> {
                   selectionAction: _selectionAction,
                   showGallery: (index) {
                     setState(() {
-                      _galleryIndex = index;
+                      _galleryIndex.value = index;
                       _controlsVisible = false;
                     });
                   },
@@ -2109,23 +2109,21 @@ class _HomeState extends State<Home> {
                 ),
               ],
             ),
-            if (_galleryIndex != null && _galleryFiles.isNotEmpty) ...[
+            if (_galleryIndex.value != null && _galleryFiles.isNotEmpty) ...[
               Expanded(
                 child: Material(
                   child: Gallery(
                     keys: _keys,
                     files: _galleryFiles,
-                    initialIndex: _galleryIndex!,
+                    initialIndex: _galleryIndex.value!,
                     contextMenuSheetController: _contextMenuSheetController,
                     chromeVisible: _galleryChromeVisible,
                     onIndexChanged: (index) {
-                      setState(() {
-                        _galleryIndex = index;
-                      });
+                      _galleryIndex.value = index;
                     },
                     hideGallery: () {
                       setState(() {
-                        _galleryIndex = null;
+                        _galleryIndex.value = null;
                         _controlsVisible = true;
                       });
                     },
@@ -2153,15 +2151,18 @@ class _HomeState extends State<Home> {
                             icon: const Icon(Icons.close),
                             onPressed: () {
                               setState(() {
-                                _galleryIndex = null;
+                                _galleryIndex.value = null;
                                 _controlsVisible = true;
                               });
                             },
                           ),
-                          title: Text(
-                            p.basename(_galleryFiles[_galleryIndex!].file.key),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          title: ValueListenableBuilder(
+                            valueListenable: _galleryIndex,
+                            builder: (context, value, child) => Text(
+                              "${value ?? 0} / ${_galleryFiles.length}",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
                       ),
@@ -2196,9 +2197,12 @@ class _HomeState extends State<Home> {
                       padding: EdgeInsets.zero,
                       controller: scrollController,
                       children: [
-                        _buildContextMenu(
-                          context,
-                          _galleryFiles[_galleryIndex!].file,
+                        ValueListenableBuilder(
+                          valueListenable: _galleryIndex,
+                          builder: (context, value, child) => _buildContextMenu(
+                            context,
+                            _galleryFiles[value!].file,
+                          ),
                         ),
                       ],
                     ),
