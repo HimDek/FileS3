@@ -111,6 +111,7 @@ class FileRow extends GroupRow {
 class ListFiles extends StatefulWidget {
   final List<dynamic> files;
   final Map<String, GlobalKey> keys;
+  final Function(String?) setPendingScrollKey;
   final SortMode sortMode;
   final bool foldersFirst;
   final bool gridView;
@@ -132,6 +133,7 @@ class ListFiles extends StatefulWidget {
     super.key,
     required this.files,
     required this.keys,
+    required this.setPendingScrollKey,
     required this.sortMode,
     this.foldersFirst = true,
     this.gridView = false,
@@ -179,8 +181,18 @@ class ListFilesState extends State<ListFiles> {
             key = '0 B - 1 KB';
           } else if (file.size < 1024 * 1024) {
             key = '1 KB - 1 MB';
+          } else if (file.size < 1024 * 1024 * 10) {
+            key = '1 MB - 10 MB';
+          } else if (file.size < 1024 * 1024 * 32) {
+            key = '10 MB - 32 MB';
+          } else if (file.size < 1024 * 1024 * 128) {
+            key = '32 MB - 128 MB';
+          } else if (file.size < 1024 * 1024 * 512) {
+            key = '128 MB - 512 MB';
           } else if (file.size < 1024 * 1024 * 1024) {
-            key = '1 MB - 1 GB';
+            key = '512 MB - 1 GB';
+          } else if (file.size < 1024 * 1024 * 1024) {
+            key = '100 MB - 1 GB';
           } else {
             key = '> 1 GB';
           }
@@ -217,19 +229,23 @@ class ListFilesState extends State<ListFiles> {
     return grouped;
   }
 
-  Future<int?> pushGallery(BuildContext context, int index) =>
-      Navigator.of(context, rootNavigator: true).push(
-        PageRouteBuilder<int>(
-          pageBuilder: (_, _, _) => Gallery(
-            keys: widget.keys,
-            files: _galleryFiles!,
-            initialIndex: index,
-            buildContextMenu: (file) {
-              return widget.buildContextMenu(context, file);
-            },
-          ),
+  Future<void> pushGallery(BuildContext context, int index) async {
+    final result = await Navigator.of(context, rootNavigator: true).push(
+      PageRouteBuilder<int>(
+        pageBuilder: (_, _, _) => Gallery(
+          keys: widget.keys,
+          files: _galleryFiles!,
+          initialIndex: index,
+          buildContextMenu: (file) {
+            return widget.buildContextMenu(context, file);
+          },
         ),
-      );
+      ),
+    );
+    if (result != null) {
+      widget.setPendingScrollKey(_galleryFiles![result].file.key);
+    }
+  }
 
   Widget preview(FileProps item) {
     return getMediaType(item.key) != null
@@ -274,12 +290,14 @@ class ListFilesState extends State<ListFiles> {
   Widget listItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
         ? JobView(
+            key: widget.keys[item.job!.remoteKey],
             job: item.job!,
             relativeTo: widget.relativeto,
             onUpdate: widget.onUpdate,
           )
         : p.isDir(item.key)
         ? ListTile(
+            key: widget.keys[item.key],
             dense: MediaQuery.of(context).size.width < 600 ? true : false,
             visualDensity: MediaQuery.of(context).size.width < 600
                 ? VisualDensity.compact
@@ -368,6 +386,7 @@ class ListFilesState extends State<ListFiles> {
                   ),
           )
         : ListTile(
+            key: widget.keys[item.key],
             dense: MediaQuery.of(context).size.width < 600 ? true : false,
             visualDensity: MediaQuery.of(context).size.width < 600
                 ? VisualDensity.compact
@@ -451,6 +470,7 @@ class ListFilesState extends State<ListFiles> {
   Widget gridItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
         ? JobView(
+            key: widget.keys[item.job!.remoteKey],
             job: item.job!,
             relativeTo: widget.relativeto,
             onUpdate: widget.onUpdate,
@@ -458,6 +478,7 @@ class ListFilesState extends State<ListFiles> {
           )
         : p.isDir(item.key)
         ? MyGridTile(
+            key: widget.keys[item.key],
             selected: widget.selection.any(
               (selected) =>
                   selected.key == item.key ||
@@ -527,6 +548,7 @@ class ListFilesState extends State<ListFiles> {
             ),
           )
         : MyGridTile(
+            key: widget.keys[item.key],
             selected: widget.selection.any(
               (selected) =>
                   selected.key == item.key ||

@@ -265,6 +265,16 @@ class AudioVideoInteractiveMediaState
   }
 
   @override
+  void didUpdateWidget(covariant AudioVideoInteractiveMedia oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.staypaused && oldWidget.staypaused) return;
+
+    if (widget.staypaused) {
+      _videoController.pause();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder(
       future: _loader,
@@ -514,6 +524,8 @@ class GalleryState extends State<Gallery> {
   bool _allowContextMenu = true;
   double dismissOffset = 0.0;
 
+  final Map<String, MediaProvider> _providerCache = {};
+
   void _showContextMenu() {
     sheetController.animateTo(
       0.7,
@@ -552,8 +564,9 @@ class GalleryState extends State<Gallery> {
 
   Widget _itemBuilder(BuildContext context, int index) {
     final f = widget.files[index];
-    return FutureBuilder<MediaProvider>(
-      future: MediaProviderResolver.resolve(
+    final provider = _providerCache.putIfAbsent(
+      f.file.key,
+      () => getMediaProvider(
         name: f.title,
         mediaType: getMediaType(f.file.key) ?? 'application/octet-stream',
         url: f.url,
@@ -561,27 +574,13 @@ class GalleryState extends State<Gallery> {
         size: f.file.size,
         description: f.description,
       ),
-      builder: (context, snap) {
-        if (!snap.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return InteractiveMediaView(
-          heroTag: widget.files[index].file.key,
-          mediaProvider: getMediaProvider(
-            name: widget.files[index].title,
-            mediaType:
-                getMediaType(widget.files[index].file.key) ??
-                'application/octet-stream',
-            url: widget.files[index].url,
-            path: widget.files[index].path,
-            size: widget.files[index].file.size,
-            description: widget.files[index].description,
-          ),
-          setPaging: _setPaging,
-          setContextMenu: _setContextMenu,
-          isActive: index == _currentIndex,
-        );
-      },
+    );
+    return InteractiveMediaView(
+      heroTag: widget.files[index].file.key,
+      mediaProvider: provider,
+      setPaging: _setPaging,
+      setContextMenu: _setContextMenu,
+      isActive: index == _currentIndex,
     );
   }
 
@@ -591,7 +590,11 @@ class GalleryState extends State<Gallery> {
     setState(() {
       _currentIndex = widget.initialIndex;
     });
-    _pageController = PageController(initialPage: _currentIndex);
+    _pageController = PageController(
+      initialPage: _currentIndex,
+      viewportFraction: 1,
+      keepPage: false,
+    );
     chromeVisible.addListener(() {
       if (chromeVisible.value) {
         sheetController.animateTo(
@@ -643,24 +646,26 @@ class GalleryState extends State<Gallery> {
               children: [
                 PageView.builder(
                   controller: _pageController,
+                  allowImplicitScrolling: false,
                   physics: _allowPaging
                       ? const BouncingScrollPhysics()
                       : const NeverScrollableScrollPhysics(),
                   itemCount: widget.files.length,
                   onPageChanged: (i) {
                     setState(() => _currentIndex = i);
-                    if (widget
-                            .keys[widget.files[_currentIndex].file.key]
-                            ?.currentContext !=
-                        null) {
-                      Scrollable.ensureVisible(
-                        widget
-                            .keys[widget.files[_currentIndex].file.key]!
-                            .currentContext!,
-                        duration: const Duration(milliseconds: 0),
-                        alignment: 0.5,
-                      );
-                    }
+                    // WidgetsBinding.instance.addPostFrameCallback((_) {
+                    //   final key =
+                    //       widget.keys[widget.files[_currentIndex].file.key];
+                    //   final ctx = key?.currentContext;
+                    //   if (ctx != null) {
+                    //     Scrollable.ensureVisible(
+                    //       ctx,
+                    //       duration: const Duration(milliseconds: 150),
+                    //       alignment: 0.5,
+                    //       curve: Curves.easeOut,
+                    //     );
+                    //   }
+                    // });
                   },
                   itemBuilder: (context, index) => PointerGestureRouter(
                     allowTap: () => _allowPaging,
@@ -821,14 +826,18 @@ class MediaPreviewState extends State<MediaPreview> {
   @override
   Widget build(BuildContext context) {
     return _provider.isImage
-        ? CachedNetworkImage(
-            imageUrl: _provider.url,
-            height: 256,
-            width: 256,
-            maxWidthDiskCache: 256,
-            maxHeightDiskCache: 256,
+        ? Image(
+            image: ResizeImage(
+              CachedNetworkImageProvider(
+                _provider.url,
+                maxWidth: 256,
+                maxHeight: 256,
+                cacheKey: widget.remoteKey,
+              ),
+              width: 256,
+              height: 256,
+            ),
             fit: BoxFit.cover,
-            cacheKey: widget.remoteKey,
           )
         : _provider.mediaType == 'application/pdf'
         ? fallback(context, _provider, _progress)
@@ -892,41 +901,6 @@ MediaProvider getMediaProvider({
     size: size,
     description: description,
   );
-}
-
-class MediaProviderResolver {
-  static final Map<String, Future<File?>> _fileChecks = {};
-
-  static Future<File?> _resolveFile(String path) {
-    return _fileChecks.putIfAbsent(path, () async {
-      final file = File(path);
-      return file.existsSync() ? file : null;
-    });
-  }
-
-  static Future<MediaProvider> resolve({
-    required String name,
-    required String mediaType,
-    required String url,
-    required String path,
-    int? size,
-    String? description,
-  }) async {
-    final file = await _resolveFile(path);
-
-    if (file != null) {
-      return FileMediaProvider(name, mediaType, file, description: description);
-    }
-
-    return MyUrlMediaProvider(
-      name,
-      mediaType,
-      url,
-      path,
-      size: size,
-      description: description,
-    );
-  }
 }
 
 class MyUrlMediaProvider extends UrlMediaProvider {

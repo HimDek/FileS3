@@ -214,6 +214,7 @@ class _HomeState extends State<Home> {
   bool _controlsVisible = true;
 
   Timer? _inaccessibleTimer;
+  String? _pendingScrollKey;
 
   void Function()? _getSelectAction(RemoteFile item) =>
       _selection.any((selected) => p.isWithin(selected.key, item.key)) ||
@@ -1269,6 +1270,14 @@ class _HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _keys[_pendingScrollKey]?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(ctx, alignment: 0.5);
+        _pendingScrollKey = null;
+      }
+    });
+
     return PopScope(
       canPop:
           _navIndex == 0 &&
@@ -2012,6 +2021,10 @@ class _HomeState extends State<Home> {
             ListFiles(
               files: _getCurrentItems(),
               keys: _keys,
+              setPendingScrollKey: (key) {
+                _pendingScrollKey = key;
+                setState(() {});
+              },
               sortMode: _listOptions.sortMode,
               foldersFirst: _listOptions.foldersFirst,
               gridView: _listOptions.viewMode == ViewMode.grid,
