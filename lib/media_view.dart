@@ -504,6 +504,7 @@ class Gallery extends StatefulWidget {
   final void Function()? hideGallery;
   final DraggableScrollableController? contextMenuSheetController;
   final ValueNotifier<bool>? chromeVisible;
+  final void Function(int index)? onIndexChanged;
 
   const Gallery({
     super.key,
@@ -513,6 +514,7 @@ class Gallery extends StatefulWidget {
     this.hideGallery,
     this.contextMenuSheetController,
     this.chromeVisible,
+    this.onIndexChanged,
   });
 
   @override
@@ -615,6 +617,7 @@ class GalleryState extends State<Gallery> {
       itemCount: widget.files.length,
       onPageChanged: (i) {
         setState(() => _currentIndex = i);
+        widget.onIndexChanged?.call(i);
         final key = widget.keys[widget.files[_currentIndex].file.key];
         final ctx = key?.currentContext;
         if (ctx != null) {

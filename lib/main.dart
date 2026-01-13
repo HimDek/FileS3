@@ -2118,6 +2118,11 @@ class _HomeState extends State<Home> {
                     initialIndex: _galleryIndex!,
                     contextMenuSheetController: _contextMenuSheetController,
                     chromeVisible: _galleryChromeVisible,
+                    onIndexChanged: (index) {
+                      setState(() {
+                        _galleryIndex = index;
+                      });
+                    },
                     hideGallery: () {
                       setState(() {
                         _galleryIndex = null;
