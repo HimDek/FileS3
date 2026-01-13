@@ -88,7 +88,7 @@ String bytesToReadable(int bytes) {
   return '${size.toStringAsFixed(2)} ${suffixes[i]}';
 }
 
-String _monthToString(int month) {
+String monthToString(int month) {
   return [
     'Jan',
     'Feb',
@@ -113,7 +113,7 @@ String timeToReadable(DateTime time) {
   } else if (diff.inMinutes < 60) {
     return '${diff.inMinutes}m ago';
   }
-  return "${localTime.day.toString().padLeft(2, '0')} ${_monthToString(localTime.month)} ${localTime.year} ${(localTime.hour % 12).toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ${localTime.hour >= 12 ? 'PM' : 'AM'}";
+  return "${localTime.day.toString().padLeft(2, '0')} ${monthToString(localTime.month)} ${localTime.year} ${(localTime.hour % 12).toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ${localTime.hour >= 12 ? 'PM' : 'AM'}";
 }
 
 String? getMediaType(String name) {

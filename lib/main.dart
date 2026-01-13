@@ -204,11 +204,7 @@ class _HomeState extends State<Home> {
   Profile? _profile;
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
   List<Object> _searchResults = [];
-  ListOptions _listOptions = ListOptions(
-    sortMode: SortMode.nameAsc,
-    viewMode: ViewMode.list,
-    foldersFirst: true,
-  );
+  ListOptions _listOptions = ListOptions();
   bool _globalListOptions = true;
   SelectionAction _selectionAction = SelectionAction.none;
   int _dirCount = 0;
@@ -219,18 +215,28 @@ class _HomeState extends State<Home> {
 
   Timer? _inaccessibleTimer;
 
-  void _select(RemoteFile item) {
-    if (_selection.any((selected) {
-      return selected.key == item.key;
-    })) {
-      _selection.removeWhere((selected) {
-        return selected.key == item.key;
-      });
-    } else {
-      _selection.add(item);
-    }
-    setState(() {});
-  }
+  void Function()? _getSelectAction(RemoteFile item) =>
+      _selection.any((selected) => p.isWithin(selected.key, item.key)) ||
+          _selectionAction != SelectionAction.none
+      ? null
+      : () {
+          if (p.isDir(item.key)) {
+            // Deselect all children
+            _selection.removeWhere(
+              (selected) => p.isWithin(item.key, selected.key),
+            );
+          }
+          if (_selection.any((selected) {
+            return selected.key == item.key;
+          })) {
+            _selection.removeWhere((selected) {
+              return selected.key == item.key;
+            });
+          } else {
+            _selection.add(item);
+          }
+          setState(() {});
+        };
 
   void _updateAllSelectableItems(List<dynamic> items) {
     _allSelectableItems.clear();
@@ -348,42 +354,43 @@ class _HomeState extends State<Home> {
     setState(() {});
   }
 
-  Function()? _changeDirectory(RemoteFile dir) =>
-      _selection.any((s) => p.isWithin(s.key, dir.key) || s.key == dir.key)
-      ? null
-      : () {
-          setState(() {
-            _navIndex = 0;
-            _controlsVisible = true;
-            _driveDir = dir;
-            _profile = Main.profileFromKey(_driveDir.key);
-            _listOptions = ListOptions.fromJson(
-              IniManager.config?.get('list_options', _driveDir.key) ??
-                  IniManager.config?.get('list_options', '/') ??
-                  '{"sortMode": 0,"viewMode": 0, "foldersFirst": true}',
-            );
-            if (IniManager.config?.get('list_options', _driveDir.key) != null) {
-              _globalListOptions = false;
-            } else {
-              _globalListOptions = true;
-            }
-            for (RemoteFile item in _selection) {
-              if (p.isWithin(item.key, _driveDir.key) ||
-                  item.key == _driveDir.key) {
-                _driveDir = () {
-                  String dir = _driveDir.key;
-                  while (p.isWithin(item.key, dir) || item.key == dir) {
-                    dir = p.s3(p.dirname(dir));
-                    if (dir == '') {
-                      break;
-                    }
-                  }
-                  return Main.remoteFiles.firstWhere((file) => file.key == dir);
-                }();
+  Function()? _changeDirectory(RemoteFile dir) => () {
+    setState(() {
+      _navIndex = 0;
+      _controlsVisible = true;
+      _driveDir = dir;
+      _profile = Main.profileFromKey(_driveDir.key);
+      _listOptions = ListOptions.fromJson(
+        IniManager.config?.get(
+              'list_options',
+              _navIndex == 0 ? _driveDir.key : 'navindex_$_navIndex',
+            ) ??
+            ListOptions().toJson(),
+      );
+      if (IniManager.config?.get('list_options', _driveDir.key) != null) {
+        _globalListOptions = false;
+      } else {
+        _globalListOptions = true;
+      }
+      for (RemoteFile item in _selection) {
+        if (p.isWithin(item.key, _driveDir.key) || item.key == _driveDir.key) {
+          _driveDir = () {
+            String dir = _driveDir.key;
+            while (p.isWithin(item.key, dir) || item.key == dir) {
+              dir = p.s3(p.dirname(dir));
+              if (dir == '') {
+                break;
               }
             }
-          });
-        };
+            return Main.remoteFiles.firstWhere((file) => file.key == dir);
+          }();
+        }
+      }
+    });
+    if (_searching) {
+      _search();
+    }
+  };
 
   Future<void> _createDirectory(String dir) async {
     setState(() {
@@ -1017,13 +1024,15 @@ class _HomeState extends State<Home> {
           ),
         ].where((item) {
           if (item is RemoteFile) {
-            return item.key.toLowerCase().contains(
-              _searchController.text.trim().toLowerCase(),
-            );
+            return p
+                .s3(p.relative(item.key, from: _driveDir.key))
+                .toLowerCase()
+                .contains(_searchController.text.trim().toLowerCase());
           } else if (item is Job) {
-            return item.remoteKey.toLowerCase().contains(
-              _searchController.text.trim().toLowerCase(),
-            );
+            return p
+                .s3(p.relative(item.remoteKey, from: _driveDir.key))
+                .toLowerCase()
+                .contains(_searchController.text.trim().toLowerCase());
           }
           return false;
         }).toList();
@@ -1348,7 +1357,7 @@ class _HomeState extends State<Home> {
                     _selection.isNotEmpty
                         ? Text(
                             "${_selectionAction == SelectionAction.none
-                                ? ''
+                                ? 'Selected '
                                 : _selectionAction == SelectionAction.cut
                                 ? 'Moving '
                                 : 'Copying '}${_selection.where((item) => p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => p.isDir(item.key)).length} Folders ' : ''}${_selection.where((item) => !p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => !p.isDir(item.key)).length} Files ' : ''}",
@@ -1454,7 +1463,7 @@ class _HomeState extends State<Home> {
                                 ? () {
                                     _selection.clear();
                                     _searchController.clear();
-                                    setState(() {});
+                                    _search();
                                   }
                                 : () async {
                                     _selection.clear();
@@ -1631,82 +1640,102 @@ class _HomeState extends State<Home> {
                                       },
                                     ),
                                     const PopupMenuDivider(),
-                                    if (_driveDir.key != '' || _searching) ...[
-                                      CheckboxListTile(
-                                        dense: true,
-                                        visualDensity: VisualDensity.compact,
-                                        contentPadding: EdgeInsets.only(
-                                          left: 16,
-                                          right: 16,
-                                        ),
-                                        title: Text(
-                                          'Folders First',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                        ),
-                                        value: _listOptions.foldersFirst,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _listOptions.foldersFirst =
-                                                value ?? true;
-                                          });
-                                          Navigator.of(context).pop();
-                                          _setListOptions(_listOptions);
-                                        },
+
+                                    CheckboxListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
+                                      contentPadding: EdgeInsets.only(
+                                        left: 16,
+                                        right: 16,
                                       ),
-                                      CheckboxListTile(
-                                        dense: true,
-                                        visualDensity: VisualDensity.compact,
-                                        contentPadding: EdgeInsets.only(
-                                          left: 16,
-                                          right: 16,
-                                        ),
-                                        title: Text(
-                                          'Grid View',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                        ),
-                                        value:
-                                            _listOptions.viewMode ==
-                                            ViewMode.grid,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _listOptions.viewMode =
-                                                value ?? true
-                                                ? ViewMode.grid
-                                                : ViewMode.list;
-                                          });
-                                          Navigator.of(context).pop();
-                                          _setListOptions(_listOptions);
-                                        },
+                                      title: Text(
+                                        'Folders First',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium,
                                       ),
-                                      const PopupMenuDivider(),
-                                      CheckboxListTile(
-                                        dense: true,
-                                        visualDensity: VisualDensity.compact,
-                                        contentPadding: EdgeInsets.only(
-                                          left: 16,
-                                          right: 16,
-                                        ),
-                                        title: Text(
-                                          'Apply Everywhere',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                        ),
-                                        value: _globalListOptions,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _globalListOptions = value ?? true;
-                                          });
-                                          Navigator.of(context).pop();
-                                          _setListOptions(_listOptions);
-                                        },
+                                      value: _listOptions.foldersFirst,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _listOptions.foldersFirst =
+                                              value ?? true;
+                                        });
+                                        Navigator.of(context).pop();
+                                        _setListOptions(_listOptions);
+                                      },
+                                    ),
+                                    CheckboxListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
+                                      contentPadding: EdgeInsets.only(
+                                        left: 16,
+                                        right: 16,
                                       ),
-                                      const PopupMenuDivider(),
-                                    ],
+                                      title: Text(
+                                        'Grid View',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium,
+                                      ),
+                                      value:
+                                          _listOptions.viewMode ==
+                                          ViewMode.grid,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _listOptions.viewMode = value ?? true
+                                              ? ViewMode.grid
+                                              : ViewMode.list;
+                                        });
+                                        Navigator.of(context).pop();
+                                        _setListOptions(_listOptions);
+                                      },
+                                    ),
+                                    CheckboxListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
+                                      contentPadding: EdgeInsets.only(
+                                        left: 16,
+                                        right: 16,
+                                      ),
+                                      title: Text(
+                                        'Grouped View',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium,
+                                      ),
+                                      value: _listOptions.group,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _listOptions.group = value ?? true;
+                                        });
+                                        Navigator.of(context).pop();
+                                        _setListOptions(_listOptions);
+                                      },
+                                    ),
+                                    const PopupMenuDivider(),
+                                    CheckboxListTile(
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
+                                      contentPadding: EdgeInsets.only(
+                                        left: 16,
+                                        right: 16,
+                                      ),
+                                      title: Text(
+                                        'Use Global',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium,
+                                      ),
+                                      value: _globalListOptions,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _globalListOptions = value ?? true;
+                                        });
+                                        Navigator.of(context).pop();
+                                        _setListOptions(_listOptions);
+                                      },
+                                    ),
+                                    const PopupMenuDivider(),
                                     ListTile(
                                       dense: true,
                                       visualDensity: VisualDensity.compact,
@@ -1827,20 +1856,13 @@ class _HomeState extends State<Home> {
                                         children:
                                             <Widget>[
                                                   GestureDetector(
-                                                    onTap:
-                                                        (_selection
-                                                                .isNotEmpty &&
-                                                            _selectionAction ==
-                                                                SelectionAction
-                                                                    .none)
-                                                        ? null
-                                                        : _changeDirectory(
-                                                            RemoteFile(
-                                                              key: '',
-                                                              size: 0,
-                                                              etag: '',
-                                                            ),
-                                                          ),
+                                                    onTap: _changeDirectory(
+                                                      RemoteFile(
+                                                        key: '',
+                                                        size: 0,
+                                                        etag: '',
+                                                      ),
+                                                    ),
                                                     child: Text(
                                                       'FileS3',
                                                       style: Theme.of(
@@ -1859,46 +1881,35 @@ class _HomeState extends State<Home> {
                                                         (
                                                           dir,
                                                         ) => GestureDetector(
-                                                          onTap:
-                                                              (_selection
-                                                                      .isNotEmpty &&
-                                                                  _selectionAction ==
-                                                                      SelectionAction
-                                                                          .none)
-                                                              ? null
-                                                              : () {
-                                                                  String
-                                                                  newPath = '';
-                                                                  for (final part
-                                                                      in p.split(
-                                                                        _driveDir
-                                                                            .key,
-                                                                      )) {
-                                                                    if (part
-                                                                        .isEmpty) {
-                                                                      continue;
-                                                                    }
-                                                                    newPath += p
-                                                                        .asDir(
-                                                                          part,
-                                                                        );
-                                                                    if (part ==
-                                                                        dir) {
-                                                                      break;
-                                                                    }
-                                                                  }
-                                                                  _changeDirectory(
-                                                                    Main.remoteFiles.firstWhere(
-                                                                      (file) =>
-                                                                          p.s3(
-                                                                            file.key,
-                                                                          ) ==
-                                                                          p.s3(
-                                                                            newPath,
-                                                                          ),
-                                                                    ),
-                                                                  )?.call();
-                                                                },
+                                                          onTap: () {
+                                                            String newPath = '';
+                                                            for (final part
+                                                                in p.split(
+                                                                  _driveDir.key,
+                                                                )) {
+                                                              if (part
+                                                                  .isEmpty) {
+                                                                continue;
+                                                              }
+                                                              newPath += p
+                                                                  .asDir(part);
+                                                              if (part == dir) {
+                                                                break;
+                                                              }
+                                                            }
+                                                            _changeDirectory(
+                                                              Main.remoteFiles
+                                                                  .firstWhere(
+                                                                    (file) =>
+                                                                        p.s3(
+                                                                          file.key,
+                                                                        ) ==
+                                                                        p.s3(
+                                                                          newPath,
+                                                                        ),
+                                                                  ),
+                                                            )?.call();
+                                                          },
                                                           child: Text(
                                                             dir,
                                                             style:
@@ -2004,6 +2015,7 @@ class _HomeState extends State<Home> {
               sortMode: _listOptions.sortMode,
               foldersFirst: _listOptions.foldersFirst,
               gridView: _listOptions.viewMode == ViewMode.grid,
+              group: _listOptions.group,
               relativeto: _driveDir,
               selection: _selection,
               selectionAction: _selectionAction,
@@ -2011,7 +2023,7 @@ class _HomeState extends State<Home> {
                 setState(() {});
               },
               changeDirectory: _changeDirectory,
-              select: _select,
+              getSelectAction: _getSelectAction,
               showContextMenu: (file) async {
                 await Main.stopWatchers();
                 await _showContextMenu(file);

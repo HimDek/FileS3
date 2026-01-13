@@ -48,6 +48,7 @@ dependencies:
   enough_media:
   video_player:
   chewie_audio:
+  sliver_tools:
   dynamic_color:
   path_provider:  
   file_selector:
