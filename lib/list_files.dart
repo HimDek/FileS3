@@ -143,24 +143,19 @@ class ListFilesState extends State<ListFiles> {
   List<FileProps> _sortedFiles = [];
   List<GalleryProps>? _galleryFiles;
 
-  Future<void> Function() galleryBuilder(BuildContext context, FileProps item) {
-    return () async {
+  Future<int?> pushGallery(BuildContext context, int index) =>
       Navigator.of(context, rootNavigator: true).push(
         PageRouteBuilder<int>(
           pageBuilder: (_, _, _) => Gallery(
             keys: widget.keys,
             files: _galleryFiles!,
-            initialIndex: _galleryFiles!.indexWhere(
-              (f) => f.file.key == item.key,
-            ),
+            initialIndex: index,
             buildContextMenu: (file) {
               return widget.buildContextMenu(context, file);
             },
           ),
         ),
       );
-    };
-  }
 
   Widget preview(FileProps item) {
     return getMediaType(item.key) != null
@@ -381,7 +376,10 @@ class ListFilesState extends State<ListFiles> {
                   }
                 : widget.selectionAction != SelectionAction.none
                 ? null
-                : galleryBuilder(context, item),
+                : () => pushGallery(
+                    context,
+                    _galleryFiles!.indexWhere((f) => f.file.key == item.key),
+                  ),
             onLongPress: widget.selectionAction == SelectionAction.none
                 ? () {
                     widget.select(item.file!);
@@ -542,7 +540,12 @@ class ListFilesState extends State<ListFiles> {
                   }
                 : null,
             child: GestureDetector(
-              onTap: galleryBuilder(context, item),
+              onTap: widget.selectionAction != SelectionAction.none
+                  ? null
+                  : () => pushGallery(
+                      context,
+                      _galleryFiles!.indexWhere((f) => f.file.key == item.key),
+                    ),
               child: Hero(tag: item.key, child: preview(item)),
             ),
           );
