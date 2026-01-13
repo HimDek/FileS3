@@ -53,7 +53,7 @@ abstract class Main {
   }
 
   static set setHomeState(Function()? func) {
-    setHomeState = func;
+    _setHomeState = func;
   }
 
   static set onRemoteFilesChanged(Function()? func) {
