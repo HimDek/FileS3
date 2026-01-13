@@ -345,8 +345,6 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
   double pdfscale = 1;
 
   final PhotoViewController _photoViewController = PhotoViewController();
-  final PhotoViewScaleStateController _photoViewScaleStateController =
-      PhotoViewScaleStateController();
   final PdfViewerController _pdfViewerController = PdfViewerController();
 
   // Future<void> _loadMedia() async {
@@ -422,7 +420,10 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
         ? PhotoView(
             controller: _photoViewController,
             imageProvider: _provider is UrlMediaProvider
-                ? NetworkImage((_provider as UrlMediaProvider).url)
+                ? CachedNetworkImageProvider(
+                    (_provider as UrlMediaProvider).url,
+                    cacheKey: _provider.name,
+                  )
                 : FileImage((_provider as FileMediaProvider).file),
             heroAttributes: PhotoViewHeroAttributes(
               tag: widget.heroTag ?? _provider.hashCode,
@@ -500,14 +501,18 @@ class Gallery extends StatefulWidget {
   final Map<String, GlobalKey> keys;
   final List<GalleryProps> files;
   final int initialIndex;
-  final Widget Function(RemoteFile file)? buildContextMenu;
+  final void Function()? hideGallery;
+  final DraggableScrollableController? contextMenuSheetController;
+  final ValueNotifier<bool>? chromeVisible;
 
   const Gallery({
     super.key,
     required this.keys,
     required this.files,
     this.initialIndex = 0,
-    this.buildContextMenu,
+    this.hideGallery,
+    this.contextMenuSheetController,
+    this.chromeVisible,
   });
 
   @override
@@ -516,9 +521,6 @@ class Gallery extends StatefulWidget {
 
 class GalleryState extends State<Gallery> {
   late PageController _pageController;
-  final ValueNotifier<bool> chromeVisible = ValueNotifier(false);
-  final DraggableScrollableController sheetController =
-      DraggableScrollableController();
   late int _currentIndex;
   bool _allowPaging = true;
   bool _allowContextMenu = true;
@@ -527,7 +529,7 @@ class GalleryState extends State<Gallery> {
   final Map<String, MediaProvider> _providerCache = {};
 
   void _showContextMenu() {
-    sheetController.animateTo(
+    widget.contextMenuSheetController?.animateTo(
       0.7,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOut,
@@ -538,7 +540,9 @@ class GalleryState extends State<Gallery> {
   void _setPaging(bool paging) {
     setState(() {
       _allowPaging = paging;
-      chromeVisible.value = _allowPaging ? chromeVisible.value : false;
+      widget.chromeVisible?.value = _allowPaging
+          ? widget.chromeVisible?.value ?? false
+          : false;
     });
   }
 
@@ -546,20 +550,6 @@ class GalleryState extends State<Gallery> {
     setState(() {
       _allowContextMenu = allow;
     });
-  }
-
-  Widget _grabHandle() {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.all(12),
-        width: 40,
-        height: 5,
-        decoration: BoxDecoration(
-          color: Colors.white30,
-          borderRadius: BorderRadius.circular(20),
-        ),
-      ),
-    );
   }
 
   Widget _itemBuilder(BuildContext context, int index) {
@@ -595,16 +585,16 @@ class GalleryState extends State<Gallery> {
       viewportFraction: 1,
       keepPage: false,
     );
-    chromeVisible.addListener(() {
-      if (chromeVisible.value) {
-        sheetController.animateTo(
-          0.125,
+    widget.chromeVisible?.addListener(() {
+      if (widget.chromeVisible?.value ?? false) {
+        widget.contextMenuSheetController?.animateTo(
+          0.1,
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOut,
         );
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       } else {
-        sheetController.animateTo(
+        widget.contextMenuSheetController?.animateTo(
           0.0,
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeIn,
@@ -616,133 +606,58 @@ class GalleryState extends State<Gallery> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          Navigator.of(context).pop(_currentIndex);
+    return PageView.builder(
+      controller: _pageController,
+      allowImplicitScrolling: false,
+      physics: _allowPaging
+          ? const BouncingScrollPhysics()
+          : const NeverScrollableScrollPhysics(),
+      itemCount: widget.files.length,
+      onPageChanged: (i) {
+        setState(() => _currentIndex = i);
+        final key = widget.keys[widget.files[_currentIndex].file.key];
+        final ctx = key?.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 150),
+            alignment: 0.5,
+            curve: Curves.easeOut,
+          );
         }
       },
-      child: ValueListenableBuilder(
-        valueListenable: chromeVisible,
-        builder: (context, value, child) {
-          return Scaffold(
-            backgroundColor: Colors.black,
-            appBar: PreferredSize(
-              preferredSize: const Size.fromHeight(kToolbarHeight),
-              child: AnimatedSlide(
-                offset: value ? Offset.zero : const Offset(0, -1),
-                duration: const Duration(milliseconds: 100),
-                curve: Curves.easeInOut,
-                child: AppBar(
-                  backgroundColor: Colors.black,
-                  title: Text("${_currentIndex + 1} / ${widget.files.length}"),
-                  actions: [],
-                ),
-              ),
-            ),
-            extendBodyBehindAppBar: true,
-            body: Stack(
-              children: [
-                PageView.builder(
-                  controller: _pageController,
-                  allowImplicitScrolling: false,
-                  physics: _allowPaging
-                      ? const BouncingScrollPhysics()
-                      : const NeverScrollableScrollPhysics(),
-                  itemCount: widget.files.length,
-                  onPageChanged: (i) {
-                    setState(() => _currentIndex = i);
-                    // WidgetsBinding.instance.addPostFrameCallback((_) {
-                    //   final key =
-                    //       widget.keys[widget.files[_currentIndex].file.key];
-                    //   final ctx = key?.currentContext;
-                    //   if (ctx != null) {
-                    //     Scrollable.ensureVisible(
-                    //       ctx,
-                    //       duration: const Duration(milliseconds: 150),
-                    //       alignment: 0.5,
-                    //       curve: Curves.easeOut,
-                    //     );
-                    //   }
-                    // });
-                  },
-                  itemBuilder: (context, index) => PointerGestureRouter(
-                    allowTap: () => _allowPaging,
-                    allowVerticalDrag: () => _allowPaging && _allowContextMenu,
-                    onTap: () {
-                      chromeVisible.value = !chromeVisible.value;
-                    },
-                    onVerticalDrag: (dy) {
-                      dismissOffset += dy * 0.7; // resistance
-                      dismissOffset = dismissOffset.clamp(-200, 300);
-                      setState(() {});
-                    },
-                    onVerticalDragEnd: (totalDy) {
-                      if (totalDy > 100) {
-                        chromeVisible.value = false;
-                        Navigator.pop(context);
-                        dismissOffset = 0;
-                      } else if (totalDy < -100) {
-                        chromeVisible.value = true;
-                        _showContextMenu();
-                        dismissOffset = 0;
-                      } else {
-                        dismissOffset = 0;
-                        setState(() {});
-                      }
-                    },
-                    child: Transform.translate(
-                      offset: Offset(0, dismissOffset),
-                      child: Transform.scale(
-                        scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
-                        child: _itemBuilder(context, index),
-                      ),
-                    ),
-                  ),
-                ),
-                DraggableScrollableSheet(
-                  controller: sheetController,
-                  initialChildSize: 0,
-                  minChildSize: 0,
-                  maxChildSize: 0.7,
-                  snap: true,
-                  snapSizes: const [0.125, 0.7],
-                  snapAnimationDuration: const Duration(milliseconds: 100),
-                  builder: (context, scrollController) {
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius:
-                            Theme.of(context).bottomSheetTheme.shape
-                                is RoundedRectangleBorder
-                            ? (Theme.of(context).bottomSheetTheme.shape
-                                      as RoundedRectangleBorder)
-                                  .borderRadius
-                            : const BorderRadius.only(
-                                topLeft: Radius.circular(32),
-                                topRight: Radius.circular(32),
-                              ),
-                      ),
-                      child: ListView(
-                        padding: EdgeInsets.zero,
-                        controller: scrollController,
-                        children: [
-                          _grabHandle(),
-                          widget.buildContextMenu != null
-                              ? widget.buildContextMenu!(
-                                  widget.files[_currentIndex].file,
-                                )
-                              : const SizedBox.shrink(),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          );
+      itemBuilder: (context, index) => PointerGestureRouter(
+        allowTap: () => _allowPaging,
+        allowVerticalDrag: () => _allowPaging && _allowContextMenu,
+        onTap: () {
+          widget.chromeVisible?.value = !(widget.chromeVisible?.value ?? false);
         },
+        onVerticalDrag: (dy) {
+          dismissOffset += dy * 0.7; // resistance
+          dismissOffset = dismissOffset.clamp(-200, 300);
+          setState(() {});
+        },
+        onVerticalDragEnd: (totalDy) {
+          if (totalDy > 100) {
+            widget.chromeVisible?.value = false;
+            widget.hideGallery?.call();
+            dismissOffset = 0;
+          } else if (totalDy < -100) {
+            widget.chromeVisible?.value = true;
+            _showContextMenu();
+            dismissOffset = 0;
+          } else {
+            dismissOffset = 0;
+            setState(() {});
+          }
+        },
+        child: Transform.translate(
+          offset: Offset(0, dismissOffset),
+          child: Transform.scale(
+            scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
+            child: _itemBuilder(context, index),
+          ),
+        ),
       ),
     );
   }

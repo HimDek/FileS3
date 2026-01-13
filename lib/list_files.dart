@@ -109,16 +109,16 @@ class FileRow extends GroupRow {
 }
 
 class ListFiles extends StatefulWidget {
-  final List<dynamic> files;
+  final List<FileProps> files;
+  final Function(List<GalleryProps>)? setGalleryFiles;
   final Map<String, GlobalKey> keys;
-  final Function(String?) setPendingScrollKey;
   final SortMode sortMode;
-  final bool foldersFirst;
   final bool gridView;
   final bool group;
   final RemoteFile relativeto;
   final Set<RemoteFile> selection;
   final SelectionAction selectionAction;
+  final void Function(int) showGallery;
   final Function() onUpdate;
   final Function()? Function(RemoteFile) changeDirectory;
   final void Function()? Function(RemoteFile) getSelectAction;
@@ -132,15 +132,15 @@ class ListFiles extends StatefulWidget {
   const ListFiles({
     super.key,
     required this.files,
+    this.setGalleryFiles,
     required this.keys,
-    required this.setPendingScrollKey,
     required this.sortMode,
-    this.foldersFirst = true,
     this.gridView = false,
     this.group = false,
     required this.relativeto,
     required this.selection,
     required this.selectionAction,
+    required this.showGallery,
     required this.onUpdate,
     required this.changeDirectory,
     required this.getSelectAction,
@@ -157,14 +157,12 @@ class ListFiles extends StatefulWidget {
 }
 
 class ListFilesState extends State<ListFiles> {
-  List<FileProps> _sortedFiles = [];
-  List<GalleryProps>? _galleryFiles;
   List<MapEntry<String, List<FileProps>>> _groups = [];
 
   Map<String, List<FileProps>> getGroups() {
     Map<String, List<FileProps>> grouped = {};
     SortMode? groupBy = widget.group ? widget.sortMode : null;
-    for (var file in _sortedFiles) {
+    for (var file in widget.files) {
       String key;
       switch (groupBy) {
         case SortMode.nameAsc || SortMode.nameDesc:
@@ -227,24 +225,6 @@ class ListFilesState extends State<ListFiles> {
       }
     }
     return grouped;
-  }
-
-  Future<void> pushGallery(BuildContext context, int index) async {
-    final result = await Navigator.of(context, rootNavigator: true).push(
-      PageRouteBuilder<int>(
-        pageBuilder: (_, _, _) => Gallery(
-          keys: widget.keys,
-          files: _galleryFiles!,
-          initialIndex: index,
-          buildContextMenu: (file) {
-            return widget.buildContextMenu(context, file);
-          },
-        ),
-      ),
-    );
-    if (result != null) {
-      widget.setPendingScrollKey(_galleryFiles![result].file.key);
-    }
   }
 
   Widget preview(FileProps item) {
@@ -459,10 +439,7 @@ class ListFilesState extends State<ListFiles> {
                   ),
             onTap: widget.selection.isNotEmpty
                 ? widget.getSelectAction(item.file!)
-                : () => pushGallery(
-                    context,
-                    _galleryFiles!.indexWhere((f) => f.file.key == item.key),
-                  ),
+                : () => widget.showGallery(widget.files.indexOf(item)),
             onLongPress: widget.getSelectAction(item.file!),
           );
   }
@@ -629,10 +606,7 @@ class ListFilesState extends State<ListFiles> {
                   ),
             onLongPress: widget.getSelectAction(item.file!),
             child: GestureDetector(
-              onTap: () => pushGallery(
-                context,
-                _galleryFiles!.indexWhere((f) => f.file.key == item.key),
-              ),
+              onTap: () => widget.showGallery(widget.files.indexOf(item)),
               child: Hero(tag: item.key, child: preview(item)),
             ),
           );
@@ -642,57 +616,31 @@ class ListFilesState extends State<ListFiles> {
   void didUpdateWidget(covariant ListFiles oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.files != widget.files) {
-      _sortedFiles = sort(
-        widget.files.map((file) {
-          String url =
-              widget.getLink(
-                file is Job
-                    ? RemoteFile(
-                        key: file.remoteKey,
-                        size: file.bytes,
-                        etag: file.md5.toString(),
-                      )
-                    : file,
-                null,
-              ) ??
-              '';
-          return file is Job
-              ? FileProps(
-                  key: file.remoteKey,
-                  size: file.bytes,
-                  job: file,
-                  url: url,
-                )
-              : p.isDir(file.key)
-              ? FileProps(key: file.key, size: file.size, file: file, url: url)
-              : FileProps(key: file.key, size: file.size, file: file, url: url);
-        }),
-        widget.sortMode,
-        widget.foldersFirst,
+      widget.setGalleryFiles?.call(
+        widget.files
+            .where((f) {
+              return !p.isDir(f.key);
+            })
+            .map(
+              (f) => GalleryProps(
+                file:
+                    f.file ??
+                    RemoteFile(
+                      key: f.key,
+                      size: f.size,
+                      etag: f.job!.md5.toString(),
+                    ),
+                title: p.isWithin(widget.relativeto.key, f.key)
+                    ? p.s3(p.relative(f.key, from: widget.relativeto.key))
+                    : f.key,
+                url: f.url!,
+                path: File(Main.pathFromKey(f.key) ?? f.key).existsSync()
+                    ? (Main.pathFromKey(f.key) ?? f.key)
+                    : Main.cachePathFromKey(f.key),
+              ),
+            )
+            .toList(),
       );
-      _galleryFiles = _sortedFiles
-          .where((f) {
-            return !p.isDir(f.key);
-          })
-          .map(
-            (f) => GalleryProps(
-              file:
-                  f.file ??
-                  RemoteFile(
-                    key: f.key,
-                    size: f.size,
-                    etag: f.job!.md5.toString(),
-                  ),
-              title: p.isWithin(widget.relativeto.key, f.key)
-                  ? p.s3(p.relative(f.key, from: widget.relativeto.key))
-                  : f.key,
-              url: f.url!,
-              path: File(Main.pathFromKey(f.key) ?? f.key).existsSync()
-                  ? (Main.pathFromKey(f.key) ?? f.key)
-                  : Main.cachePathFromKey(f.key),
-            ),
-          )
-          .toList();
       _groups = getGroups().entries.toList();
     }
   }
