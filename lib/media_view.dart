@@ -744,18 +744,12 @@ class MediaPreviewState extends State<MediaPreview> {
   @override
   Widget build(BuildContext context) {
     return _provider.isImage
-        ? Image(
-            image: ResizeImage(
-              CachedNetworkImageProvider(
-                _provider.url,
-                maxWidth: 256,
-                maxHeight: 256,
-                cacheKey: widget.remoteKey,
-              ),
-              width: 256,
-              height: 256,
-            ),
+        ? CachedNetworkImage(
+            imageUrl: _provider.url,
+            width: widget.width ?? 256,
+            height: widget.height ?? 256,
             fit: BoxFit.cover,
+            cacheKey: widget.remoteKey,
           )
         : _provider.mediaType == 'application/pdf'
         ? fallback(context, _provider, _progress)

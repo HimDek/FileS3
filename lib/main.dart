@@ -2110,24 +2110,22 @@ class _HomeState extends State<Home> {
               ],
             ),
             if (_galleryIndex.value != null && _galleryFiles.isNotEmpty) ...[
-              Expanded(
-                child: Material(
-                  child: Gallery(
-                    keys: _keys,
-                    files: _galleryFiles,
-                    initialIndex: _galleryIndex.value!,
-                    contextMenuSheetController: _contextMenuSheetController,
-                    chromeVisible: _galleryChromeVisible,
-                    onIndexChanged: (index) {
-                      _galleryIndex.value = index;
-                    },
-                    hideGallery: () {
-                      setState(() {
-                        _galleryIndex.value = null;
-                        _controlsVisible = true;
-                      });
-                    },
-                  ),
+              Material(
+                child: Gallery(
+                  keys: _keys,
+                  files: _galleryFiles,
+                  initialIndex: _galleryIndex.value!,
+                  contextMenuSheetController: _contextMenuSheetController,
+                  chromeVisible: _galleryChromeVisible,
+                  onIndexChanged: (index) {
+                    _galleryIndex.value = index;
+                  },
+                  hideGallery: () {
+                    setState(() {
+                      _galleryIndex.value = null;
+                      _controlsVisible = true;
+                    });
+                  },
                 ),
               ),
               ValueListenableBuilder(
@@ -2159,7 +2157,7 @@ class _HomeState extends State<Home> {
                           title: ValueListenableBuilder(
                             valueListenable: _galleryIndex,
                             builder: (context, value, child) => Text(
-                              "${value ?? 0} / ${_galleryFiles.length}",
+                              "${(value ?? -1) + 1} / ${_galleryFiles.length}",
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -2181,7 +2179,7 @@ class _HomeState extends State<Home> {
                 builder: (context, scrollController) {
                   return Container(
                     decoration: BoxDecoration(
-                      color: Colors.black,
+                      color: Theme.of(context).canvasColor,
                       borderRadius:
                           Theme.of(context).bottomSheetTheme.shape
                               is RoundedRectangleBorder

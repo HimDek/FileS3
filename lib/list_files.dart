@@ -34,7 +34,7 @@ class MyGridTile extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: AnimatedContainer(
-        duration: Duration(milliseconds: 150),
+        duration: Duration(milliseconds: 250),
         decoration: BoxDecoration(
           color: selected
               ? Theme.of(context).colorScheme.primaryContainer
@@ -51,7 +51,7 @@ class MyGridTile extends StatelessWidget {
                 )
               : null,
           footer: AnimatedContainer(
-            duration: Duration(milliseconds: 150),
+            duration: Duration(milliseconds: 250),
             decoration: BoxDecoration(
               color: selected
                   ? Theme.of(context).colorScheme.primaryContainer
@@ -61,33 +61,33 @@ class MyGridTile extends StatelessWidget {
             child: footer,
           ),
           child: AnimatedPadding(
-            duration: Duration(milliseconds: 250),
+            duration: const Duration(milliseconds: 250),
             padding: EdgeInsets.only(
               left: selected ? 8 : 0,
               right: selected ? 8 : 0,
               top: selected ? 8 : 0,
               bottom: selected ? 40 : 32,
             ),
-            child: AnimatedContainer(
-              duration: Duration(milliseconds: 250),
-              clipBehavior: Clip.hardEdge,
-              decoration: BoxDecoration(
-                border: selected
-                    ? Border.all(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 2,
-                      )
-                    : null,
-                borderRadius: selected ? BorderRadius.circular(8) : null,
-              ),
-              child: AnimatedContainer(
-                duration: Duration(milliseconds: 250),
-                clipBehavior: Clip.hardEdge,
-                decoration: BoxDecoration(
-                  borderRadius: selected ? BorderRadius.circular(6) : null,
+            child: Stack(
+              children: [
+                AnimatedPadding(
+                  duration: Duration(milliseconds: 250),
+                  padding: EdgeInsets.all(selected ? 2 : 0),
+                  child: Center(child: child),
                 ),
-                child: child,
-              ),
+                AnimatedContainer(
+                  duration: Duration(milliseconds: 250),
+                  decoration: BoxDecoration(
+                    border: selected
+                        ? Border.all(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          )
+                        : null,
+                    borderRadius: BorderRadius.circular(selected ? 4 : 0),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -230,8 +230,8 @@ class ListFilesState extends State<ListFiles> {
   Widget preview(FileProps item) {
     return getMediaType(item.key) != null
         ? SizedBox(
-            height: 24,
-            width: 24,
+            height: 256,
+            width: 256,
             child: FutureBuilder<String>(
               future: () async {
                 return (await File(
@@ -243,8 +243,8 @@ class ListFilesState extends State<ListFiles> {
               builder: (context, snapshot) {
                 return MediaPreview(
                   remoteKey: item.key,
-                  height: 24,
-                  width: 24,
+                  height: 256,
+                  width: 256,
                   mediaProvider: MyUrlMediaProvider(
                     p.isWithin(widget.relativeto.key, item.key)
                         ? p.s3(
@@ -604,11 +604,9 @@ class ListFilesState extends State<ListFiles> {
                     },
                     icon: Icon(Icons.more_vert),
                   ),
+            onTap: () => widget.showGallery(widget.files.indexOf(item)),
             onLongPress: widget.getSelectAction(item.file!),
-            child: GestureDetector(
-              onTap: () => widget.showGallery(widget.files.indexOf(item)),
-              child: Hero(tag: item.key, child: preview(item)),
-            ),
+            child: Hero(tag: item.key, child: preview(item)),
           );
   }
 
