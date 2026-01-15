@@ -111,7 +111,7 @@ class FileRow extends GroupRow {
 class ListFiles extends StatefulWidget {
   final List<FileProps> files;
   final Function(List<GalleryProps>)? setGalleryFiles;
-  final Map<String, GlobalKey> keys;
+  final Map<String, double> keysOffsetMap;
   final SortMode sortMode;
   final bool gridView;
   final bool group;
@@ -133,7 +133,7 @@ class ListFiles extends StatefulWidget {
     super.key,
     required this.files,
     this.setGalleryFiles,
-    required this.keys,
+    required this.keysOffsetMap,
     required this.sortMode,
     this.gridView = false,
     this.group = false,
@@ -213,6 +213,8 @@ class ListFilesState extends State<ListFiles> {
         case SortMode.typeAsc || SortMode.typeDesc:
           key = p.extension(file.key).isNotEmpty
               ? p.extension(file.key).toUpperCase()
+              : p.isDir(file.key)
+              ? 'Folders'
               : 'No Extension';
           break;
         default:
@@ -270,14 +272,12 @@ class ListFilesState extends State<ListFiles> {
   Widget listItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
         ? JobView(
-            key: widget.keys[item.job!.remoteKey],
             job: item.job!,
             relativeTo: widget.relativeto,
             onUpdate: widget.onUpdate,
           )
         : p.isDir(item.key)
         ? ListTile(
-            key: widget.keys[item.key],
             dense: MediaQuery.of(context).size.width < 600 ? true : false,
             visualDensity: MediaQuery.of(context).size.width < 600
                 ? VisualDensity.compact
@@ -291,10 +291,14 @@ class ListFilesState extends State<ListFiles> {
               context,
             ).colorScheme.primary.withValues(alpha: 0.1),
             selectedColor: Theme.of(context).colorScheme.primary,
-            leading: Icon(
-              p.split(item.key).length > 1
-                  ? Icons.folder
-                  : Icons.cloud_circle_rounded,
+            leading: SizedBox(
+              height: 32,
+              width: 32,
+              child: Icon(
+                p.split(item.key).length > 1
+                    ? Icons.folder
+                    : Icons.cloud_circle_rounded,
+              ),
             ),
             title: Text(
               p.isWithin(widget.relativeto.key, item.key)
@@ -366,7 +370,6 @@ class ListFilesState extends State<ListFiles> {
                   ),
           )
         : ListTile(
-            key: widget.keys[item.key],
             dense: MediaQuery.of(context).size.width < 600 ? true : false,
             visualDensity: MediaQuery.of(context).size.width < 600
                 ? VisualDensity.compact
@@ -380,7 +383,10 @@ class ListFilesState extends State<ListFiles> {
               context,
             ).colorScheme.primary.withValues(alpha: 0.1),
             selectedColor: Theme.of(context).colorScheme.primary,
-            leading: Hero(tag: item.key, child: preview(item)),
+            leading: Hero(
+              tag: item.key,
+              child: SizedBox(height: 32, width: 32, child: preview(item)),
+            ),
             title: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Text(
@@ -447,7 +453,6 @@ class ListFilesState extends State<ListFiles> {
   Widget gridItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
         ? JobView(
-            key: widget.keys[item.job!.remoteKey],
             job: item.job!,
             relativeTo: widget.relativeto,
             onUpdate: widget.onUpdate,
@@ -455,7 +460,6 @@ class ListFilesState extends State<ListFiles> {
           )
         : p.isDir(item.key)
         ? MyGridTile(
-            key: widget.keys[item.key],
             selected: widget.selection.any(
               (selected) =>
                   selected.key == item.key ||
@@ -525,7 +529,6 @@ class ListFilesState extends State<ListFiles> {
             ),
           )
         : MyGridTile(
-            key: widget.keys[item.key],
             selected: widget.selection.any(
               (selected) =>
                   selected.key == item.key ||
@@ -610,6 +613,53 @@ class ListFilesState extends State<ListFiles> {
           );
   }
 
+  void buildKeysOffsetMap(BuildContext context) {
+    widget.keysOffsetMap.clear();
+
+    final width = MediaQuery.of(context).size.width;
+    final columns = width < 600 ? 4 : 6;
+    final tileWidth = width / columns;
+    final tileHeight = tileWidth * (4 / 3); // inverse of 3/4
+
+    double offset = 0;
+
+    for (final group in _groups) {
+      // Header height (if enabled)
+      if (widget.group) {
+        final style = Theme.of(context).textTheme.titleMedium!;
+        final painter = TextPainter(
+          text: TextSpan(text: group.key, style: style),
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        offset += painter.height + 16; // 8px top + 8px bottom padding
+      }
+
+      // Grid items
+      if (!widget.gridView) {
+        // List view
+        for (final file in group.value) {
+          final listTileHeight = MediaQuery.of(context).size.width < 600
+              ? 56.0
+              : 72.0; // approximate heights for dense and standard ListTiles
+          widget.keysOffsetMap[file.key] = offset;
+          offset += listTileHeight;
+        }
+        continue;
+      }
+
+      for (int i = 0; i < group.value.length; i++) {
+        final file = group.value[i];
+        final row = i ~/ columns;
+        widget.keysOffsetMap[file.key] = offset + row * tileHeight;
+      }
+
+      // Skip past this group’s grid
+      final rows = (group.value.length + columns - 1) ~/ columns;
+      offset += rows * tileHeight;
+    }
+  }
+
   @override
   void didUpdateWidget(covariant ListFiles oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -641,6 +691,9 @@ class ListFilesState extends State<ListFiles> {
       );
       _groups = getGroups().entries.toList();
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      buildKeysOffsetMap(context);
+    });
   }
 
   @override
@@ -676,7 +729,6 @@ class ListFilesState extends State<ListFiles> {
             itemCount: group.value.length,
             itemBuilder: (context, i) {
               final file = group.value[i];
-              widget.keys[file.key] ??= GlobalKey();
               return gridItemBuilder(context, file);
             },
           ),
@@ -687,7 +739,6 @@ class ListFilesState extends State<ListFiles> {
             itemCount: group.value.length,
             itemBuilder: (context, i) {
               final file = group.value[i];
-              widget.keys[file.key] ??= GlobalKey();
               return listItemBuilder(context, file);
             },
           ),

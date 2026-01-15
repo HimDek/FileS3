@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'dart:async';
 import 'package:files3/media_view.dart';
 import 'package:flutter/material.dart';
@@ -197,32 +198,34 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> {
   final Set<RemoteFile> _selection = {};
   final List<RemoteFile> _allSelectableItems = [];
-  final ScrollController _scrollController = ScrollController();
-  final DraggableScrollableController _contextMenuSheetController =
-      DraggableScrollableController();
-  final ValueNotifier<bool> _galleryChromeVisible = ValueNotifier<bool>(false);
-  final ValueNotifier<int?> _galleryIndex = ValueNotifier<int?>(null);
+  final ScrollController _scrollController = ScrollController(
+    keepScrollOffset: false,
+  );
   final TextEditingController _searchController = TextEditingController();
   final ValueNotifier<bool> _loading = ValueNotifier<bool>(true);
+  final ValueNotifier<bool> _searching = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _controlsVisible = ValueNotifier<bool>(true);
+  final ValueNotifier<bool> _globalListOptions = ValueNotifier<bool>(true);
   final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
-  final Map<String, GlobalKey> _keys = <String, GlobalKey>{};
+  final ValueNotifier<ListOptions> _listOptions = ValueNotifier<ListOptions>(
+    ListOptions(),
+  );
+  final Map<String, double> _keysOffsetMap = <String, double>{};
   List<GalleryProps> _galleryFiles = [];
   Profile? _profile;
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
   List<Object> _searchResults = [];
-  ListOptions _listOptions = ListOptions();
-  bool _globalListOptions = true;
   SelectionAction _selectionAction = SelectionAction.none;
   int _dirCount = 0;
   int _fileCount = 0;
   int _navIndex = 0;
-  bool _searching = false;
-  bool _controlsVisible = true;
 
   Timer? _inaccessibleTimer;
 
   void _setGalleryFiles(List<GalleryProps> files) {
-    _galleryFiles = files;
+    _galleryFiles.clear();
+    _galleryFiles.addAll(files);
+    setState(() {});
   }
 
   void Function()? _getSelectAction(RemoteFile item) =>
@@ -352,10 +355,10 @@ class _HomeState extends State<Home> {
     }
     IniManager.config?.set(
       'list_options',
-      _globalListOptions || _navIndex != 0 ? '/' : _driveDir.key,
+      _globalListOptions.value || _navIndex != 0 ? '/' : _driveDir.key,
       options.toJson(),
     );
-    if (_globalListOptions &&
+    if (_globalListOptions.value &&
         IniManager.config?.options('list_options')?.contains(_driveDir.key) ==
             true) {
       IniManager.config?.removeOption('list_options', _driveDir.key);
@@ -365,12 +368,13 @@ class _HomeState extends State<Home> {
   }
 
   Function()? _changeDirectory(RemoteFile dir) => () {
+    final oldDir = _driveDir;
     setState(() {
       _navIndex = 0;
-      _controlsVisible = true;
+      _controlsVisible.value = true;
       _driveDir = dir;
       _profile = Main.profileFromKey(_driveDir.key);
-      _listOptions = ListOptions.fromJson(
+      _listOptions.value = ListOptions.fromJson(
         IniManager.config?.get(
               'list_options',
               _navIndex == 0 ? _driveDir.key : 'navindex_$_navIndex',
@@ -378,9 +382,9 @@ class _HomeState extends State<Home> {
             ListOptions().toJson(),
       );
       if (IniManager.config?.get('list_options', _driveDir.key) != null) {
-        _globalListOptions = false;
+        _globalListOptions.value = false;
       } else {
-        _globalListOptions = true;
+        _globalListOptions.value = true;
       }
       for (RemoteFile item in _selection) {
         if (p.isWithin(item.key, _driveDir.key) || item.key == _driveDir.key) {
@@ -397,7 +401,8 @@ class _HomeState extends State<Home> {
         }
       }
     });
-    if (_searching) {
+    _scrollToFile(oldDir);
+    if (_searching.value) {
       _search();
     }
   };
@@ -970,7 +975,7 @@ class _HomeState extends State<Home> {
   }
 
   Iterable<FileProps> _getCurrentItems() {
-    final items = _searching && _navIndex == 0
+    final items = _searching.value && _navIndex == 0
         ? _searchResults
         : _driveDir.key == '' && _navIndex == 0
         ? Set<RemoteFile>.from(
@@ -1034,8 +1039,8 @@ class _HomeState extends State<Home> {
             ? FileProps(key: file.key, size: file.size, file: file, url: url)
             : FileProps(key: file.key, size: file.size, file: file, url: url);
       }),
-      _listOptions.sortMode,
-      _listOptions.foldersFirst,
+      _listOptions.value.sortMode,
+      _listOptions.value.foldersFirst,
     );
   }
 
@@ -1160,6 +1165,194 @@ class _HomeState extends State<Home> {
     );
   }
 
+  Widget _buildPopupMenu() {
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        _loading,
+        _searching,
+        _listOptions,
+        _globalListOptions,
+      ]),
+      builder: (context, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: 0, width: 128),
+          ListTile(
+            dense: true,
+            enabled: !_loading.value && !_searching.value,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Refresh', maxLines: 1),
+            trailing: _loading.value
+                ? Icon(Icons.hourglass_empty)
+                : Icon(Icons.refresh),
+            onTap: () {
+              Main.listDirectories();
+            },
+          ),
+          const PopupMenuDivider(),
+          ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Name'),
+            trailing: _listOptions.value.sortMode == SortMode.nameAsc
+                ? Icon(Icons.arrow_upward)
+                : _listOptions.value.sortMode == SortMode.nameDesc
+                ? Icon(Icons.arrow_downward)
+                : null,
+            onTap: () {
+              _listOptions.value =
+                  _listOptions.value.sortMode == SortMode.nameAsc
+                  ? _listOptions.value.copyWith(sortMode: SortMode.nameDesc)
+                  : _listOptions.value.copyWith(sortMode: SortMode.nameAsc);
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Date'),
+            trailing: _listOptions.value.sortMode == SortMode.dateAsc
+                ? Icon(Icons.arrow_upward)
+                : _listOptions.value.sortMode == SortMode.dateDesc
+                ? Icon(Icons.arrow_downward)
+                : null,
+            onTap: () {
+              _listOptions.value =
+                  _listOptions.value.sortMode == SortMode.dateAsc
+                  ? _listOptions.value.copyWith(sortMode: SortMode.dateDesc)
+                  : _listOptions.value.copyWith(sortMode: SortMode.dateAsc);
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Size'),
+            trailing: _listOptions.value.sortMode == SortMode.sizeAsc
+                ? Icon(Icons.arrow_upward)
+                : _listOptions.value.sortMode == SortMode.sizeDesc
+                ? Icon(Icons.arrow_downward)
+                : null,
+            onTap: () {
+              _listOptions.value =
+                  _listOptions.value.sortMode == SortMode.sizeAsc
+                  ? _listOptions.value.copyWith(sortMode: SortMode.sizeDesc)
+                  : _listOptions.value.copyWith(sortMode: SortMode.sizeAsc);
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Type'),
+            trailing: _listOptions.value.sortMode == SortMode.typeAsc
+                ? Icon(Icons.arrow_upward)
+                : _listOptions.value.sortMode == SortMode.typeDesc
+                ? Icon(Icons.arrow_downward)
+                : null,
+            onTap: () {
+              _listOptions.value =
+                  _listOptions.value.sortMode == SortMode.typeAsc
+                  ? _listOptions.value.copyWith(sortMode: SortMode.typeDesc)
+                  : _listOptions.value.copyWith(sortMode: SortMode.typeAsc);
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          const PopupMenuDivider(),
+          CheckboxListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            title: Text(
+              'Folders First',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            value: _listOptions.value.foldersFirst,
+            onChanged: (value) {
+              _listOptions.value = _listOptions.value.copyWith(
+                foldersFirst: value ?? true,
+              );
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          CheckboxListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            title: Text(
+              'Grid View',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            value: _listOptions.value.viewMode == ViewMode.grid,
+            onChanged: (value) {
+              _listOptions.value = _listOptions.value.copyWith(
+                viewMode: value! ? ViewMode.grid : ViewMode.list,
+              );
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          CheckboxListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            title: Text(
+              'Grouped View',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            value: _listOptions.value.group,
+            onChanged: (value) {
+              _listOptions.value = _listOptions.value.copyWith(
+                group: value ?? true,
+              );
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          const PopupMenuDivider(),
+          CheckboxListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            title: Text(
+              'Use Global',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            value: _globalListOptions.value,
+            onChanged: (value) {
+              setState(() {
+                _globalListOptions.value = value ?? true;
+              });
+            },
+          ),
+          const PopupMenuDivider(),
+          ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Settings', maxLines: 1),
+            trailing: Icon(Icons.settings),
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showContextMenu(RemoteFile? file) async {
     setState(() {});
     try {
@@ -1190,6 +1383,31 @@ class _HomeState extends State<Home> {
 
     await Main.refreshWatchers();
     setState(() {});
+  }
+
+  Future<int?> _pushGallery(int index) async {
+    int? result = await Navigator.of(context).push<int>(
+      PageRouteBuilder<int>(
+        opaque: false,
+        pageBuilder: (context, animation, secondaryAnimation) => Gallery(
+          files: _galleryFiles,
+          initialIndex: index,
+          keysOffsetMap: _keysOffsetMap,
+          scrollController: _scrollController,
+          buildContextMenu: _buildContextMenu,
+        ),
+      ),
+    );
+    return result;
+  }
+
+  void _scrollToFile(RemoteFile file) {
+    final offset = _keysOffsetMap[file.key];
+    if (offset == null) return;
+
+    _scrollController.jumpTo(
+      max(0, offset - MediaQuery.of(context).size.height / 3),
+    );
   }
 
   Future<void> _init() async {
@@ -1267,10 +1485,11 @@ class _HomeState extends State<Home> {
     _scrollController.addListener(() {
       final direction = _scrollController.position.userScrollDirection;
 
-      if (direction == ScrollDirection.reverse && _controlsVisible) {
-        setState(() => _controlsVisible = false);
-      } else if (direction == ScrollDirection.forward && !_controlsVisible) {
-        setState(() => _controlsVisible = true);
+      if (direction == ScrollDirection.reverse && _controlsVisible.value) {
+        setState(() => _controlsVisible.value = false);
+      } else if (direction == ScrollDirection.forward &&
+          !_controlsVisible.value) {
+        setState(() => _controlsVisible.value = true);
       }
     });
   }
@@ -1311,17 +1530,10 @@ class _HomeState extends State<Home> {
       canPop:
           _navIndex == 0 &&
           _driveDir.key.isEmpty &&
-          !_searching &&
-          _selection.isEmpty &&
-          (_galleryIndex.value == null || _galleryFiles.isEmpty),
+          !_searching.value &&
+          _selection.isEmpty,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) {
-          return;
-        }
-        if (_galleryIndex.value != null) {
-          setState(() {
-            _galleryIndex.value = null;
-          });
           return;
         }
         if (_selectionAction != SelectionAction.none) {
@@ -1334,638 +1546,345 @@ class _HomeState extends State<Home> {
           setState(() {});
           return;
         }
-        if (_searching) {
-          _searching = false;
+        if (_searching.value) {
+          _searching.value = false;
           _selection.clear();
           setState(() {});
           return;
         }
         if (_navIndex != 0) {
           _navIndex = 0;
-          _controlsVisible = true;
+          _controlsVisible.value = true;
           setState(() {});
           return;
         }
         if (_driveDir.key.isNotEmpty) {
           final newKey = p.s3(p.dirname(_driveDir.key));
-          Scrollable.ensureVisible(
-            _keys[newKey]?.currentContext ?? context,
-            duration: const Duration(milliseconds: 0),
-            alignment: 0.5,
-          );
           _changeDirectory(RemoteFile(key: newKey, size: 0, etag: ''))?.call();
           return;
         }
       },
       child: Scaffold(
-        body: Stack(
-          alignment: Alignment.center,
-          children: [
-            CustomScrollView(
-              controller: _scrollController,
-              slivers: [
-                SliverAppBar(
-                  floating: _selection.isEmpty,
-                  snap: _selection.isEmpty,
-                  pinned: true,
-                  actionsPadding: EdgeInsets.only(right: 24, top: 4, bottom: 4),
-                  title: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_navIndex == 0)
-                        if (_searching)
-                          Form(
-                            child: TextFormField(
-                              autofocus: true,
-                              controller: _searchController,
-                              decoration: InputDecoration(
-                                visualDensity: VisualDensity.compact,
-                                hintText: 'Search',
-                                border: InputBorder.none,
-                                isDense: true,
-                              ),
-                              onChanged: (value) {
-                                _selection.clear();
-                                _search();
-                              },
-                              onFieldSubmitted: (value) {
-                                _selection.clear();
-                                _search();
-                              },
-                            ),
+        body: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            SliverAppBar(
+              floating: _selection.isEmpty,
+              snap: _selection.isEmpty,
+              pinned: true,
+              actionsPadding: EdgeInsets.only(right: 24, top: 4, bottom: 4),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_navIndex == 0)
+                    if (_searching.value)
+                      Form(
+                        child: TextFormField(
+                          autofocus: true,
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            visualDensity: VisualDensity.compact,
+                            hintText: 'Search',
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
+                          onChanged: (value) {
+                            _selection.clear();
+                            _search();
+                          },
+                          onFieldSubmitted: (value) {
+                            _selection.clear();
+                            _search();
+                          },
+                        ),
+                      )
+                    else
+                      const Text('FileS3')
+                  else if (_navIndex == 1)
+                    const Text("Completed Jobs")
+                  else
+                    const Text("Active Jobs"),
+
+                  if (_navIndex == 0)
+                    _selection.isNotEmpty
+                        ? Text(
+                            "${_selectionAction == SelectionAction.none
+                                ? 'Selected '
+                                : _selectionAction == SelectionAction.cut
+                                ? 'Moving '
+                                : 'Copying '}${_selection.where((item) => p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => p.isDir(item.key)).length} Folders ' : ''}${_selection.where((item) => !p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => !p.isDir(item.key)).length} Files ' : ''}",
+
+                            style: Theme.of(context).textTheme.bodySmall,
                           )
-                        else
-                          const Text('FileS3')
-                      else if (_navIndex == 1)
-                        const Text("Completed Jobs")
-                      else
-                        const Text("Active Jobs"),
-
-                      if (_navIndex == 0)
-                        _selection.isNotEmpty
-                            ? Text(
-                                "${_selectionAction == SelectionAction.none
-                                    ? 'Selected '
-                                    : _selectionAction == SelectionAction.cut
-                                    ? 'Moving '
-                                    : 'Copying '}${_selection.where((item) => p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => p.isDir(item.key)).length} Folders ' : ''}${_selection.where((item) => !p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => !p.isDir(item.key)).length} Files ' : ''}",
-
-                                style: Theme.of(context).textTheme.bodySmall,
-                              )
-                            : _navIndex == 0
-                            ? Text(
-                                _searching
-                                    ? "${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).length} Folders ' : ''}${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).length} Files ' : ''}found"
-                                    : _dirCount > 0 || _fileCount > 0
-                                    ? "${_dirCount > 0 ? '$_dirCount Folders ' : ''}${_fileCount > 0 ? '$_fileCount Files' : ''}"
-                                    : "Empty",
-                                style: Theme.of(context).textTheme.bodySmall,
-                              )
-                            : SizedBox.shrink(),
-                    ],
-                  ),
-                  actions: _navIndex == 1
-                      ? [
-                          if (Job.jobs
-                              .where((job) => job.status == JobStatus.completed)
-                              .isNotEmpty)
-                            IconButton(
-                              onPressed: () {
-                                Job.clearCompleted();
-                                setState(() {});
-                              },
-                              icon: Icon(Icons.clear_all_rounded),
-                            ),
-                        ]
-                      : _navIndex == 2
-                      ? [
-                          if (Job.jobs
-                              .where((job) => job.status != JobStatus.completed)
-                              .isNotEmpty)
-                            Job.jobs.any(
-                                  (job) => job.status == JobStatus.running,
-                                )
-                                ? IconButton(
-                                    onPressed: () {
-                                      Job.stopall();
-                                      setState(() {});
-                                    },
-                                    icon: Icon(Icons.stop),
-                                  )
-                                : IconButton(
-                                    onPressed: () {
-                                      Job.continueAll();
-                                      setState(() {});
-                                    },
-                                    icon: Icon(Icons.start),
-                                  ),
-                        ]
-                      : _selection.isNotEmpty
-                      ? _selectionAction == SelectionAction.none
-                            ? [
-                                if (_selection.length <
-                                    _allSelectableItems.length)
-                                  IconButton(
-                                    onPressed: () {
-                                      _selection.addAll(_allSelectableItems);
-                                      setState(() {});
-                                    },
-                                    icon: const Icon(Icons.select_all),
-                                  ),
-                                IconButton(
-                                  onPressed: () {
-                                    _selection.clear();
-                                    setState(() {});
-                                  },
-                                  icon: Icon(Icons.close),
-                                ),
-                                if (!_loading.value)
-                                  IconButton(
-                                    onPressed: () async {
-                                      await Main.stopWatchers();
-                                      await _showContextMenu(null);
-                                    },
-                                    icon: Icon(Icons.more_vert),
-                                  ),
-                              ]
-                            : [
-                                if (!_loading.value)
-                                  IconButton(
-                                    onPressed: _paste(),
-                                    icon: const Icon(Icons.paste),
-                                  ),
-                                IconButton(
-                                  onPressed: () {
-                                    _selectionAction = SelectionAction.none;
-                                    setState(() {});
-                                  },
-                                  icon: const Icon(Icons.close),
-                                ),
-                              ]
-                      : [
-                          if (!_loading.value) ...[
-                            if (!_searching ||
-                                _searchController.text.trim().isNotEmpty)
-                              IconButton(
-                                icon: _searching
-                                    ? Icon(Icons.backspace)
-                                    : Icon(Icons.search),
-                                onPressed: _searching
-                                    ? () {
-                                        _selection.clear();
-                                        _searchController.clear();
-                                        _search();
-                                      }
-                                    : () async {
-                                        _selection.clear();
-                                        _searching = true;
-                                        _search();
-                                      },
-                              ),
-                            if (_searching)
-                              IconButton(
-                                icon: const Icon(Icons.close),
+                        : _navIndex == 0
+                        ? Text(
+                            _searching.value
+                                ? "${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).length} Folders ' : ''}${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).length} Files ' : ''}found"
+                                : _dirCount > 0 || _fileCount > 0
+                                ? "${_dirCount > 0 ? '$_dirCount Folders ' : ''}${_fileCount > 0 ? '$_fileCount Files' : ''}"
+                                : "Empty",
+                            style: Theme.of(context).textTheme.bodySmall,
+                          )
+                        : SizedBox.shrink(),
+                ],
+              ),
+              actions: _navIndex == 1
+                  ? [
+                      if (Job.jobs
+                          .where((job) => job.status == JobStatus.completed)
+                          .isNotEmpty)
+                        IconButton(
+                          onPressed: () {
+                            Job.clearCompleted();
+                            setState(() {});
+                          },
+                          icon: Icon(Icons.clear_all_rounded),
+                        ),
+                    ]
+                  : _navIndex == 2
+                  ? [
+                      if (Job.jobs
+                          .where((job) => job.status != JobStatus.completed)
+                          .isNotEmpty)
+                        Job.jobs.any((job) => job.status == JobStatus.running)
+                            ? IconButton(
                                 onPressed: () {
-                                  _searching = false;
-                                  _selection.clear();
+                                  Job.stopall();
                                   setState(() {});
                                 },
+                                icon: Icon(Icons.stop),
+                              )
+                            : IconButton(
+                                onPressed: () {
+                                  Job.continueAll();
+                                  setState(() {});
+                                },
+                                icon: Icon(Icons.start),
                               ),
-                          ],
+                    ]
+                  : _selection.isNotEmpty
+                  ? _selectionAction == SelectionAction.none
+                        ? [
+                            if (_selection.length < _allSelectableItems.length)
+                              IconButton(
+                                onPressed: () {
+                                  _selection.addAll(_allSelectableItems);
+                                  setState(() {});
+                                },
+                                icon: const Icon(Icons.select_all),
+                              ),
+                            IconButton(
+                              onPressed: () {
+                                _selection.clear();
+                                setState(() {});
+                              },
+                              icon: Icon(Icons.close),
+                            ),
+                            if (!_loading.value)
+                              IconButton(
+                                onPressed: () async {
+                                  await Main.stopWatchers();
+                                  await _showContextMenu(null);
+                                },
+                                icon: Icon(Icons.more_vert),
+                              ),
+                          ]
+                        : [
+                            if (!_loading.value)
+                              IconButton(
+                                onPressed: _paste(),
+                                icon: const Icon(Icons.paste),
+                              ),
+                            IconButton(
+                              onPressed: () {
+                                _selectionAction = SelectionAction.none;
+                                setState(() {});
+                              },
+                              icon: const Icon(Icons.close),
+                            ),
+                          ]
+                  : [
+                      if (!_loading.value) ...[
+                        if (!_searching.value ||
+                            _searchController.text.trim().isNotEmpty)
                           IconButton(
-                            icon: const Icon(Icons.more_vert),
+                            icon: _searching.value
+                                ? Icon(Icons.backspace)
+                                : Icon(Icons.search),
+                            onPressed: _searching.value
+                                ? () {
+                                    _selection.clear();
+                                    _searchController.clear();
+                                    _search();
+                                  }
+                                : () async {
+                                    _selection.clear();
+                                    _searching.value = true;
+                                    _search();
+                                  },
+                          ),
+                        if (_searching.value)
+                          IconButton(
+                            icon: const Icon(Icons.close),
                             onPressed: () {
-                              showMenu(
-                                context: context,
-                                position: RelativeRect.fromLTRB(1000, 60, 0, 0),
-                                menuPadding: EdgeInsets.zero,
-                                items: [
-                                  PopupMenuItem(
-                                    padding: EdgeInsets.zero,
-                                    enabled: false,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        SizedBox(height: 0, width: 128),
-                                        ListTile(
-                                          dense: true,
-                                          enabled:
-                                              !_loading.value && !_searching,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          titleTextStyle: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                          title: Text('Refresh', maxLines: 1),
-                                          trailing: Icon(Icons.refresh),
-                                          onTap: () {
-                                            Main.listDirectories();
-                                            Navigator.of(context).pop();
-                                          },
-                                        ),
-                                        const PopupMenuDivider(),
-                                        ListTile(
-                                          dense: true,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          titleTextStyle: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                          title: Text('Name'),
-                                          trailing:
-                                              _listOptions.sortMode ==
-                                                  SortMode.nameAsc
-                                              ? Icon(Icons.arrow_upward)
-                                              : _listOptions.sortMode ==
-                                                    SortMode.nameDesc
-                                              ? Icon(Icons.arrow_downward)
-                                              : null,
-                                          onTap: () {
-                                            setState(() {
-                                              _listOptions.sortMode =
-                                                  _listOptions.sortMode ==
-                                                      SortMode.nameAsc
-                                                  ? SortMode.nameDesc
-                                                  : SortMode.nameAsc;
-                                            });
-                                            Navigator.of(context).pop();
-                                            _setListOptions(_listOptions);
-                                          },
-                                        ),
-                                        ListTile(
-                                          dense: true,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          titleTextStyle: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                          title: Text('Date'),
-                                          trailing:
-                                              _listOptions.sortMode ==
-                                                  SortMode.dateAsc
-                                              ? Icon(Icons.arrow_upward)
-                                              : _listOptions.sortMode ==
-                                                    SortMode.dateDesc
-                                              ? Icon(Icons.arrow_downward)
-                                              : null,
-                                          onTap: () {
-                                            setState(() {
-                                              _listOptions.sortMode =
-                                                  _listOptions.sortMode ==
-                                                      SortMode.dateAsc
-                                                  ? SortMode.dateDesc
-                                                  : SortMode.dateAsc;
-                                            });
-                                            Navigator.of(context).pop();
-                                            _setListOptions(_listOptions);
-                                          },
-                                        ),
-                                        ListTile(
-                                          dense: true,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          titleTextStyle: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                          title: Text('Size'),
-                                          trailing:
-                                              _listOptions.sortMode ==
-                                                  SortMode.sizeAsc
-                                              ? Icon(Icons.arrow_upward)
-                                              : _listOptions.sortMode ==
-                                                    SortMode.sizeDesc
-                                              ? Icon(Icons.arrow_downward)
-                                              : null,
-                                          onTap: () {
-                                            setState(() {
-                                              _listOptions.sortMode =
-                                                  _listOptions.sortMode ==
-                                                      SortMode.sizeAsc
-                                                  ? SortMode.sizeDesc
-                                                  : SortMode.sizeAsc;
-                                            });
-                                            Navigator.of(context).pop();
-                                            _setListOptions(_listOptions);
-                                          },
-                                        ),
-                                        ListTile(
-                                          dense: true,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          titleTextStyle: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                          title: Text('Type'),
-                                          trailing:
-                                              _listOptions.sortMode ==
-                                                  SortMode.typeAsc
-                                              ? Icon(Icons.arrow_upward)
-                                              : _listOptions.sortMode ==
-                                                    SortMode.typeDesc
-                                              ? Icon(Icons.arrow_downward)
-                                              : null,
-                                          onTap: () {
-                                            setState(() {
-                                              _listOptions.sortMode =
-                                                  _listOptions.sortMode ==
-                                                      SortMode.typeAsc
-                                                  ? SortMode.typeDesc
-                                                  : SortMode.typeAsc;
-                                            });
-                                            Navigator.of(context).pop();
-                                            _setListOptions(_listOptions);
-                                          },
-                                        ),
-                                        const PopupMenuDivider(),
-
-                                        CheckboxListTile(
-                                          dense: true,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          title: Text(
-                                            'Folders First',
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium,
-                                          ),
-                                          value: _listOptions.foldersFirst,
-                                          onChanged: (value) {
-                                            setState(() {
-                                              _listOptions.foldersFirst =
-                                                  value ?? true;
-                                            });
-                                            Navigator.of(context).pop();
-                                            _setListOptions(_listOptions);
-                                          },
-                                        ),
-                                        CheckboxListTile(
-                                          dense: true,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          title: Text(
-                                            'Grid View',
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium,
-                                          ),
-                                          value:
-                                              _listOptions.viewMode ==
-                                              ViewMode.grid,
-                                          onChanged: (value) {
-                                            setState(() {
-                                              _listOptions.viewMode =
-                                                  value ?? true
-                                                  ? ViewMode.grid
-                                                  : ViewMode.list;
-                                            });
-                                            Navigator.of(context).pop();
-                                            _setListOptions(_listOptions);
-                                          },
-                                        ),
-                                        CheckboxListTile(
-                                          dense: true,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          title: Text(
-                                            'Grouped View',
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium,
-                                          ),
-                                          value: _listOptions.group,
-                                          onChanged: (value) {
-                                            setState(() {
-                                              _listOptions.group =
-                                                  value ?? true;
-                                            });
-                                            Navigator.of(context).pop();
-                                            _setListOptions(_listOptions);
-                                          },
-                                        ),
-                                        const PopupMenuDivider(),
-                                        CheckboxListTile(
-                                          dense: true,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          title: Text(
-                                            'Use Global',
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium,
-                                          ),
-                                          value: _globalListOptions,
-                                          onChanged: (value) {
-                                            setState(() {
-                                              _globalListOptions =
-                                                  value ?? true;
-                                            });
-                                            Navigator.of(context).pop();
-                                            _setListOptions(_listOptions);
-                                          },
-                                        ),
-                                        const PopupMenuDivider(),
-                                        ListTile(
-                                          dense: true,
-                                          visualDensity: VisualDensity.compact,
-                                          contentPadding: EdgeInsets.only(
-                                            left: 16,
-                                            right: 16,
-                                          ),
-                                          titleTextStyle: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                          title: Text('Settings', maxLines: 1),
-                                          trailing: Icon(Icons.settings),
-                                          onTap: () {
-                                            Navigator.of(context).pop();
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    SettingsPage(),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
+                              _searching.value = false;
+                              _selection.clear();
+                              setState(() {});
                             },
                           ),
-                        ],
-                  bottom: _navIndex == 0
-                      ? PreferredSize(
-                          preferredSize: Size.fromHeight(() {
-                            return (28 +
-                                    (_driveDir.key != '' ? 24 : 0) +
-                                    (Main.pathFromKey(_driveDir.key) != null
-                                        ? 16
-                                        : 0) +
-                                    (!(_profile?.accessible ?? false)
-                                        ? 16
-                                        : _loading.value
-                                        ? 4
-                                        : 0))
-                                .toDouble();
-                          }()),
-                          child: SizedBox(
-                            width: double.infinity,
-                            height:
-                                28 +
+                      ],
+                      IconButton(
+                        icon: const Icon(Icons.more_vert),
+                        onPressed: () {
+                          showMenu(
+                            context: context,
+                            position: RelativeRect.fromLTRB(1000, 60, 0, 0),
+                            menuPadding: EdgeInsets.zero,
+                            items: [
+                              PopupMenuItem(
+                                padding: EdgeInsets.zero,
+                                enabled: false,
+                                child: _buildPopupMenu(),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+              bottom: _navIndex == 0
+                  ? PreferredSize(
+                      preferredSize: Size.fromHeight(() {
+                        return (28 +
                                 (_driveDir.key != '' ? 24 : 0) +
                                 (Main.pathFromKey(_driveDir.key) != null
                                     ? 16
                                     : 0) +
-                                (!(_profile == null
-                                        ? true
-                                        : _profile?.accessible ?? false)
+                                (!(_profile?.accessible ?? false)
                                     ? 16
                                     : _loading.value
                                     ? 4
-                                    : 0),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.max,
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: EdgeInsets.only(
-                                    left: 16,
-                                    right: 16,
-                                    top: 4,
-                                    bottom: 8,
-                                  ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        child: Row(
-                                          children: [
-                                            Text(
-                                              _dirModified(_driveDir),
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.labelSmall,
-                                            ),
-                                            SizedBox(width: 6),
-                                            Text(
-                                              bytesToReadable(
-                                                _dirSize(_driveDir),
-                                              ),
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.labelSmall,
-                                            ),
-                                            SizedBox(width: 6),
-                                            Text(
-                                              () {
-                                                final count = _count(
-                                                  _driveDir,
-                                                  recursive: true,
-                                                );
-                                                if (count.$1 == 0) {
-                                                  return '${count.$2} files';
-                                                }
-                                                if (count.$2 == 0) {
-                                                  return '${count.$1} subfolders';
-                                                }
-                                                return '${count.$2} files in ${count.$1} subfolders';
-                                              }(),
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.labelSmall,
-                                            ),
-                                          ],
+                                    : 0))
+                            .toDouble();
+                      }()),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height:
+                            28 +
+                            (_driveDir.key != '' ? 24 : 0) +
+                            (Main.pathFromKey(_driveDir.key) != null ? 16 : 0) +
+                            (!(_profile == null
+                                    ? true
+                                    : _profile?.accessible ?? false)
+                                ? 16
+                                : _loading.value
+                                ? 4
+                                : 0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.max,
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: EdgeInsets.only(
+                                left: 16,
+                                right: 16,
+                                top: 4,
+                                bottom: 8,
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Row(
+                                      children: [
+                                        Text(
+                                          _dirModified(_driveDir),
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.labelSmall,
                                         ),
-                                      ),
-                                      if (_driveDir.key != '')
-                                        SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: Row(
-                                            children:
-                                                <Widget>[
-                                                      GestureDetector(
-                                                        onTap: _changeDirectory(
-                                                          RemoteFile(
-                                                            key: '',
-                                                            size: 0,
-                                                            etag: '',
-                                                          ),
-                                                        ),
-                                                        child: Text(
-                                                          'FileS3',
-                                                          style: Theme.of(
-                                                            context,
-                                                          ).textTheme.bodyLarge,
-                                                        ),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          bytesToReadable(_dirSize(_driveDir)),
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.labelSmall,
+                                        ),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          () {
+                                            final count = _count(
+                                              _driveDir,
+                                              recursive: true,
+                                            );
+                                            if (count.$1 == 0) {
+                                              return '${count.$2} files';
+                                            }
+                                            if (count.$2 == 0) {
+                                              return '${count.$1} subfolders';
+                                            }
+                                            return '${count.$2} files in ${count.$1} subfolders';
+                                          }(),
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.labelSmall,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (_driveDir.key != '')
+                                    SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        children:
+                                            <Widget>[
+                                                  GestureDetector(
+                                                    onTap: _changeDirectory(
+                                                      RemoteFile(
+                                                        key: '',
+                                                        size: 0,
+                                                        etag: '',
                                                       ),
-                                                    ]
-                                                    .followedBy(
-                                                      p
-                                                          .split(_driveDir.key)
-                                                          .where(
-                                                            (dir) =>
-                                                                dir.isNotEmpty,
-                                                          )
-                                                          .map(
-                                                            (
-                                                              dir,
-                                                            ) => GestureDetector(
-                                                              onTap: () {
-                                                                String newPath =
-                                                                    '';
-                                                                for (final part
-                                                                    in p.split(
-                                                                      _driveDir
-                                                                          .key,
-                                                                    )) {
-                                                                  if (part
-                                                                      .isEmpty) {
-                                                                    continue;
-                                                                  }
-                                                                  newPath += p
-                                                                      .asDir(
-                                                                        part,
-                                                                      );
-                                                                  if (part ==
-                                                                      dir) {
-                                                                    break;
-                                                                  }
-                                                                }
-                                                                _changeDirectory(
-                                                                  Main.remoteFiles.firstWhere(
+                                                    ),
+                                                    child: Text(
+                                                      'FileS3',
+                                                      style: Theme.of(
+                                                        context,
+                                                      ).textTheme.bodyLarge,
+                                                    ),
+                                                  ),
+                                                ]
+                                                .followedBy(
+                                                  p
+                                                      .split(_driveDir.key)
+                                                      .where(
+                                                        (dir) => dir.isNotEmpty,
+                                                      )
+                                                      .map(
+                                                        (
+                                                          dir,
+                                                        ) => GestureDetector(
+                                                          onTap: () {
+                                                            String newPath = '';
+                                                            for (final part
+                                                                in p.split(
+                                                                  _driveDir.key,
+                                                                )) {
+                                                              if (part
+                                                                  .isEmpty) {
+                                                                continue;
+                                                              }
+                                                              newPath += p
+                                                                  .asDir(part);
+                                                              if (part == dir) {
+                                                                break;
+                                                              }
+                                                            }
+                                                            _changeDirectory(
+                                                              Main.remoteFiles
+                                                                  .firstWhere(
                                                                     (file) =>
                                                                         p.s3(
                                                                           file.key,
@@ -1974,240 +1893,133 @@ class _HomeState extends State<Home> {
                                                                           newPath,
                                                                         ),
                                                                   ),
-                                                                )?.call();
-                                                              },
-                                                              child: Text(
-                                                                dir,
-                                                                style: Theme.of(
-                                                                  context,
-                                                                ).textTheme.bodyLarge,
-                                                              ),
-                                                            ),
-                                                          )
-                                                          .map(
-                                                            (widget) => Row(
-                                                              children: [
-                                                                const Icon(
-                                                                  Icons
-                                                                      .chevron_right,
-                                                                  size: 16,
-                                                                ),
-                                                                widget,
-                                                              ],
-                                                            ),
+                                                            )?.call();
+                                                          },
+                                                          child: Text(
+                                                            dir,
+                                                            style:
+                                                                Theme.of(
+                                                                      context,
+                                                                    )
+                                                                    .textTheme
+                                                                    .bodyLarge,
                                                           ),
-                                                    )
-                                                    .toList(),
-                                          ),
-                                        ),
-                                      if (Main.pathFromKey(_driveDir.key) !=
-                                          null)
-                                        Row(
-                                          children: [
-                                            Text(
-                                              '${Main.backupModeFromKey(_driveDir.key).name}: ',
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.labelSmall,
-                                            ),
-                                            SizedBox(width: 4),
-                                            Expanded(
-                                              child: SingleChildScrollView(
-                                                scrollDirection:
-                                                    Axis.horizontal,
-                                                child: GestureDetector(
-                                                  child: Text(
-                                                    Main.pathFromKey(
-                                                          _driveDir.key,
-                                                        ) ??
-                                                        '',
-                                                    style: Theme.of(
-                                                      context,
-                                                    ).textTheme.labelSmall,
-                                                  ),
-                                                  onTap: () {
-                                                    // TODO: Open file explorer at this location
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                if (!(_profile == null
-                                    ? true
-                                    : _profile?.accessible ?? false))
-                                  Container(
-                                    width: double.infinity,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.errorContainer,
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      'Remote access failed!',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelSmall
-                                          ?.copyWith(
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.onErrorContainer,
-                                          ),
+                                                        ),
+                                                      )
+                                                      .map(
+                                                        (widget) => Row(
+                                                          children: [
+                                                            const Icon(
+                                                              Icons
+                                                                  .chevron_right,
+                                                              size: 16,
+                                                            ),
+                                                            widget,
+                                                          ],
+                                                        ),
+                                                      ),
+                                                )
+                                                .toList(),
+                                      ),
                                     ),
-                                  ),
-                                if ((_profile == null
-                                        ? true
-                                        : _profile?.accessible ?? false) &&
-                                    _loading.value)
-                                  ValueListenableBuilder<double>(
-                                    valueListenable: _progress,
-                                    builder: (context, value, _) =>
-                                        LinearProgressIndicator(
-                                          value: value <= 0.0 || value >= 1.0
-                                              ? null
-                                              : value,
+                                  if (Main.pathFromKey(_driveDir.key) != null)
+                                    Row(
+                                      children: [
+                                        Text(
+                                          '${Main.backupModeFromKey(_driveDir.key).name}: ',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.labelSmall,
                                         ),
-                                  ),
-                              ],
+                                        SizedBox(width: 4),
+                                        Expanded(
+                                          child: SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: GestureDetector(
+                                              child: Text(
+                                                Main.pathFromKey(
+                                                      _driveDir.key,
+                                                    ) ??
+                                                    '',
+                                                style: Theme.of(
+                                                  context,
+                                                ).textTheme.labelSmall,
+                                              ),
+                                              onTap: () {
+                                                // TODO: Open file explorer at this location
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
                             ),
-                          ),
-                        )
-                      : null,
-                ),
-                ListFiles(
-                  files: _getCurrentItems().toList(),
-                  setGalleryFiles: _setGalleryFiles,
-                  keys: _keys,
-                  sortMode: _listOptions.sortMode,
-                  gridView: _listOptions.viewMode == ViewMode.grid,
-                  group: _listOptions.group,
-                  relativeto: _driveDir,
-                  selection: _selection,
-                  selectionAction: _selectionAction,
-                  showGallery: (index) {
-                    setState(() {
-                      _galleryIndex.value = index;
-                      _controlsVisible = false;
-                    });
-                  },
-                  onUpdate: () {
-                    setState(() {});
-                  },
-                  changeDirectory: _changeDirectory,
-                  getSelectAction: _getSelectAction,
-                  showContextMenu: (file) async {
-                    await Main.stopWatchers();
-                    await _showContextMenu(file);
-                  },
-                  buildContextMenu: _buildContextMenu,
-                  count: _count,
-                  dirSize: _dirSize,
-                  dirModified: _dirModified,
-                  getLink: _getLink,
-                ),
-              ],
-            ),
-            if (_galleryIndex.value != null && _galleryFiles.isNotEmpty) ...[
-              Material(
-                child: Gallery(
-                  keys: _keys,
-                  files: _galleryFiles,
-                  initialIndex: _galleryIndex.value!,
-                  contextMenuSheetController: _contextMenuSheetController,
-                  chromeVisible: _galleryChromeVisible,
-                  onIndexChanged: (index) {
-                    _galleryIndex.value = index;
-                  },
-                  hideGallery: () {
-                    setState(() {
-                      _galleryIndex.value = null;
-                      _controlsVisible = true;
-                    });
-                  },
-                ),
-              ),
-              ValueListenableBuilder(
-                valueListenable: _galleryChromeVisible,
-                builder: (context, value, child) {
-                  return Positioned(
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    child: AnimatedSlide(
-                      duration: const Duration(milliseconds: 300),
-                      offset: value ? Offset.zero : const Offset(0, -1),
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 300),
-                        opacity: value ? 1.0 : 0.0,
-                        child: AppBar(
-                          backgroundColor: Theme.of(
-                            context,
-                          ).appBarTheme.backgroundColor,
-                          leading: IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () {
-                              setState(() {
-                                _galleryIndex.value = null;
-                                _controlsVisible = true;
-                              });
-                            },
-                          ),
-                          title: ValueListenableBuilder(
-                            valueListenable: _galleryIndex,
-                            builder: (context, value, child) => Text(
-                              "${(value ?? -1) + 1} / ${_galleryFiles.length}",
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                            if (!(_profile == null
+                                ? true
+                                : _profile?.accessible ?? false))
+                              Container(
+                                width: double.infinity,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.errorContainer,
+                                alignment: Alignment.center,
+                                child: Text(
+                                  'Remote access failed!',
+                                  style: Theme.of(context).textTheme.labelSmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onErrorContainer,
+                                      ),
+                                ),
+                              ),
+                            if ((_profile == null
+                                    ? true
+                                    : _profile?.accessible ?? false) &&
+                                _loading.value)
+                              ValueListenableBuilder<double>(
+                                valueListenable: _progress,
+                                builder: (context, value, _) =>
+                                    LinearProgressIndicator(
+                                      value: value <= 0.0 || value >= 1.0
+                                          ? null
+                                          : value,
+                                    ),
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
-              DraggableScrollableSheet(
-                controller: _contextMenuSheetController,
-                initialChildSize: 0,
-                minChildSize: 0,
-                maxChildSize: 0.7,
-                snap: true,
-                snapSizes: const [0.1, 0.7],
-                snapAnimationDuration: const Duration(milliseconds: 100),
-                builder: (context, scrollController) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).canvasColor,
-                      borderRadius:
-                          Theme.of(context).bottomSheetTheme.shape
-                              is RoundedRectangleBorder
-                          ? (Theme.of(context).bottomSheetTheme.shape
-                                    as RoundedRectangleBorder)
-                                .borderRadius
-                          : const BorderRadius.only(
-                              topLeft: Radius.circular(32),
-                              topRight: Radius.circular(32),
-                            ),
-                    ),
-                    child: ListView(
-                      padding: EdgeInsets.zero,
-                      controller: scrollController,
-                      children: [
-                        ValueListenableBuilder(
-                          valueListenable: _galleryIndex,
-                          builder: (context, value, child) => _buildContextMenu(
-                            context,
-                            _galleryFiles[value!].file,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
+                    )
+                  : null,
+            ),
+            ListFiles(
+              files: _getCurrentItems().toList(),
+              setGalleryFiles: _setGalleryFiles,
+              keysOffsetMap: _keysOffsetMap,
+              sortMode: _listOptions.value.sortMode,
+              gridView: _listOptions.value.viewMode == ViewMode.grid,
+              group: _listOptions.value.group,
+              relativeto: _driveDir,
+              selection: _selection,
+              selectionAction: _selectionAction,
+              showGallery: _pushGallery,
+              onUpdate: () {
+                setState(() {});
+              },
+              changeDirectory: _changeDirectory,
+              getSelectAction: _getSelectAction,
+              showContextMenu: (file) async {
+                await Main.stopWatchers();
+                await _showContextMenu(file);
+              },
+              buildContextMenu: _buildContextMenu,
+              count: _count,
+              dirSize: _dirSize,
+              dirModified: _dirModified,
+              getLink: _getLink,
+            ),
           ],
         ),
         floatingActionButton: Column(
@@ -2219,7 +2031,7 @@ class _HomeState extends State<Home> {
                   _navIndex == 0 &&
                       !_loading.value &&
                       _selection.isEmpty &&
-                      _controlsVisible &&
+                      _controlsVisible.value &&
                       _profile != null &&
                       _profile!.accessible
                   ? const Offset(0, 1)
@@ -2230,7 +2042,7 @@ class _HomeState extends State<Home> {
                     _navIndex == 0 &&
                         !_loading.value &&
                         _selection.isEmpty &&
-                        _controlsVisible &&
+                        _controlsVisible.value &&
                         _profile != null &&
                         _profile!.accessible
                     ? 1
@@ -2257,7 +2069,7 @@ class _HomeState extends State<Home> {
                   _navIndex == 0 &&
                       !_loading.value &&
                       _selection.isEmpty &&
-                      _controlsVisible &&
+                      _controlsVisible.value &&
                       _profile != null &&
                       _profile!.accessible
                   ? const Offset(0, 1)
@@ -2268,7 +2080,7 @@ class _HomeState extends State<Home> {
                     _navIndex == 0 &&
                         !_loading.value &&
                         _selection.isEmpty &&
-                        _controlsVisible &&
+                        _controlsVisible.value &&
                         _profile != null &&
                         _profile!.accessible
                     ? 1
@@ -2295,7 +2107,7 @@ class _HomeState extends State<Home> {
                   _navIndex == 0 &&
                       !_loading.value &&
                       _selection.isEmpty &&
-                      _controlsVisible &&
+                      _controlsVisible.value &&
                       _profile != null &&
                       _profile!.accessible
                   ? const Offset(0, 1)
@@ -2306,7 +2118,7 @@ class _HomeState extends State<Home> {
                     _navIndex == 0 &&
                         !_loading.value &&
                         _selection.isEmpty &&
-                        _controlsVisible &&
+                        _controlsVisible.value &&
                         _profile != null &&
                         _profile!.accessible
                     ? 1
@@ -2369,7 +2181,7 @@ class _HomeState extends State<Home> {
                   _navIndex == 0 &&
                       !_loading.value &&
                       _selection.isEmpty &&
-                      _controlsVisible &&
+                      _controlsVisible.value &&
                       _profile == null
                   ? Offset.zero
                   : const Offset(2, 0),
@@ -2379,7 +2191,7 @@ class _HomeState extends State<Home> {
                     _navIndex == 0 &&
                         !_loading.value &&
                         _selection.isEmpty &&
-                        _controlsVisible &&
+                        _controlsVisible.value &&
                         _profile == null
                     ? 1
                     : 0,
@@ -2398,7 +2210,7 @@ class _HomeState extends State<Home> {
         ),
         bottomNavigationBar: AnimatedContainer(
           duration: const Duration(milliseconds: 300),
-          height: _controlsVisible ? kBottomNavigationBarHeight + 24 : 0,
+          height: _controlsVisible.value ? kBottomNavigationBarHeight + 24 : 0,
           child: Wrap(
             children: [
               SizedBox(
@@ -2458,7 +2270,7 @@ class _HomeState extends State<Home> {
                   onTap: (index) async {
                     setState(() {
                       _navIndex = index;
-                      _controlsVisible = true;
+                      _controlsVisible.value = true;
                     });
                   },
                 ),

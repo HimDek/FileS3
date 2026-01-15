@@ -73,6 +73,20 @@ class ListOptions {
       'group': group,
     });
   }
+
+  ListOptions copyWith({
+    SortMode? sortMode,
+    ViewMode? viewMode,
+    bool? foldersFirst,
+    bool? group,
+  }) {
+    return ListOptions(
+      sortMode: sortMode ?? this.sortMode,
+      viewMode: viewMode ?? this.viewMode,
+      foldersFirst: foldersFirst ?? this.foldersFirst,
+      group: group ?? this.group,
+    );
+  }
 }
 
 class BackupMode {
