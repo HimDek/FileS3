@@ -110,6 +110,7 @@ class FileRow extends GroupRow {
 
 class ListFiles extends StatefulWidget {
   final List<FileProps> files;
+  final List<GalleryProps> galleryFiles;
   final Function(List<GalleryProps>)? setGalleryFiles;
   final Map<String, double> keysOffsetMap;
   final SortMode sortMode;
@@ -132,6 +133,7 @@ class ListFiles extends StatefulWidget {
   const ListFiles({
     super.key,
     required this.files,
+    required this.galleryFiles,
     this.setGalleryFiles,
     required this.keysOffsetMap,
     required this.sortMode,
@@ -445,7 +447,11 @@ class ListFilesState extends State<ListFiles> {
                   ),
             onTap: widget.selection.isNotEmpty
                 ? widget.getSelectAction(item.file!)
-                : () => widget.showGallery(widget.files.indexOf(item)),
+                : () => widget.showGallery(
+                    widget.galleryFiles.indexWhere(
+                      (g) => g.file.key == item.key,
+                    ),
+                  ),
             onLongPress: widget.getSelectAction(item.file!),
           );
   }
@@ -607,7 +613,9 @@ class ListFilesState extends State<ListFiles> {
                     },
                     icon: Icon(Icons.more_vert),
                   ),
-            onTap: () => widget.showGallery(widget.files.indexOf(item)),
+            onTap: () => widget.showGallery(
+              widget.galleryFiles.indexWhere((g) => g.file.key == item.key),
+            ),
             onLongPress: widget.getSelectAction(item.file!),
             child: Hero(tag: item.key, child: preview(item)),
           );

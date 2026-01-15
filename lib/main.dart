@@ -222,6 +222,8 @@ class _HomeState extends State<Home> {
 
   Timer? _inaccessibleTimer;
 
+  List<GalleryProps> get galleryFiles => _galleryFiles;
+
   void _setGalleryFiles(List<GalleryProps> files) {
     _galleryFiles.clear();
     _galleryFiles.addAll(files);
@@ -1995,6 +1997,7 @@ class _HomeState extends State<Home> {
             ),
             ListFiles(
               files: _getCurrentItems().toList(),
+              galleryFiles: galleryFiles,
               setGalleryFiles: _setGalleryFiles,
               keysOffsetMap: _keysOffsetMap,
               sortMode: _listOptions.value.sortMode,
