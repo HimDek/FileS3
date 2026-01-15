@@ -211,7 +211,7 @@ class _HomeState extends State<Home> {
     ListOptions(),
   );
   final Map<String, double> _keysOffsetMap = <String, double>{};
-  List<GalleryProps> _galleryFiles = [];
+  final List<GalleryProps> _galleryFiles = [];
   Profile? _profile;
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
   List<Object> _searchResults = [];
@@ -225,7 +225,6 @@ class _HomeState extends State<Home> {
   void _setGalleryFiles(List<GalleryProps> files) {
     _galleryFiles.clear();
     _galleryFiles.addAll(files);
-    setState(() {});
   }
 
   void Function()? _getSelectAction(RemoteFile item) =>
