@@ -702,6 +702,24 @@ class ListFilesState extends State<ListFiles> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _groups = getGroups().entries.toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      buildKeysOffsetMap(context);
+    });
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    _groups = getGroups().entries.toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      buildKeysOffsetMap(context);
+    });
+    super.setState(fn);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MultiSliver(children: buildSlivers(context));
   }

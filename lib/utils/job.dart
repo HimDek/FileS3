@@ -17,9 +17,9 @@ abstract class Main {
   static final Set<Profile> _profiles = <Profile>{};
   static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
   static List<RemoteFile> _remoteFiles = <RemoteFile>[];
-  static Function(bool loading)? _setLoadingState;
-  static Function()? _setHomeState;
-  static Function()? _onRemoteFilesChanged;
+  static BoolNotifier setLoadingState = BoolNotifier();
+  static CustomTrigger setHomeState = CustomTrigger();
+  static CustomTrigger onRemoteFilesChanged = CustomTrigger();
   static String _downloadCacheDir = '';
   static String _documentsDir = '';
   static final List<String> _ignoreKeyRegexps = <String>[
@@ -33,31 +33,19 @@ abstract class Main {
   static void remoteFilesAdd(RemoteFile file) {
     _remoteFiles.add(file);
     _ensureDirectoryObjects();
-    _onRemoteFilesChanged?.call();
+    onRemoteFilesChanged.trigger();
   }
 
   static void remoteFilesAddAll(List<RemoteFile> files) {
     _remoteFiles.addAll(files);
     _ensureDirectoryObjects();
-    _onRemoteFilesChanged?.call();
+    onRemoteFilesChanged.trigger();
   }
 
   static void remoteFilesRemoveWhere(bool Function(RemoteFile element) test) {
     _remoteFiles.removeWhere(test);
     _ensureDirectoryObjects();
-    _onRemoteFilesChanged?.call();
-  }
-
-  static set setLoadingState(Function(bool loading)? func) {
-    _setLoadingState = func;
-  }
-
-  static set setHomeState(Function()? func) {
-    _setHomeState = func;
-  }
-
-  static set onRemoteFilesChanged(Function()? func) {
-    _onRemoteFilesChanged = func;
+    onRemoteFilesChanged.trigger();
   }
 
   static String get downloadCacheDir => _downloadCacheDir;
@@ -141,7 +129,7 @@ abstract class Main {
       _remoteFiles.removeWhere((file) => file.key == job.remoteKey);
       _remoteFiles.add(result);
     }
-    _setHomeState?.call();
+    setHomeState.trigger();
   }
 
   static Future<void> stopWatchers() async {
@@ -214,7 +202,7 @@ abstract class Main {
   }
 
   static Future<void> refreshWatchers({bool background = false}) async {
-    _setLoadingState?.call(true);
+    setLoadingState.set(true);
     await stopWatchers();
     _watcherMap.clear();
 
@@ -227,11 +215,11 @@ abstract class Main {
     for (final dir in dirs) {
       await addWatcher(dir, background: background);
     }
-    _setLoadingState?.call(false);
+    setLoadingState.set(false);
   }
 
   static Future<void> refreshProfiles() async {
-    _setLoadingState?.call(true);
+    setLoadingState.set(true);
     for (final entry in (await ConfigManager.loadS3Config()).entries) {
       if (_profiles.any((profile) => profile.name == entry.key)) {
         _profiles
@@ -241,11 +229,11 @@ abstract class Main {
       }
       _profiles.add(Profile(name: entry.key, cfg: entry.value));
     }
-    _setLoadingState?.call(false);
+    setLoadingState.set(false);
   }
 
   static Future<void> listDirectories({bool background = false}) async {
-    _setLoadingState?.call(true);
+    setLoadingState.set(true);
     if (!background) {
       _remoteFiles = (await ConfigManager.loadRemoteFiles())
           .where(
@@ -259,7 +247,7 @@ abstract class Main {
     for (final profile in _profiles) {
       await profile.listDirectories(background: background);
     }
-    _setLoadingState?.call(false);
+    setLoadingState.set(false);
   }
 
   static void downloadFile(RemoteFile file, {String? localPath}) {
@@ -376,10 +364,10 @@ abstract class Main {
     if (!ConfigManager.initialized) {
       await ConfigManager.init();
     }
-    Profile.setLoadingState = _setLoadingState;
+    Profile.setLoadingState = setLoadingState.set;
     Job.maxrun = ConfigManager.loadTransferConfig().maxConcurrentTransfers;
     Job.onProgressUpdate = () {
-      _setHomeState?.call();
+      setHomeState.trigger();
     };
     refreshProfiles().then((_) {
       listDirectories(background: background);

@@ -228,6 +228,8 @@ class _HomeState extends State<Home> {
   List<GalleryProps> get galleryFiles => _galleryFiles;
 
   late StreamSubscription _intentSub;
+  final ValueNotifier<List<SharedMediaFile>> _sharedFiles =
+      ValueNotifier<List<SharedMediaFile>>([]);
 
   void _setGalleryFiles(List<GalleryProps> files) {
     _galleryFiles.clear();
@@ -1459,18 +1461,16 @@ class _HomeState extends State<Home> {
     ultraDarkController.update(uiConfig.ultraDark);
     _changeDirectory(RemoteFile(key: '', size: 0, etag: ''))?.call();
 
-    Main.setLoadingState = (bool loading) {
+    Main.setLoadingState.addListener(() {
       setState(() {
-        _loading.value = loading;
+        _loading.value = Main.setLoadingState.value;
       });
-    };
-    Main.setHomeState = () {
-      setState(() {});
-    };
-    Main.onRemoteFilesChanged = () {
+    });
+    Main.setHomeState.addListener(() => setState(() {}));
+    Main.onRemoteFilesChanged.addListener(() {
       _updateCounts();
       setState(() {});
-    };
+    });
 
     setState(() {
       _loading.value = false;
@@ -1492,16 +1492,16 @@ class _HomeState extends State<Home> {
       }
     });
 
-    // Listen to media sharing coming from outside the app while the app is in the memory.
-    _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen(
-      (value) {
+    _sharedFiles.addListener(() {
+      final sharedFiles = _sharedFiles.value;
+      if (sharedFiles.isNotEmpty) {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => PathPicker(
               title: Text('Select Upload Location'),
               subtitle: SingleChildScrollView(
                 child: Text(
-                  '${value.length} file${value.length > 1 ? 's' : ''}: ${value.map((e) => p.basename(e.path)).join(', ')}',
+                  '${sharedFiles.length} file${sharedFiles.length > 1 ? 's' : ''}: ${sharedFiles.map((e) => p.basename(e.path)).join(', ')}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -1509,7 +1509,6 @@ class _HomeState extends State<Home> {
               loading: _loading,
               progress: _progress,
               globalListOptions: _globalListOptions,
-              profile: _profile,
               thumbnailCache: _thumbnailCache,
               count: _count,
               dirSize: _dirSize,
@@ -1518,7 +1517,7 @@ class _HomeState extends State<Home> {
                 setState(() {
                   _loading.value = true;
                 });
-                for (final sharedFile in value) {
+                for (final sharedFile in sharedFiles) {
                   final fileName = p.basename(sharedFile.path);
                   final remoteKey = p
                       .join(path.key, fileName)
@@ -1532,6 +1531,14 @@ class _HomeState extends State<Home> {
             ),
           ),
         );
+        _sharedFiles.value = [];
+      }
+    });
+
+    // Listen to media sharing coming from outside the app while the app is in the memory.
+    _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen(
+      (value) {
+        _sharedFiles.value = value;
       },
       onError: (err) {
         showSnackBar(
@@ -1542,8 +1549,7 @@ class _HomeState extends State<Home> {
 
     // Get the media sharing coming from outside the app while the app is closed.
     ReceiveSharingIntent.instance.getInitialMedia().then((value) {
-      // Action
-
+      _sharedFiles.value = value;
       setState(() {
         ReceiveSharingIntent.instance.reset();
       });

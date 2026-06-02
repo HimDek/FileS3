@@ -249,6 +249,23 @@ class UltraDarkController extends ChangeNotifier {
   }
 }
 
+class CustomTrigger extends ChangeNotifier {
+  void trigger() {
+    notifyListeners();
+  }
+}
+
+class BoolNotifier extends ChangeNotifier {
+  bool _value = false;
+
+  bool get value => _value;
+
+  void set(bool newValue) {
+    _value = newValue;
+    notifyListeners();
+  }
+}
+
 final themeController = ThemeController();
 final ultraDarkController = UltraDarkController();
 
