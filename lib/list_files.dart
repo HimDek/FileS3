@@ -113,45 +113,45 @@ class ListFiles extends StatefulWidget {
   final List<GalleryProps> galleryFiles;
   final Function(List<GalleryProps>)? setGalleryFiles;
   final Map<String, double> keysOffsetMap;
+  final Map<String, ImageProvider> thumbnailCache;
   final SortMode sortMode;
   final bool gridView;
   final bool group;
   final RemoteFile relativeto;
   final Set<RemoteFile> selection;
   final SelectionAction selectionAction;
-  final void Function(int) showGallery;
+  final void Function(int)? showGallery;
   final Function() onUpdate;
   final Function()? Function(RemoteFile) changeDirectory;
   final void Function()? Function(RemoteFile) getSelectAction;
-  final Function(RemoteFile) showContextMenu;
-  final Function(BuildContext, RemoteFile) buildContextMenu;
+  final Function(RemoteFile)? showContextMenu;
   final (int, int) Function(RemoteFile, {bool recursive}) count;
   final int Function(RemoteFile) dirSize;
   final String Function(RemoteFile) dirModified;
-  final String? Function(RemoteFile, int?) getLink;
+
+  static void Function()? setSelectActionDefault(RemoteFile file) => () {};
 
   const ListFiles({
     super.key,
     required this.files,
-    required this.galleryFiles,
+    this.galleryFiles = const [],
     this.setGalleryFiles,
     required this.keysOffsetMap,
+    required this.thumbnailCache,
     required this.sortMode,
     this.gridView = false,
     this.group = false,
     required this.relativeto,
-    required this.selection,
-    required this.selectionAction,
-    required this.showGallery,
+    this.selection = const {},
+    this.selectionAction = SelectionAction.none,
+    this.showGallery,
     required this.onUpdate,
     required this.changeDirectory,
-    required this.getSelectAction,
-    required this.showContextMenu,
-    required this.buildContextMenu,
+    this.getSelectAction = setSelectActionDefault,
+    this.showContextMenu,
     required this.count,
     required this.dirSize,
     required this.dirModified,
-    required this.getLink,
   });
 
   @override
@@ -159,6 +159,7 @@ class ListFiles extends StatefulWidget {
 }
 
 class ListFilesState extends State<ListFiles> {
+  final Map<String, bool> _fileDownloadedCache = {};
   List<MapEntry<String, List<FileProps>>> _groups = [];
 
   Map<String, List<FileProps>> getGroups() {
@@ -236,36 +237,11 @@ class ListFilesState extends State<ListFiles> {
         ? SizedBox(
             height: 256,
             width: 256,
-            child: FutureBuilder<String>(
-              future: () async {
-                return (await File(
-                      Main.pathFromKey(item.key) ?? item.key,
-                    ).exists())
-                    ? Main.pathFromKey(item.key) ?? item.key
-                    : Main.cachePathFromKey(item.key);
-              }(),
-              builder: (context, snapshot) {
-                return MediaPreview(
-                  remoteKey: item.key,
-                  height: 256,
-                  width: 256,
-                  mediaProvider: MyUrlMediaProvider(
-                    p.isWithin(widget.relativeto.key, item.key)
-                        ? p.s3(
-                            p.relative(item.key, from: widget.relativeto.key),
-                          )
-                        : item.file!.key,
-                    getMediaType(item.key)!,
-                    item.url!,
-                    snapshot.connectionState == ConnectionState.waiting
-                        ? Main.cachePathFromKey(item.key)
-                        : snapshot.hasData && snapshot.data != null
-                        ? snapshot.data!
-                        : Main.cachePathFromKey(item.key),
-                    size: item.size,
-                  ),
-                );
-              },
+            child: MediaPreview(
+              item: item,
+              thumbnailCache: widget.thumbnailCache,
+              height: 256,
+              width: 256,
             ),
           )
         : Icon(Icons.insert_drive_file);
@@ -364,12 +340,14 @@ class ListFilesState extends State<ListFiles> {
                       : widget.selectionAction == SelectionAction.none
                       ? Icon(Icons.circle_outlined)
                       : null
-                : IconButton(
+                : widget.showContextMenu != null
+                ? IconButton(
                     onPressed: () async {
-                      widget.showContextMenu(item.file!);
+                      widget.showContextMenu!(item.file!);
                     },
                     icon: Icon(Icons.more_vert),
-                  ),
+                  )
+                : null,
           )
         : ListTile(
             dense: MediaQuery.of(context).size.width < 600 ? true : false,
@@ -405,15 +383,18 @@ class ListFilesState extends State<ListFiles> {
                   SizedBox(width: 8),
                   Text(bytesToReadable(item.size)),
                   SizedBox(width: 8),
-                  FutureBuilder(
-                    future: File(
-                      Main.pathFromKey(item.key) ?? item.key,
-                    ).exists(),
+                  FutureBuilder<void>(
+                    future: () async {
+                      _fileDownloadedCache[item.key] = await File(
+                        Main.pathFromKey(item.key) ?? item.key,
+                      ).exists();
+                    }(),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          _fileDownloadedCache[item.key] == null) {
                         return Icon(Icons.hourglass_empty, size: 16);
                       }
-                      if (snapshot.hasData && snapshot.data == true) {
+                      if (_fileDownloadedCache[item.key] == true) {
                         return Icon(Icons.download_done, size: 16);
                       } else {
                         return Icon(
@@ -439,19 +420,23 @@ class ListFilesState extends State<ListFiles> {
                       : widget.selectionAction == SelectionAction.none
                       ? Icon(Icons.circle_outlined)
                       : null
-                : IconButton(
+                : widget.showContextMenu != null
+                ? IconButton(
                     onPressed: () async {
-                      widget.showContextMenu(item.file!);
+                      widget.showContextMenu!(item.file!);
                     },
                     icon: Icon(Icons.more_vert),
-                  ),
+                  )
+                : null,
             onTap: widget.selection.isNotEmpty
                 ? widget.getSelectAction(item.file!)
-                : () => widget.showGallery(
+                : widget.showGallery != null
+                ? () => widget.showGallery!(
                     widget.galleryFiles.indexWhere(
                       (g) => g.file.key == item.key,
                     ),
-                  ),
+                  )
+                : null,
             onLongPress: widget.getSelectAction(item.file!),
           );
   }
@@ -522,12 +507,14 @@ class ListFilesState extends State<ListFiles> {
                           disabledColor: Theme.of(context).colorScheme.primary,
                         )
                       : null
-                : IconButton(
+                : widget.showContextMenu != null
+                ? IconButton(
                     onPressed: () async {
-                      widget.showContextMenu(item.file!);
+                      widget.showContextMenu!(item.file!);
                     },
                     icon: Icon(Icons.more_vert),
-                  ),
+                  )
+                : null,
             child: Icon(
               p.split(item.key).length > 1
                   ? Icons.folder
@@ -556,13 +543,18 @@ class ListFilesState extends State<ListFiles> {
             ),
             topLeftBadge: Padding(
               padding: EdgeInsets.all(16),
-              child: FutureBuilder(
-                future: File(Main.pathFromKey(item.key) ?? item.key).exists(),
+              child: FutureBuilder<void>(
+                future: () async {
+                  _fileDownloadedCache[item.key] = await File(
+                    Main.pathFromKey(item.key) ?? item.key,
+                  ).exists();
+                }(),
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return SizedBox.shrink();
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      _fileDownloadedCache[item.key] == null) {
+                    return Icon(Icons.hourglass_empty, size: 16);
                   }
-                  if (snapshot.hasData && snapshot.data == true) {
+                  if (_fileDownloadedCache[item.key] == true) {
                     return Icon(Icons.download_done, size: 16);
                   } else {
                     return Icon(
@@ -607,15 +599,21 @@ class ListFilesState extends State<ListFiles> {
                           disabledColor: Theme.of(context).colorScheme.primary,
                         )
                       : null
-                : IconButton(
+                : widget.showContextMenu != null
+                ? IconButton(
                     onPressed: () async {
-                      widget.showContextMenu(item.file!);
+                      widget.showContextMenu!(item.file!);
                     },
                     icon: Icon(Icons.more_vert),
-                  ),
-            onTap: () => widget.showGallery(
-              widget.galleryFiles.indexWhere((g) => g.file.key == item.key),
-            ),
+                  )
+                : null,
+            onTap: widget.showGallery != null
+                ? () => widget.showGallery!(
+                    widget.galleryFiles.indexWhere(
+                      (g) => g.file.key == item.key,
+                    ),
+                  )
+                : null,
             onLongPress: widget.getSelectAction(item.file!),
             child: Hero(tag: item.key, child: preview(item)),
           );
@@ -690,9 +688,8 @@ class ListFilesState extends State<ListFiles> {
                     ? p.s3(p.relative(f.key, from: widget.relativeto.key))
                     : f.key,
                 url: f.url!,
-                path: File(Main.pathFromKey(f.key) ?? f.key).existsSync()
-                    ? (Main.pathFromKey(f.key) ?? f.key)
-                    : Main.cachePathFromKey(f.key),
+                path: Main.pathFromKey(f.key) ?? f.key,
+                cachePath: Main.cachePathFromKey(f.key),
               ),
             )
             .toList(),

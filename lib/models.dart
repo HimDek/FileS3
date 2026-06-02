@@ -142,7 +142,7 @@ class RemoteFile {
   final int size;
   final String etag;
   final DateTime? lastModified;
-  RemoteFile({
+  const RemoteFile({
     required this.key,
     required this.size,
     required this.etag,

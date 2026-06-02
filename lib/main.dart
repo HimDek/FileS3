@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:async';
 import 'package:files3/media_view.dart';
+import 'package:files3/path_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart';
@@ -12,6 +13,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/context_menu.dart';
 import 'package:files3/utils/profile.dart';
@@ -196,8 +198,8 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  final Set<RemoteFile> _selection = {};
-  final List<RemoteFile> _allSelectableItems = [];
+  final Set<RemoteFile> _selection = <RemoteFile>{};
+  final List<RemoteFile> _allSelectableItems = <RemoteFile>[];
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
   );
@@ -211,10 +213,11 @@ class _HomeState extends State<Home> {
     ListOptions(),
   );
   final Map<String, double> _keysOffsetMap = <String, double>{};
-  final List<GalleryProps> _galleryFiles = [];
+  final Map<String, ImageProvider> _thumbnailCache = <String, ImageProvider>{};
+  final List<GalleryProps> _galleryFiles = <GalleryProps>[];
   Profile? _profile;
   RemoteFile _driveDir = RemoteFile(key: '', size: 0, etag: '');
-  List<Object> _searchResults = [];
+  List<Object> _searchResults = <Object>[];
   SelectionAction _selectionAction = SelectionAction.none;
   int _dirCount = 0;
   int _fileCount = 0;
@@ -223,6 +226,8 @@ class _HomeState extends State<Home> {
   Timer? _inaccessibleTimer;
 
   List<GalleryProps> get galleryFiles => _galleryFiles;
+
+  late StreamSubscription _intentSub;
 
   void _setGalleryFiles(List<GalleryProps> files) {
     _galleryFiles.clear();
@@ -300,15 +305,7 @@ class _HomeState extends State<Home> {
     _dirCount = 0;
     _fileCount = 0;
 
-    final counts = _count(
-      RemoteFile(
-        key: _driveDir.key,
-        size: 0,
-        etag: '',
-        lastModified: DateTime.now(),
-      ),
-      recursive: false,
-    );
+    final counts = _count(_driveDir, recursive: false);
     _dirCount = counts.$1;
     _fileCount = counts.$2;
     if (_driveDir.key == '') {
@@ -1394,6 +1391,7 @@ class _HomeState extends State<Home> {
           files: _galleryFiles,
           initialIndex: index,
           keysOffsetMap: _keysOffsetMap,
+          thumbnailCache: _thumbnailCache,
           scrollController: _scrollController,
           buildContextMenu: _buildContextMenu,
         ),
@@ -1493,6 +1491,63 @@ class _HomeState extends State<Home> {
         setState(() => _controlsVisible.value = true);
       }
     });
+
+    // Listen to media sharing coming from outside the app while the app is in the memory.
+    _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen(
+      (value) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => PathPicker(
+              title: Text('Select Upload Location'),
+              subtitle: SingleChildScrollView(
+                child: Text(
+                  '${value.length} file${value.length > 1 ? 's' : ''}: ${value.map((e) => p.basename(e.path)).join(', ')}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              initialDir: _driveDir,
+              loading: _loading,
+              progress: _progress,
+              globalListOptions: _globalListOptions,
+              profile: _profile,
+              thumbnailCache: _thumbnailCache,
+              count: _count,
+              dirSize: _dirSize,
+              dirModified: _dirModified,
+              onPick: (path) async {
+                setState(() {
+                  _loading.value = true;
+                });
+                for (final sharedFile in value) {
+                  final fileName = p.basename(sharedFile.path);
+                  final remoteKey = p
+                      .join(path.key, fileName)
+                      .replaceAll('\\', '/');
+                  await Main.uploadFile(remoteKey, File(sharedFile.path));
+                }
+                setState(() {
+                  _loading.value = false;
+                });
+              },
+            ),
+          ),
+        );
+      },
+      onError: (err) {
+        showSnackBar(
+          SnackBar(content: Text('Error receiving shared media: $err')),
+        );
+      },
+    );
+
+    // Get the media sharing coming from outside the app while the app is closed.
+    ReceiveSharingIntent.instance.getInitialMedia().then((value) {
+      // Action
+
+      setState(() {
+        ReceiveSharingIntent.instance.reset();
+      });
+    });
   }
 
   @override
@@ -1501,7 +1556,9 @@ class _HomeState extends State<Home> {
     _searchController.dispose();
     _loading.dispose();
     _progress.dispose();
+    _listOptions.dispose();
     _inaccessibleTimer?.cancel();
+    _intentSub.cancel();
     super.dispose();
   }
 
@@ -2000,6 +2057,7 @@ class _HomeState extends State<Home> {
               galleryFiles: galleryFiles,
               setGalleryFiles: _setGalleryFiles,
               keysOffsetMap: _keysOffsetMap,
+              thumbnailCache: _thumbnailCache,
               sortMode: _listOptions.value.sortMode,
               gridView: _listOptions.value.viewMode == ViewMode.grid,
               group: _listOptions.value.group,
@@ -2016,12 +2074,11 @@ class _HomeState extends State<Home> {
                 await Main.stopWatchers();
                 await _showContextMenu(file);
               },
-              buildContextMenu: _buildContextMenu,
               count: _count,
               dirSize: _dirSize,
               dirModified: _dirModified,
-              getLink: _getLink,
             ),
+            SliverToBoxAdapter(child: SizedBox(height: 256)),
           ],
         ),
         floatingActionButton: Column(

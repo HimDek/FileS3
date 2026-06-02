@@ -35,6 +35,7 @@ dependencies:
   http:
   path:
   yaml:
+  image:
   pdfrx:
   crypto:
   chewie:
@@ -45,7 +46,6 @@ dependencies:
   photo_view:
   workmanager:
   url_launcher:
-  enough_media:
   video_player:
   chewie_audio:
   sliver_tools:
@@ -58,10 +58,10 @@ dependencies:
   shared_preferences:
   permission_handler:
   cached_network_image:
+  receive_sharing_intent:
   flutter_launcher_icons: 
   flutter_secure_storage:
   flutter_foreground_task:
-  image: ^4.7.2
 
 dev_dependencies:
   flutter_test:

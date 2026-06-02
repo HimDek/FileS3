@@ -1,15 +1,16 @@
 import 'dart:io';
 import 'dart:math';
-import 'package:dio/dio.dart';
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:chewie/chewie.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:chewie_audio/chewie_audio.dart';
-import 'package:enough_media/enough_media.dart';
 import 'package:video_player/video_player.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:files3/utils/hybrid_image_provider.dart';
+import 'package:files3/utils/job.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 
@@ -19,6 +20,7 @@ class GalleryProps {
   final String? description;
   final String url;
   final String path;
+  final String cachePath;
 
   GalleryProps({
     required this.file,
@@ -26,6 +28,7 @@ class GalleryProps {
     this.description,
     required this.url,
     required this.path,
+    required this.cachePath,
   });
 }
 
@@ -151,12 +154,18 @@ class _PointerGestureRouterState extends State<PointerGestureRouter> {
 }
 
 class AudioVideoInteractiveMedia extends StatefulWidget {
-  final MediaProvider mediaProvider;
+  final String path;
+  final String cachePath;
+  final String url;
+  final String mediaType;
   final String? heroTag;
   final bool staypaused;
   const AudioVideoInteractiveMedia({
     super.key,
-    required this.mediaProvider,
+    required this.path,
+    required this.cachePath,
+    required this.url,
+    required this.mediaType,
     this.heroTag,
     this.staypaused = false,
   });
@@ -176,7 +185,9 @@ class AudioVideoInteractiveMediaState
   @override
   void initState() {
     super.initState();
-    _loader = widget.mediaProvider.isAudio ? _loadAudio() : _loadVideo();
+    _loader = widget.mediaType.toLowerCase().startsWith('audio/')
+        ? _loadAudio()
+        : _loadVideo();
   }
 
   @override
@@ -188,17 +199,14 @@ class AudioVideoInteractiveMediaState
   }
 
   Future<ChewieAudioController> _loadAudio() async {
-    final provider = widget.mediaProvider;
-    if (provider is FileMediaProvider) {
-      _videoController = VideoPlayerController.file(provider.file);
-    } else if (provider is UrlMediaProvider) {
-      _videoController = VideoPlayerController.networkUrl(
-        Uri.parse(provider.url),
-      );
-    } else if (provider is AssetMediaProvider) {
-      _videoController = VideoPlayerController.asset(provider.assetName);
+    if (await File(widget.path).exists()) {
+      _videoController = VideoPlayerController.file(File(widget.path));
+    } else if (await File(widget.cachePath).exists()) {
+      _videoController = VideoPlayerController.file(File(widget.cachePath));
     } else {
-      throw StateError('Unsupported media provider $provider');
+      _videoController = VideoPlayerController.networkUrl(
+        Uri.parse(widget.url),
+      );
     }
     await _videoController.initialize();
     _chewieAudioController = ChewieAudioController(
@@ -220,17 +228,14 @@ class AudioVideoInteractiveMediaState
   }
 
   Future<VideoPlayerController> _loadVideo() async {
-    final provider = widget.mediaProvider;
-    if (provider is FileMediaProvider) {
-      _videoController = VideoPlayerController.file(provider.file);
-    } else if (provider is UrlMediaProvider) {
-      _videoController = VideoPlayerController.networkUrl(
-        Uri.parse(provider.url),
-      );
-    } else if (provider is AssetMediaProvider) {
-      _videoController = VideoPlayerController.asset(provider.assetName);
+    if (await File(widget.path).exists()) {
+      _videoController = VideoPlayerController.file(File(widget.path));
+    } else if (await File(widget.cachePath).exists()) {
+      _videoController = VideoPlayerController.file(File(widget.cachePath));
     } else {
-      throw StateError('Unsupported media provider $provider');
+      _videoController = VideoPlayerController.networkUrl(
+        Uri.parse(widget.url),
+      );
     }
     await _videoController.initialize();
     _chewieController = ChewieController(
@@ -286,7 +291,7 @@ class AudioVideoInteractiveMediaState
           case ConnectionState.active:
             return Center(child: CircularProgressIndicator());
           case ConnectionState.done:
-            return widget.mediaProvider.isAudio
+            return widget.mediaType.toLowerCase().startsWith('audio/')
                 ? _buildAudioPlayer()
                 : _buildVideo();
         }
@@ -299,7 +304,7 @@ class AudioVideoInteractiveMediaState
       color: Colors.black,
       child: Center(
         child: Hero(
-          tag: widget.heroTag ?? widget.mediaProvider.hashCode,
+          tag: widget.heroTag ?? widget.key.hashCode,
           child: ChewieAudio(controller: _chewieAudioController),
         ),
       ),
@@ -311,7 +316,7 @@ class AudioVideoInteractiveMediaState
       color: Colors.black,
       child: Center(
         child: Hero(
-          tag: widget.heroTag ?? widget.mediaProvider.hashCode,
+          tag: widget.heroTag ?? widget.key.hashCode,
           child: Chewie(controller: _chewieController),
         ),
       ),
@@ -319,19 +324,308 @@ class AudioVideoInteractiveMediaState
   }
 }
 
-class InteractiveMediaView extends StatefulWidget {
-  final MediaProvider mediaProvider;
+class PdfInteractiveMedia extends StatefulWidget {
+  final String path;
+  final String cachePath;
+  final String url;
   final String? heroTag;
+  final bool showControls;
   final Function(bool paging)? setPaging;
-  final Function(bool contextMenu)? setContextMenu;
+  const PdfInteractiveMedia({
+    super.key,
+    required this.path,
+    required this.cachePath,
+    required this.url,
+    this.heroTag,
+    this.showControls = true,
+    this.setPaging,
+  });
+
+  @override
+  PdfInteractiveMediaState createState() => PdfInteractiveMediaState();
+}
+
+class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
+  final ValueNotifier<double> _pdfscale = ValueNotifier<double>(1);
+
+  int _viewerInstance = 0;
+
+  bool _pdfReady = false;
+  int _pageCount = 0;
+  Size _thumbSize = Size(40, 32);
+
+  String? _pdfPath;
+  String? _pdfUrl;
+
+  PdfViewerController? _pdfViewerController;
+  PdfTextSearcher? _pdfTextSearcher;
+
+  PdfViewerParams _pdfViewerParams() => PdfViewerParams(
+    margin: 0,
+    textSelectionParams: PdfTextSelectionParams(
+      enabled: true,
+      enableSelectionHandles: true,
+      showContextMenuAutomatically: true,
+    ),
+    onViewerReady: (document, controller) {
+      if (!mounted || !controller.isReady) return;
+
+      _pdfReady = true;
+      _pageCount = controller.pageCount;
+      _thumbSize = Size('$_pageCount/$_pageCount'.length * 8.0, 32);
+
+      _pdfTextSearcher ??= PdfTextSearcher(controller)..addListener(_update);
+
+      setState(() {});
+    },
+    onInteractionUpdate: (details) {
+      widget.setPaging?.call(details.scale <= 1.0);
+      _pdfscale.value = details.scale;
+    },
+    pagePaintCallbacks: [
+      if (_pdfTextSearcher != null)
+        _pdfTextSearcher!.pageTextMatchPaintCallback,
+    ],
+    viewerOverlayBuilder: (context, size, handleLinkTap) => [
+      AnimatedOpacity(
+        duration: const Duration(milliseconds: 300),
+        opacity: widget.showControls && _pdfscale.value <= 1.0 ? 1.0 : 0.0,
+        child: IconButton(
+          style: IconButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+          ),
+          onPressed: () async {
+            String? query = await showDialog<String>(
+              context: context,
+              builder: (context) {
+                String query = '';
+                return AlertDialog(
+                  title: Text('Search Document'),
+                  content: TextField(
+                    keyboardType: TextInputType.text,
+                    onChanged: (value) {
+                      query = value;
+                    },
+                    decoration: InputDecoration(hintText: 'Enter search query'),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      child: Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop(query);
+                      },
+                      child: Text('Search'),
+                    ),
+                  ],
+                );
+              },
+            );
+            if (query != null && query.isNotEmpty) {
+              _pdfTextSearcher?.startTextSearch(query);
+            }
+          },
+          icon: Icon(Icons.search),
+        ),
+      ),
+      PdfViewerScrollThumb(
+        key: const ValueKey('pdf-scroll-thumb'),
+        margin: 0,
+        controller: _pdfViewerController!,
+        orientation: ScrollbarOrientation.right,
+        thumbSize: _thumbSize,
+        thumbBuilder: (context, thumbSize, pageNumber, controller) =>
+            RepaintBoundary(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity:
+                    widget.showControls &&
+                        _pdfReady &&
+                        _pdfscale.value <= 1.0 &&
+                        pageNumber != null
+                    ? 1.0
+                    : 0.0,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        bottomLeft: Radius.circular(16),
+                      ),
+                      color: Theme.of(context).colorScheme.surface,
+                    ),
+                    child: Center(
+                      child: Text(
+                        _pdfReady && pageNumber != null
+                            ? '$pageNumber/$_pageCount'
+                            : '',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+      ),
+    ],
+  );
+
+  void _update() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadPdf() async {
+    _viewerInstance++;
+    if (_pdfPath == null && File(widget.path).existsSync()) {
+      _pdfPath = widget.path;
+    } else if (_pdfPath == null && File(widget.cachePath).existsSync()) {
+      _pdfPath = widget.cachePath;
+    } else {
+      _pdfUrl = widget.url;
+    }
+
+    setState(() {});
+  }
+
+  @override
+  void initState() {
+    _pdfViewerController = PdfViewerController();
+    super.initState();
+    _loadPdf();
+  }
+
+  @override
+  void dispose() {
+    _pdfPath = null;
+    _pdfUrl = null;
+    _pdfViewerController = null;
+    _pdfTextSearcher?.removeListener(_update);
+    _pdfTextSearcher?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Hero(
+      tag: widget.heroTag ?? widget.key.hashCode,
+      child: _pdfPath != null
+          ? PdfViewer.file(
+              key: ValueKey('pdf-$_pdfPath-$_viewerInstance'),
+              _pdfPath!,
+              controller: _pdfViewerController,
+              params: _pdfViewerParams(),
+            )
+          : _pdfUrl != null
+          ? PdfViewer.uri(
+              key: ValueKey('pdf-$_pdfUrl-$_viewerInstance'),
+              Uri.parse(_pdfUrl!),
+              controller: _pdfViewerController,
+              params: _pdfViewerParams(),
+            )
+          : Icon(Icons.picture_as_pdf),
+    );
+  }
+}
+
+class TextInteractiveMedia extends StatefulWidget {
+  final String path;
+  final String cachePath;
+  final String url;
+  final String? heroTag;
+  const TextInteractiveMedia({
+    super.key,
+    required this.path,
+    required this.cachePath,
+    required this.url,
+    this.heroTag,
+  });
+
+  @override
+  TextInteractiveMediaState createState() => TextInteractiveMediaState();
+}
+
+class TextInteractiveMediaState extends State<TextInteractiveMedia> {
+  late Future<String> _loader;
+
+  @override
+  void initState() {
+    super.initState();
+    _loader = _loadText();
+  }
+
+  Future<String> _loadText() async {
+    if (await File(widget.path).exists()) {
+      return await File(widget.path).readAsString();
+    } else if (await File(widget.cachePath).exists()) {
+      return await File(widget.cachePath).readAsString();
+    } else {
+      final uri = Uri.parse(widget.url);
+      final response = await HttpClient().getUrl(uri);
+      final res = await response.close();
+      return await res.transform(const Utf8Decoder()).join();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String>(
+      future: _loader,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error loading text'));
+        }
+        if (snapshot.hasData) {
+          return Hero(
+            tag: widget.heroTag ?? widget.key.hashCode,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Material(
+                type: MaterialType.transparency,
+                child: SelectableText(snapshot.data!),
+              ),
+            ),
+          );
+        }
+        return Center(child: Text('No data'));
+      },
+    );
+  }
+}
+
+class InteractiveMediaView extends StatefulWidget {
+  final String remoteKey;
+  final String url;
+  final String path;
+  final String cachePath;
+  final Map<String, ImageProvider> thumbnailCache;
+  final String? heroTag;
+  final bool showControls;
+  final Function(bool paging)? setPaging;
   final bool isActive;
 
   const InteractiveMediaView({
     super.key,
+    required this.remoteKey,
+    required this.url,
+    required this.path,
+    required this.cachePath,
+    required this.thumbnailCache,
     this.heroTag,
-    required this.mediaProvider,
+    this.showControls = true,
     this.setPaging,
-    this.setContextMenu,
     this.isActive = false,
   });
 
@@ -340,52 +634,28 @@ class InteractiveMediaView extends StatefulWidget {
 }
 
 class InteractiveMediaViewState extends State<InteractiveMediaView> {
-  late MediaProvider _provider;
-  final bool _loading = true;
-  final double _progress = 0.0;
-  double pdfscale = 1;
+  String get mediaType =>
+      getMediaType(widget.remoteKey) ?? 'application/octet-stream';
 
   final PhotoViewController _photoViewController = PhotoViewController();
-  final PdfViewerController _pdfViewerController = PdfViewerController();
 
-  // Future<void> _loadMedia() async {
-  //   if (_provider is MemoryMediaProvider) {
-  //     setState(() {
-  //       _loading = false;
-  //     });
-  //     return;
-  //   }
-  //   if (_provider is MyUrlMediaProvider) {
-  //     _provider = await ((_provider as MyUrlMediaProvider)).toMemoryProvider(
-  //       onProgress: (int received, int total) {
-  //         _progress = total != 0 ? received / total : 0.0;
-  //       },
-  //     );
-  //   } else {
-  //     _provider = await _provider.toMemoryProvider();
-  //   }
-  //   setState(() {
-  //     _loading = false;
-  //   });
-  // }
-
-  Widget fallback(_, MediaProvider media, double progress) => Icon(
-    media.isImage
+  Widget fallback(_, String mediaType) => Icon(
+    mediaType.startsWith('image/')
         ? Icons.image
-        : media.isVideo
+        : mediaType.startsWith('video/')
         ? Icons.videocam
-        : media.isAudio
+        : mediaType.startsWith('audio/')
         ? Icons.audiotrack
-        : media.isText
+        : mediaType.startsWith('text/')
         ? Icons.description
-        : media.isFont
+        : mediaType.startsWith('font/')
         ? Icons.font_download
-        : media.isMessage
+        : mediaType.startsWith('message/')
         ? Icons.message
-        : media.isModel
+        : mediaType.startsWith('model/')
         ? Icons.model_training
-        : media.isApplication
-        ? media.mediaType.toLowerCase() == 'application/pdf'
+        : mediaType.startsWith('application/')
+        ? mediaType.toLowerCase() == 'application/pdf'
               ? Icons.picture_as_pdf
               : Icons.apps
         : Icons.insert_drive_file,
@@ -394,106 +664,108 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
   @override
   void initState() {
     super.initState();
-    _provider = widget.mediaProvider;
-    // _loadMedia();
-    // Force correct default state when page becomes active
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_provider.isImage) {
-        widget.setContextMenu?.call(true);
+      if (mediaType.startsWith('image/')) {
         widget.setPaging?.call(true);
-      } else if (_provider.mediaType == 'application/pdf') {
-        widget.setContextMenu?.call(false);
+      } else if (mediaType.toLowerCase() == 'application/pdf') {
         widget.setPaging?.call(true);
       } else {
-        widget.setContextMenu?.call(true);
         widget.setPaging?.call(true);
       }
     });
   }
 
   @override
+  void dispose() {
+    _photoViewController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return
-    // _loading
-    //     ? fallback(context, _provider, _progress)
-    //     :
-    _provider.isImage
+    return mediaType.startsWith('image/')
         ? PhotoView(
             controller: _photoViewController,
-            imageProvider: _provider is UrlMediaProvider
-                ? CachedNetworkImageProvider(
-                    (_provider as UrlMediaProvider).url,
-                    cacheKey: _provider.name,
-                  )
-                : FileImage((_provider as FileMediaProvider).file),
+            imageProvider: HybridImageProvider(
+              url: widget.url,
+              path: widget.path,
+              cachePath: widget.cachePath,
+              cacheKey: widget.remoteKey,
+            ),
+            loadingBuilder: (context, event) => Stack(
+              fit: StackFit.expand,
+              alignment: Alignment.center,
+              children: [
+                () {
+                  if (widget.thumbnailCache[widget.remoteKey] != null) {
+                    try {
+                      return Image(
+                        image: widget.thumbnailCache[widget.remoteKey]!,
+                        fit: BoxFit.contain,
+                      );
+                    } catch (e) {
+                      // pass
+                    }
+                  }
+                  return SizedBox.shrink();
+                }(),
+                if (event != null)
+                  Center(
+                    child: CircularProgressIndicator(
+                      value: event.expectedTotalBytes != null
+                          ? event.cumulativeBytesLoaded /
+                                event.expectedTotalBytes!
+                          : null,
+                    ),
+                  ),
+              ],
+            ),
             heroAttributes: PhotoViewHeroAttributes(
-              tag: widget.heroTag ?? _provider.hashCode,
+              tag: widget.heroTag ?? widget.remoteKey,
             ),
             basePosition: Alignment.center,
             enableRotation: true,
             scaleStateChangedCallback: (value) {
               widget.setPaging?.call(value == PhotoViewScaleState.initial);
-              widget.setContextMenu?.call(true);
             },
           )
-        : _provider.mediaType == 'application/pdf'
-        ? Hero(
-            tag: widget.heroTag ?? _provider.hashCode,
-            child:
-                _provider is UrlMediaProvider || _provider is FileMediaProvider
-                ? PdfViewer(
-                    controller: _pdfViewerController,
-                    params: PdfViewerParams(
-                      enableTextSelection: true,
-                      onInteractionUpdate: (details) {
-                        widget.setPaging?.call(details.scale <= 1.0);
-                        widget.setContextMenu?.call(false);
-                        setState(() {
-                          pdfscale = details.scale;
-                        });
-                      },
-                    ),
-                    _provider is UrlMediaProvider
-                        ? PdfDocumentRefUri(
-                            Uri.parse((_provider as UrlMediaProvider).url),
-                          )
-                        : PdfDocumentRefFile(
-                            (_provider as FileMediaProvider).file.path,
-                          ),
-                  )
-                : fallback(context, _provider, _progress),
+        : mediaType.toLowerCase() == 'application/pdf'
+        ? PdfInteractiveMedia(
+            path: widget.path,
+            cachePath: widget.cachePath,
+            url: widget.url,
+            heroTag: widget.heroTag ?? widget.remoteKey,
+            showControls: widget.showControls,
+            setPaging: widget.setPaging,
           )
-        : _provider.isAudio
+        : mediaType.startsWith('audio/')
         ? AudioVideoInteractiveMedia(
-            mediaProvider: _provider,
-            heroTag: widget.heroTag,
+            path: widget.path,
+            cachePath: widget.cachePath,
+            url: widget.url,
+            mediaType: mediaType,
+            heroTag: widget.heroTag ?? widget.remoteKey,
             staypaused: !widget.isActive,
           )
-        : _provider.isVideo
+        : mediaType.startsWith('video/')
         ? AudioVideoInteractiveMedia(
-            mediaProvider: _provider,
-            heroTag: widget.heroTag,
+            path: widget.path,
+            cachePath: widget.cachePath,
+            url: widget.url,
+            mediaType: mediaType,
+            heroTag: widget.heroTag ?? widget.remoteKey,
             staypaused: !widget.isActive,
           )
-        : _provider.isText
-        ? Hero(
-            tag: widget.heroTag ?? _provider.hashCode,
-            child: TextInteractiveMedia(mediaProvider: _provider),
-          )
-        : _provider is TextMediaProvider
-        ? Hero(
-            tag: widget.heroTag ?? _provider.hashCode,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Material(
-                type: MaterialType.transparency,
-                child: SelectableText((_provider as TextMediaProvider).text),
-              ),
-            ),
+        : mediaType.startsWith('text/')
+        ? TextInteractiveMedia(
+            path: widget.path,
+            cachePath: widget.cachePath,
+            url: widget.url,
+            heroTag: widget.heroTag ?? widget.remoteKey,
           )
         : Hero(
-            tag: widget.heroTag ?? _provider.hashCode,
-            child: fallback(context, _provider, _progress),
+            tag: widget.heroTag ?? widget.remoteKey,
+            child: fallback(context, mediaType),
           );
   }
 }
@@ -502,6 +774,7 @@ class Gallery extends StatefulWidget {
   final List<GalleryProps> files;
   final int initialIndex;
   final Map<String, double> keysOffsetMap;
+  final Map<String, ImageProvider> thumbnailCache;
   final ScrollController scrollController;
   final Widget Function(BuildContext, RemoteFile) buildContextMenu;
 
@@ -510,6 +783,7 @@ class Gallery extends StatefulWidget {
     required this.files,
     this.initialIndex = 0,
     required this.keysOffsetMap,
+    required this.thumbnailCache,
     required this.scrollController,
     required this.buildContextMenu,
   });
@@ -521,17 +795,16 @@ class Gallery extends StatefulWidget {
 class GalleryState extends State<Gallery> {
   late PageController _pageController;
   late int _currentIndex;
-  bool _allowPaging = true;
-  bool _allowContextMenu = true;
   double dismissOffset = 0.0;
 
-  final Map<String, MediaProvider> _providerCache = {};
   final DraggableScrollableController contextMenuSheetController =
       DraggableScrollableController();
-  final ValueNotifier<bool> chromeVisible = ValueNotifier<bool>(false);
+
+  final ValueNotifier<bool> _allowPaging = ValueNotifier<bool>(true);
+  final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(false);
 
   void _showContextMenu() {
-    chromeVisible.value = true;
+    _chromeVisible.value = true;
     contextMenuSheetController.animateTo(
       0.7,
       duration: const Duration(milliseconds: 260),
@@ -541,38 +814,8 @@ class GalleryState extends State<Gallery> {
   }
 
   void _setPaging(bool paging) {
-    setState(() {
-      _allowPaging = paging;
-      chromeVisible.value = _allowPaging ? chromeVisible.value : false;
-    });
-  }
-
-  void _setContextMenu(bool allow) {
-    setState(() {
-      _allowContextMenu = allow;
-    });
-  }
-
-  Widget _itemBuilder(BuildContext context, int index) {
-    final f = widget.files[index];
-    final provider = _providerCache.putIfAbsent(
-      f.file.key,
-      () => getMediaProvider(
-        name: f.title,
-        mediaType: getMediaType(f.file.key) ?? 'application/octet-stream',
-        url: f.url,
-        path: f.path,
-        size: f.file.size,
-        description: f.description,
-      ),
-    );
-    return InteractiveMediaView(
-      heroTag: widget.files[index].file.key,
-      mediaProvider: provider,
-      setPaging: _setPaging,
-      setContextMenu: _setContextMenu,
-      isActive: index == _currentIndex,
-    );
+    _allowPaging.value = paging;
+    _chromeVisible.value = _allowPaging.value ? _chromeVisible.value : false;
   }
 
   @override
@@ -581,13 +824,12 @@ class GalleryState extends State<Gallery> {
     _pageController = PageController(
       initialPage: _currentIndex,
       viewportFraction: 1,
-      keepPage: false,
     );
     super.initState();
-    chromeVisible.addListener(() {
-      if (chromeVisible.value) {
+    _chromeVisible.addListener(() {
+      if (_chromeVisible.value) {
         contextMenuSheetController.animateTo(
-          0.1,
+          0.13,
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOut,
         );
@@ -602,12 +844,12 @@ class GalleryState extends State<Gallery> {
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      chromeVisible.value = true;
+      _chromeVisible.value = true;
     });
   }
 
   void popWithCurrentIndex() {
-    chromeVisible.value = false;
+    _chromeVisible.value = false;
     widget.scrollController.jumpTo(
       max(
         0,
@@ -616,6 +858,15 @@ class GalleryState extends State<Gallery> {
       ),
     );
     Navigator.of(context).pop(_currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _allowPaging.dispose();
+    _chromeVisible.dispose();
+    contextMenuSheetController.dispose();
+    super.dispose();
   }
 
   @override
@@ -628,119 +879,167 @@ class GalleryState extends State<Gallery> {
         }
       },
       child: Scaffold(
-        appBar: PreferredSize(
-          preferredSize: const Size.fromHeight(kToolbarHeight),
-          child: ValueListenableBuilder(
-            valueListenable: chromeVisible,
-            builder: (context, value, child) {
-              return AnimatedSlide(
-                duration: const Duration(milliseconds: 300),
-                offset: value ? Offset.zero : const Offset(0, -1),
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 300),
-                  opacity: value ? 1.0 : 0.0,
-                  child: AppBar(
-                    backgroundColor: Theme.of(
-                      context,
-                    ).appBarTheme.backgroundColor,
-                    title: Text(
-                      "${(_currentIndex) + 1} / ${widget.files.length}",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.more_vert_rounded),
-                        onPressed: () {
-                          _showContextMenu();
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
         body: Stack(
           children: [
-            PageView.builder(
-              controller: _pageController,
-              allowImplicitScrolling: false,
-              physics: _allowPaging
-                  ? const BouncingScrollPhysics()
-                  : const NeverScrollableScrollPhysics(),
-              itemCount: widget.files.length,
-              onPageChanged: (i) {
-                setState(() => _currentIndex = i);
-              },
-              itemBuilder: (context, index) => PointerGestureRouter(
-                allowTap: () => _allowPaging,
-                allowVerticalDrag: () => _allowPaging && _allowContextMenu,
-                onTap: () {
-                  chromeVisible.value = !chromeVisible.value;
-                },
-                onVerticalDrag: (dy) {
-                  dismissOffset += dy * 0.7; // resistance
-                  dismissOffset = dismissOffset.clamp(-200, 300);
-                  setState(() {});
-                },
-                onVerticalDragEnd: (totalDy) {
-                  if (totalDy > 100) {
-                    dismissOffset = 0;
-                    popWithCurrentIndex();
-                  } else if (totalDy < -100) {
-                    dismissOffset = 0;
-                    _showContextMenu();
-                  } else {
-                    dismissOffset = 0;
-                    setState(() {});
-                  }
-                },
-                child: Transform.translate(
-                  offset: Offset(0, dismissOffset),
-                  child: Transform.scale(
-                    scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
-                    child: _itemBuilder(context, index),
+            ListenableBuilder(
+              listenable: Listenable.merge([_allowPaging, _chromeVisible]),
+              builder: (context, _) => AnimatedPadding(
+                padding: _chromeVisible.value
+                    ? EdgeInsets.only(
+                        top:
+                            kToolbarHeight + MediaQuery.of(context).padding.top,
+                        bottom:
+                            kToolbarHeight +
+                            MediaQuery.of(context).padding.bottom,
+                      )
+                    : EdgeInsets.zero,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: PageView.builder(
+                  controller: _pageController,
+                  allowImplicitScrolling: false,
+                  physics: _allowPaging.value
+                      ? const BouncingScrollPhysics()
+                      : const NeverScrollableScrollPhysics(),
+                  itemCount: widget.files.length,
+                  onPageChanged: (i) {
+                    setState(() => _currentIndex = i);
+                  },
+                  itemBuilder: (context, index) => PointerGestureRouter(
+                    allowTap: () => _allowPaging.value,
+                    allowVerticalDrag: () => _allowPaging.value,
+                    onTap: () {
+                      _chromeVisible.value = !_chromeVisible.value;
+                    },
+                    onVerticalDrag: (dy) {
+                      dismissOffset += dy * 0.7; // resistance
+                      dismissOffset = dismissOffset.clamp(-200, 300);
+                      setState(() {});
+                    },
+                    onVerticalDragEnd: (totalDy) {
+                      if (totalDy > 100) {
+                        dismissOffset = 0;
+                        popWithCurrentIndex();
+                      } else if (totalDy < -100) {
+                        dismissOffset = 0;
+                        _showContextMenu();
+                      } else {
+                        dismissOffset = 0;
+                        setState(() {});
+                      }
+                    },
+                    child: Transform.translate(
+                      offset: Offset(0, dismissOffset),
+                      child: Transform.scale(
+                        scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
+                        child: InteractiveMediaView(
+                          heroTag: widget.files[index].file.key,
+                          remoteKey: widget.files[index].file.key,
+                          url: widget.files[index].url,
+                          path: widget.files[index].path,
+                          cachePath: Main.cachePathFromKey(
+                            widget.files[index].file.key,
+                          ),
+                          thumbnailCache: widget.thumbnailCache,
+                          showControls: _chromeVisible.value,
+                          setPaging: _setPaging,
+                          isActive: index == _currentIndex,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-            DraggableScrollableSheet(
-              controller: contextMenuSheetController,
-              initialChildSize: 0,
-              minChildSize: 0,
-              maxChildSize: 0.7,
-              snap: true,
-              snapSizes: const [0.1, 0.7],
-              snapAnimationDuration: const Duration(milliseconds: 100),
-              builder: (context, scrollController) {
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).canvasColor,
-                    borderRadius:
-                        Theme.of(context).bottomSheetTheme.shape
-                            is RoundedRectangleBorder
-                        ? (Theme.of(context).bottomSheetTheme.shape
-                                  as RoundedRectangleBorder)
-                              .borderRadius
-                        : const BorderRadius.only(
-                            topLeft: Radius.circular(32),
-                            topRight: Radius.circular(32),
-                          ),
-                  ),
-                  child: ListView(
-                    padding: EdgeInsets.zero,
-                    controller: scrollController,
-                    children: [
-                      widget.buildContextMenu(
+            ListenableBuilder(
+              listenable: _chromeVisible,
+              builder: (context, _) => SizedBox(
+                height: kToolbarHeight + MediaQuery.of(context).padding.top,
+                child: AnimatedSlide(
+                  duration: const Duration(milliseconds: 300),
+                  offset: _chromeVisible.value
+                      ? Offset.zero
+                      : const Offset(0, -1),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: _chromeVisible.value ? 1.0 : 0.0,
+                    child: AppBar(
+                      backgroundColor: Theme.of(
                         context,
-                        widget.files[_currentIndex].file,
+                      ).appBarTheme.backgroundColor,
+                      title: Text(
+                        "${(_currentIndex) + 1} / ${widget.files.length}",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
+                      actions: [
+                        IconButton(
+                          icon: const Icon(Icons.more_vert_rounded),
+                          onPressed: () {
+                            _showContextMenu();
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              },
+                ),
+              ),
+            ),
+            ListenableBuilder(
+              listenable: _chromeVisible,
+              builder: (context, _) => DraggableScrollableSheet(
+                controller: contextMenuSheetController,
+                initialChildSize: _chromeVisible.value ? 0.13 : 0.0,
+                minChildSize: 0,
+                maxChildSize: 0.7,
+                snap: true,
+                snapSizes: const [0.13, 0.7],
+                snapAnimationDuration: const Duration(milliseconds: 100),
+                builder: (context, scrollController) {
+                  return Container(
+                    clipBehavior: Clip.hardEdge,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).canvasColor,
+                      borderRadius:
+                          Theme.of(context).bottomSheetTheme.shape
+                              is RoundedRectangleBorder
+                          ? (Theme.of(context).bottomSheetTheme.shape
+                                    as RoundedRectangleBorder)
+                                .borderRadius
+                          : const BorderRadius.only(
+                              topLeft: Radius.circular(32),
+                              topRight: Radius.circular(32),
+                            ),
+                    ),
+                    child: CustomScrollView(
+                      controller: scrollController,
+                      slivers: [
+                        PinnedHeaderSliver(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            color: Theme.of(context).colorScheme.surface,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 40,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.onSurface,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                          child: widget.buildContextMenu(
+                            context,
+                            widget.files[_currentIndex].file,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -750,220 +1049,83 @@ class GalleryState extends State<Gallery> {
 }
 
 class MediaPreview extends StatefulWidget {
-  final String remoteKey;
-  final MyUrlMediaProvider mediaProvider;
+  final FileProps item;
+  final Map<String, ImageProvider> thumbnailCache;
   final double? width;
   final double? height;
-  final void Function(MediaProvider, String)? onContextMenuSelected;
 
   const MediaPreview({
     super.key,
-    required this.remoteKey,
-    required this.mediaProvider,
+    required this.item,
+    this.thumbnailCache = const {},
     this.width,
     this.height,
-    this.onContextMenuSelected,
   });
-
   @override
   MediaPreviewState createState() => MediaPreviewState();
 }
 
 class MediaPreviewState extends State<MediaPreview> {
-  late MyUrlMediaProvider _provider;
-  final bool _isLoading = true;
-  final double _progress = 0.0;
-
-  // Future<void> _loadMedia() async {
-  //   if (_provider is MemoryMediaProvider) {
-  //     setState(() {
-  //       _isLoading = false;
-  //     });
-  //     return;
-  //   }
-  //   if (_provider is MyUrlMediaProvider) {
-  //     _provider = await ((_provider as MyUrlMediaProvider)).toMemoryProvider(
-  //       onProgress: (int received, int total) {
-  //         _progress = total != 0 ? received / total : 0.0;
-  //       },
-  //     );
-  //   } else {
-  //     _provider = await _provider.toMemoryProvider();
-  //   }
-  //   setState(() {
-  //     _isLoading = false;
-  //   });
-  // }
-
-  Widget fallback(_, MediaProvider media, double progress) => Icon(
-    media.isImage
+  Widget fallback(String mediaType) => Icon(
+    mediaType.startsWith('image/')
         ? Icons.image
-        : media.isVideo
+        : mediaType.startsWith('video/')
         ? Icons.videocam
-        : media.isAudio
+        : mediaType.startsWith('audio/')
         ? Icons.audiotrack
-        : media.isText
+        : mediaType.startsWith('text/')
         ? Icons.description
-        : media.isFont
+        : mediaType.startsWith('font/')
         ? Icons.font_download
-        : media.isMessage
+        : mediaType.startsWith('message/')
         ? Icons.message
-        : media.isModel
+        : mediaType.startsWith('model/')
         ? Icons.model_training
-        : media.isApplication
-        ? media.mediaType.toLowerCase() == 'application/pdf'
+        : mediaType.startsWith('application/')
+        ? mediaType.toLowerCase() == 'application/pdf'
               ? Icons.picture_as_pdf
               : Icons.apps
         : Icons.insert_drive_file,
   );
 
+  void setImageProvider() {
+    widget.thumbnailCache[widget.item.key] ??= HybridImageProvider(
+      url: widget.item.url,
+      path: Main.pathFromKey(widget.item.key),
+      cachePath: Main.cachePathFromKey(widget.item.key),
+      thumbPath: Main.cachePathFromKey(
+        widget.item.key,
+      ).replaceFirst(RegExp(r'(\.[^./\\]+)$'), '_thumb'),
+      maxWidth: widget.width?.toInt(),
+      maxHeight: widget.height?.toInt(),
+      cacheKey: widget.item.key,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant MediaPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.key != widget.item.key) {
+      setImageProvider();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _provider = widget.mediaProvider;
-    // _loadMedia();
+    setImageProvider();
   }
 
   @override
   Widget build(BuildContext context) {
-    return _provider.isImage
-        ? CachedNetworkImage(
-            imageUrl: _provider.url,
+    return getMediaType(widget.item.key) != null &&
+            getMediaType(widget.item.key)!.startsWith('image/')
+        ? Image(
+            image: widget.thumbnailCache[widget.item.key]!,
             width: widget.width ?? 256,
             height: widget.height ?? 256,
             fit: BoxFit.cover,
-            cacheKey: widget.remoteKey,
           )
-        : _provider.mediaType == 'application/pdf'
-        ? fallback(context, _provider, _progress)
-        : _provider.isAudio
-        ? fallback(context, _provider, _progress)
-        : _provider.isVideo
-        ? fallback(context, _provider, _progress)
-        : fallback(context, _provider, _progress);
+        : fallback(getMediaType(widget.item.key) ?? 'application/octet-stream');
   }
-}
-
-Future<void> downloadMediaFile({
-  required String url,
-  required String savePath,
-  required Function(int, int) onProgress,
-}) async {
-  final dio = Dio();
-
-  try {
-    await dio.download(
-      url,
-      savePath,
-      onReceiveProgress: (received, total) {
-        if (total != -1) {
-          onProgress(received, total);
-        }
-      },
-
-      options: Options(
-        responseType: ResponseType.bytes,
-        followRedirects: true,
-        validateStatus: (status) => status! < 500,
-      ),
-    );
-  } catch (e) {
-    rethrow;
-  }
-}
-
-MediaProvider getMediaProvider({
-  required String name,
-  required String mediaType,
-  required String url,
-  required String path,
-  int? size,
-  String? description,
-}) {
-  if (File(path).existsSync()) {
-    return FileMediaProvider(
-      name,
-      mediaType,
-      File(path),
-      description: description,
-    );
-  }
-  return MyUrlMediaProvider(
-    name,
-    mediaType,
-    url,
-    path,
-    size: size,
-    description: description,
-  );
-}
-
-class MyUrlMediaProvider extends UrlMediaProvider {
-  final String path;
-
-  const MyUrlMediaProvider(
-    super.name,
-    super.mediaType,
-    super.url,
-    this.path, {
-    super.size,
-    super.description,
-  });
-
-  @override
-  Future<MemoryMediaProvider> toMemoryProvider({
-    void Function(int, int)? onProgress,
-  }) async {
-    downloadMediaFile(
-      url: url,
-      savePath: path,
-      onProgress: onProgress ?? (int received, int total) {},
-    );
-    final result = File(path).existsSync()
-        ? File(path).readAsBytesSync()
-        : null;
-    if (result != null) {
-      return MemoryMediaProvider(
-        name,
-        mediaType,
-        result,
-        description: description,
-      );
-    }
-    throw StateError('Unable to download $url');
-  }
-}
-
-class FileMediaProvider extends MediaProvider {
-  final File file;
-
-  FileMediaProvider(
-    String name,
-    String mediaType,
-    this.file, {
-    String? description,
-  }) : super(name, mediaType, file.lengthSync(), description: description);
-
-  @override
-  Future<TextMediaProvider> toTextProvider() {
-    return toMemoryProvider().then((p) => p.toTextProvider());
-  }
-
-  @override
-  Future<MemoryMediaProvider> toMemoryProvider({
-    void Function(int, int)? onProgress,
-  }) async {
-    final data = file.readAsBytesSync();
-    return MemoryMediaProvider(name, mediaType, data, description: description);
-  }
-
-  @override
-  int get hashCode => file.path.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FileMediaProvider &&
-          runtimeType == other.runtimeType &&
-          file.path == other.file.path;
 }
