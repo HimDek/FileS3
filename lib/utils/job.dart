@@ -12,12 +12,12 @@ import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
+import 'package:files3/globals.dart';
 
 abstract class Main {
   static final Set<Profile> _profiles = <Profile>{};
   static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
   static List<RemoteFile> _remoteFiles = <RemoteFile>[];
-  static BoolNotifier setLoadingState = BoolNotifier();
   static CustomTrigger setHomeState = CustomTrigger();
   static CustomTrigger onRemoteFilesChanged = CustomTrigger();
   static String _downloadCacheDir = '';
@@ -202,7 +202,7 @@ abstract class Main {
   }
 
   static Future<void> refreshWatchers({bool background = false}) async {
-    setLoadingState.set(true);
+    loading.value = true;
     await stopWatchers();
     _watcherMap.clear();
 
@@ -215,11 +215,11 @@ abstract class Main {
     for (final dir in dirs) {
       await addWatcher(dir, background: background);
     }
-    setLoadingState.set(false);
+    loading.value = false;
   }
 
   static Future<void> refreshProfiles() async {
-    setLoadingState.set(true);
+    loading.value = true;
     for (final entry in (await ConfigManager.loadS3Config()).entries) {
       if (_profiles.any((profile) => profile.name == entry.key)) {
         _profiles
@@ -229,11 +229,11 @@ abstract class Main {
       }
       _profiles.add(Profile(name: entry.key, cfg: entry.value));
     }
-    setLoadingState.set(false);
+    loading.value = false;
   }
 
   static Future<void> listDirectories({bool background = false}) async {
-    setLoadingState.set(true);
+    loading.value = true;
     if (!background) {
       _remoteFiles = (await ConfigManager.loadRemoteFiles())
           .where(
@@ -247,7 +247,7 @@ abstract class Main {
     for (final profile in _profiles) {
       await profile.listDirectories(background: background);
     }
-    setLoadingState.set(false);
+    loading.value = false;
   }
 
   static void downloadFile(RemoteFile file, {String? localPath}) {
@@ -364,7 +364,6 @@ abstract class Main {
     if (!ConfigManager.initialized) {
       await ConfigManager.init();
     }
-    Profile.setLoadingState = setLoadingState.set;
     Job.maxrun = ConfigManager.loadTransferConfig().maxConcurrentTransfers;
     Job.onProgressUpdate = () {
       setHomeState.trigger();

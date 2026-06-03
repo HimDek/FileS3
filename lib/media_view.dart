@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:async';
 import 'dart:convert';
+import 'package:files3/globals.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -610,7 +611,6 @@ class InteractiveMediaView extends StatefulWidget {
   final String url;
   final String path;
   final String cachePath;
-  final Map<String, ImageProvider> thumbnailCache;
   final String? heroTag;
   final bool showControls;
   final Function(bool paging)? setPaging;
@@ -622,7 +622,6 @@ class InteractiveMediaView extends StatefulWidget {
     required this.url,
     required this.path,
     required this.cachePath,
-    required this.thumbnailCache,
     this.heroTag,
     this.showControls = true,
     this.setPaging,
@@ -697,10 +696,10 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
               alignment: Alignment.center,
               children: [
                 () {
-                  if (widget.thumbnailCache[widget.remoteKey] != null) {
+                  if (thumbnailCache[widget.remoteKey] != null) {
                     try {
                       return Image(
-                        image: widget.thumbnailCache[widget.remoteKey]!,
+                        image: thumbnailCache[widget.remoteKey]!,
                         fit: BoxFit.contain,
                       );
                     } catch (e) {
@@ -774,7 +773,6 @@ class Gallery extends StatefulWidget {
   final List<GalleryProps> files;
   final int initialIndex;
   final Map<String, double> keysOffsetMap;
-  final Map<String, ImageProvider> thumbnailCache;
   final ScrollController scrollController;
   final Widget Function(BuildContext, RemoteFile) buildContextMenu;
 
@@ -783,7 +781,6 @@ class Gallery extends StatefulWidget {
     required this.files,
     this.initialIndex = 0,
     required this.keysOffsetMap,
-    required this.thumbnailCache,
     required this.scrollController,
     required this.buildContextMenu,
   });
@@ -940,7 +937,6 @@ class GalleryState extends State<Gallery> {
                           cachePath: Main.cachePathFromKey(
                             widget.files[index].file.key,
                           ),
-                          thumbnailCache: widget.thumbnailCache,
                           showControls: _chromeVisible.value,
                           setPaging: _setPaging,
                           isActive: index == _currentIndex,
@@ -1050,17 +1046,10 @@ class GalleryState extends State<Gallery> {
 
 class MediaPreview extends StatefulWidget {
   final FileProps item;
-  final Map<String, ImageProvider> thumbnailCache;
   final double? width;
   final double? height;
 
-  const MediaPreview({
-    super.key,
-    required this.item,
-    this.thumbnailCache = const {},
-    this.width,
-    this.height,
-  });
+  const MediaPreview({super.key, required this.item, this.width, this.height});
   @override
   MediaPreviewState createState() => MediaPreviewState();
 }
@@ -1089,7 +1078,7 @@ class MediaPreviewState extends State<MediaPreview> {
   );
 
   void setImageProvider() {
-    widget.thumbnailCache[widget.item.key] ??= HybridImageProvider(
+    thumbnailCache[widget.item.key] ??= HybridImageProvider(
       url: widget.item.url,
       path: Main.pathFromKey(widget.item.key),
       cachePath: Main.cachePathFromKey(widget.item.key),
@@ -1121,7 +1110,7 @@ class MediaPreviewState extends State<MediaPreview> {
     return getMediaType(widget.item.key) != null &&
             getMediaType(widget.item.key)!.startsWith('image/')
         ? Image(
-            image: widget.thumbnailCache[widget.item.key]!,
+            image: thumbnailCache[widget.item.key]!,
             width: widget.width ?? 256,
             height: widget.height ?? 256,
             fit: BoxFit.cover,

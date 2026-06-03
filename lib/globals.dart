@@ -9,6 +9,11 @@ NavigatorState? get globalNavigator =>
 ThemeData? get globalTheme =>
     globalContext == null ? null : Theme.of(globalContext!);
 
+ValueNotifier<bool> loading = ValueNotifier<bool>(true);
+ValueNotifier<double> progress = ValueNotifier<double>(0.0);
+
+Map<String, ImageProvider> thumbnailCache = <String, ImageProvider>{};
+
 ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showSnackBar(
   SnackBar snackBar,
 ) {

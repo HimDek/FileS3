@@ -113,7 +113,6 @@ class ListFiles extends StatefulWidget {
   final List<GalleryProps> galleryFiles;
   final Function(List<GalleryProps>)? setGalleryFiles;
   final Map<String, double> keysOffsetMap;
-  final Map<String, ImageProvider> thumbnailCache;
   final SortMode sortMode;
   final bool gridView;
   final bool group;
@@ -137,7 +136,6 @@ class ListFiles extends StatefulWidget {
     this.galleryFiles = const [],
     this.setGalleryFiles,
     required this.keysOffsetMap,
-    required this.thumbnailCache,
     required this.sortMode,
     this.gridView = false,
     this.group = false,
@@ -237,12 +235,7 @@ class ListFilesState extends State<ListFiles> {
         ? SizedBox(
             height: 256,
             width: 256,
-            child: MediaPreview(
-              item: item,
-              thumbnailCache: widget.thumbnailCache,
-              height: 256,
-              width: 256,
-            ),
+            child: MediaPreview(item: item, height: 256, width: 256),
           )
         : Icon(Icons.insert_drive_file);
   }

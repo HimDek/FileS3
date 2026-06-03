@@ -5,6 +5,7 @@ import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
+import 'package:files3/globals.dart';
 
 class Profile {
   String name;
@@ -15,8 +16,6 @@ class Profile {
   late S3Config cfg;
   late S3FileManager? fileManager;
   late DeletionRegistrar deletionRegistrar;
-
-  static void Function(bool loading)? setLoadingState;
 
   Profile({required this.name, required this.cfg}) {
     fileManager = S3FileManager.create(this, httpClient, cfg);
@@ -52,16 +51,16 @@ class Profile {
   }
 
   Future<void> listDirectories({bool background = false}) async {
-    setLoadingState?.call(true);
+    loading.value = true;
 
     if (fileManager == null) {
       accessible = false;
-      setLoadingState?.call(false);
+      loading.value = false;
       return;
     }
 
     await refreshRemote(dir: name);
     await Main.refreshWatchers(background: background);
-    setLoadingState?.call(false);
+    loading.value = false;
   }
 }
