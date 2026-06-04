@@ -347,19 +347,29 @@ class PdfInteractiveMedia extends StatefulWidget {
 }
 
 class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
-  final ValueNotifier<double> _pdfscale = ValueNotifier<double>(1);
-
-  int _viewerInstance = 0;
+  final TextEditingController _searchController = TextEditingController();
 
   bool _pdfReady = false;
   int _pageCount = 0;
-  Size _thumbSize = Size(40, 32);
+  double _initialZoom = 1.0;
+  double _currentZoom = 1.0;
+  Size _thumbSize = Size(40, 72);
+  int _instance = 0;
 
   String? _pdfPath;
   String? _pdfUrl;
+  String _selectedText = '';
 
   PdfViewerController? _pdfViewerController;
   PdfTextSearcher? _pdfTextSearcher;
+
+  void _updatePaging() {
+    if (_currentZoom <= _initialZoom && _selectedText.isEmpty) {
+      widget.setPaging?.call(true);
+    } else {
+      widget.setPaging?.call(false);
+    }
+  }
 
   PdfViewerParams _pdfViewerParams() => PdfViewerParams(
     margin: 0,
@@ -367,108 +377,174 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
       enabled: true,
       enableSelectionHandles: true,
       showContextMenuAutomatically: true,
+      onTextSelectionChange: (textSelection) async {
+        _selectedText = await textSelection.getSelectedText();
+        _updatePaging();
+      },
     ),
     onViewerReady: (document, controller) {
       if (!mounted || !controller.isReady) return;
 
       _pdfReady = true;
       _pageCount = controller.pageCount;
-      _thumbSize = Size('$_pageCount/$_pageCount'.length * 8.0, 32);
+      _thumbSize = Size('$_pageCount/$_pageCount'.length * 8.0, 72);
 
       _pdfTextSearcher ??= PdfTextSearcher(controller)..addListener(_update);
 
+      _initialZoom = controller.currentZoom;
+      _currentZoom = controller.currentZoom;
       setState(() {});
     },
     onInteractionUpdate: (details) {
-      widget.setPaging?.call(details.scale <= 1.0);
-      _pdfscale.value = details.scale;
+      _currentZoom = _pdfViewerController?.currentZoom ?? 1.0;
+      _updatePaging();
     },
     pagePaintCallbacks: [
       if (_pdfTextSearcher != null)
         _pdfTextSearcher!.pageTextMatchPaintCallback,
     ],
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    errorBannerBuilder: (context, error, stackTrace, documentRef) => Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 64,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Failed to load PDF',
+            style: TextStyle(
+              fontSize: 18,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            error.toString(),
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+          ),
+          // GestureDetector(
+          //   onTap: () {
+          //     _instance++;
+          //     setState(() {});
+          //   },
+          //   child: Container(
+          //     margin: const EdgeInsets.only(top: 16),
+          //     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          //     decoration: BoxDecoration(
+          //       color: Theme.of(context).colorScheme.primary,
+          //       borderRadius: BorderRadius.circular(8),
+          //     ),
+          //     child: Text(
+          //       'Retry',
+          //       style: TextStyle(
+          //         color: Theme.of(context).colorScheme.onPrimary,
+          //       ),
+          //     ),
+          //   ),
+          // ),
+        ],
+      ),
+    ),
     viewerOverlayBuilder: (context, size, handleLinkTap) => [
       AnimatedOpacity(
         duration: const Duration(milliseconds: 300),
-        opacity: widget.showControls && _pdfscale.value <= 1.0 ? 1.0 : 0.0,
+        opacity: widget.showControls && _currentZoom <= _initialZoom
+            ? 1.0
+            : 0.0,
         child: IconButton(
           style: IconButton.styleFrom(
             backgroundColor: Theme.of(context).colorScheme.surface,
           ),
           onPressed: () async {
-            String? query = await showDialog<String>(
+            await showDialog<String>(
               context: context,
               builder: (context) {
-                String query = '';
-                return AlertDialog(
-                  title: Text('Search Document'),
-                  content: TextField(
-                    keyboardType: TextInputType.text,
-                    onChanged: (value) {
-                      query = value;
-                    },
-                    decoration: InputDecoration(hintText: 'Enter search query'),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      child: Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop(query);
-                      },
-                      child: Text('Search'),
-                    ),
-                  ],
+                return StatefulBuilder(
+                  builder: (context, setState) {
+                    return AlertDialog(
+                      title: Text('Search Document'),
+                      content: TextField(
+                        controller: _searchController,
+                        keyboardType: TextInputType.text,
+                        onChanged: (value) => setState(() {}),
+                        decoration: InputDecoration(
+                          hintText: 'Enter search query',
+                          prefixIcon: Icon(Icons.search),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _pdfTextSearcher?.resetTextSearch();
+                                  },
+                                )
+                              : null,
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          child: Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop(_searchController.text);
+                          },
+                          child: Text('Search'),
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             );
-            if (query != null && query.isNotEmpty) {
-              _pdfTextSearcher?.startTextSearch(query);
+            if (_searchController.text.isNotEmpty) {
+              _pdfTextSearcher?.startTextSearch(_searchController.text);
             }
           },
           icon: Icon(Icons.search),
         ),
       ),
       PdfViewerScrollThumb(
-        key: const ValueKey('pdf-scroll-thumb'),
         margin: 0,
         controller: _pdfViewerController!,
         orientation: ScrollbarOrientation.right,
         thumbSize: _thumbSize,
         thumbBuilder: (context, thumbSize, pageNumber, controller) =>
-            RepaintBoundary(
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
-                opacity:
-                    widget.showControls &&
-                        _pdfReady &&
-                        _pdfscale.value <= 1.0 &&
-                        pageNumber != null
-                    ? 1.0
-                    : 0.0,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        bottomLeft: Radius.circular(16),
-                      ),
-                      color: Theme.of(context).colorScheme.surface,
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 300),
+              opacity:
+                  widget.showControls &&
+                      _pdfReady &&
+                      _currentZoom <= _initialZoom &&
+                      pageNumber != null
+                  ? 1.0
+                  : 0.0,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2.0, bottom: 40),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
                     ),
-                    child: Center(
-                      child: Text(
-                        _pdfReady && pageNumber != null
-                            ? '$pageNumber/$_pageCount'
-                            : '',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 12,
-                        ),
+                    color: Theme.of(context).colorScheme.surface,
+                  ),
+                  child: Center(
+                    child: Text(
+                      _pdfReady && pageNumber != null
+                          ? '$pageNumber/$_pageCount'
+                          : '',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontSize: 12,
                       ),
                     ),
                   ),
@@ -486,7 +562,6 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
   }
 
   Future<void> _loadPdf() async {
-    _viewerInstance++;
     if (_pdfPath == null && File(widget.path).existsSync()) {
       _pdfPath = widget.path;
     } else if (_pdfPath == null && File(widget.cachePath).existsSync()) {
@@ -496,6 +571,48 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
     }
 
     setState(() {});
+  }
+
+  Future<String?> _passwordProvider() async {
+    TextEditingController controller = TextEditingController();
+    bool obscure = true;
+
+    return await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Password Required'),
+              content: TextField(
+                controller: controller,
+                obscureText: obscure,
+                keyboardType: TextInputType.text,
+                onChanged: (value) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Enter password',
+                  prefixIcon: Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscure ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () => setState(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(controller.text);
+                  },
+                  child: Text('Submit'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -517,23 +634,31 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
 
   @override
   Widget build(BuildContext context) {
-    return Hero(
-      tag: widget.heroTag ?? widget.key.hashCode,
-      child: _pdfPath != null
-          ? PdfViewer.file(
-              key: ValueKey('pdf-$_pdfPath-$_viewerInstance'),
-              _pdfPath!,
-              controller: _pdfViewerController,
-              params: _pdfViewerParams(),
-            )
-          : _pdfUrl != null
-          ? PdfViewer.uri(
-              key: ValueKey('pdf-$_pdfUrl-$_viewerInstance'),
-              Uri.parse(_pdfUrl!),
-              controller: _pdfViewerController,
-              params: _pdfViewerParams(),
-            )
-          : Icon(Icons.picture_as_pdf),
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Hero(
+          tag: widget.heroTag ?? widget.key.hashCode,
+          child: Icon(Icons.picture_as_pdf),
+        ),
+        _pdfPath != null
+            ? PdfViewer.file(
+                key: ValueKey('$_pdfPath-$_instance'),
+                _pdfPath!,
+                controller: _pdfViewerController,
+                passwordProvider: _passwordProvider,
+                params: _pdfViewerParams(),
+              )
+            : _pdfUrl != null
+            ? PdfViewer.uri(
+                key: ValueKey('$_pdfUrl-$_instance'),
+                Uri.parse(_pdfUrl!),
+                controller: _pdfViewerController,
+                passwordProvider: _passwordProvider,
+                params: _pdfViewerParams(),
+              )
+            : Icon(Icons.picture_as_pdf),
+      ],
     );
   }
 }
@@ -614,6 +739,7 @@ class InteractiveMediaView extends StatefulWidget {
   final String? heroTag;
   final bool showControls;
   final Function(bool paging)? setPaging;
+  final Function(bool dragging)? setDragging;
   final bool isActive;
 
   const InteractiveMediaView({
@@ -625,6 +751,7 @@ class InteractiveMediaView extends StatefulWidget {
     this.heroTag,
     this.showControls = true,
     this.setPaging,
+    this.setDragging,
     this.isActive = false,
   });
 
@@ -666,10 +793,13 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mediaType.startsWith('image/')) {
         widget.setPaging?.call(true);
+        widget.setDragging?.call(true);
       } else if (mediaType.toLowerCase() == 'application/pdf') {
         widget.setPaging?.call(true);
+        widget.setDragging?.call(false);
       } else {
         widget.setPaging?.call(true);
+        widget.setDragging?.call(true);
       }
     });
   }
@@ -790,54 +920,70 @@ class Gallery extends StatefulWidget {
 }
 
 class GalleryState extends State<Gallery> {
-  late PageController _pageController;
-  late int _currentIndex;
   double dismissOffset = 0.0;
 
-  final DraggableScrollableController contextMenuSheetController =
-      DraggableScrollableController();
+  static const double _defaultBottomSheetSize = 0.13;
+  static const double _maxBottomSheetSize = 0.7;
 
+  late PageController _pageController;
+  final DraggableScrollableController _contextMenuSheetController =
+      DraggableScrollableController();
+  final ValueNotifier<int> _currentIndex = ValueNotifier<int>(0);
   final ValueNotifier<bool> _allowPaging = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(false);
-
-  void _showContextMenu() {
-    _chromeVisible.value = true;
-    contextMenuSheetController.animateTo(
-      0.7,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOut,
-    );
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  }
+  final ValueNotifier<bool> _allowDragging = ValueNotifier<bool>(true);
 
   void _setPaging(bool paging) {
     _allowPaging.value = paging;
     _chromeVisible.value = _allowPaging.value ? _chromeVisible.value : false;
   }
 
+  void _setDragging(bool dragging) {
+    _allowDragging.value = dragging;
+  }
+
+  void _expandBottomSheet() {
+    _chromeVisible.value = true;
+    _contextMenuSheetController.animateTo(
+      _maxBottomSheetSize,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  void _collapseBottomSheet() {
+    _contextMenuSheetController.animateTo(
+      _defaultBottomSheetSize,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  void _hideBottomSheet() {
+    _contextMenuSheetController.animateTo(
+      0.0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeIn,
+    );
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+  }
+
   @override
   void initState() {
-    _currentIndex = widget.initialIndex;
+    _currentIndex.value = widget.initialIndex;
     _pageController = PageController(
-      initialPage: _currentIndex,
+      initialPage: _currentIndex.value,
       viewportFraction: 1,
     );
     super.initState();
+
     _chromeVisible.addListener(() {
       if (_chromeVisible.value) {
-        contextMenuSheetController.animateTo(
-          0.13,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOut,
-        );
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        _collapseBottomSheet();
       } else {
-        contextMenuSheetController.animateTo(
-          0.0,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeIn,
-        );
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+        _hideBottomSheet();
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -850,19 +996,21 @@ class GalleryState extends State<Gallery> {
     widget.scrollController.jumpTo(
       max(
         0,
-        widget.keysOffsetMap[widget.files[_currentIndex].file.key]! -
+        widget.keysOffsetMap[widget.files[_currentIndex.value].file.key]! -
             MediaQuery.of(context).size.height / 3,
       ),
     );
-    Navigator.of(context).pop(_currentIndex);
+    Navigator.of(context).pop(_currentIndex.value);
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _currentIndex.dispose();
     _allowPaging.dispose();
     _chromeVisible.dispose();
-    contextMenuSheetController.dispose();
+    _allowDragging.dispose();
+    _contextMenuSheetController.dispose();
     super.dispose();
   }
 
@@ -872,14 +1020,22 @@ class GalleryState extends State<Gallery> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
-          popWithCurrentIndex();
+          if (_contextMenuSheetController.size <= _defaultBottomSheetSize) {
+            popWithCurrentIndex();
+          } else {
+            _chromeVisible.value = true;
+          }
         }
       },
       child: Scaffold(
         body: Stack(
           children: [
             ListenableBuilder(
-              listenable: Listenable.merge([_allowPaging, _chromeVisible]),
+              listenable: Listenable.merge([
+                _allowPaging,
+                _chromeVisible,
+                _allowDragging,
+              ]),
               builder: (context, _) => AnimatedPadding(
                 padding: _chromeVisible.value
                     ? EdgeInsets.only(
@@ -900,16 +1056,17 @@ class GalleryState extends State<Gallery> {
                       : const NeverScrollableScrollPhysics(),
                   itemCount: widget.files.length,
                   onPageChanged: (i) {
-                    setState(() => _currentIndex = i);
+                    setState(() => _currentIndex.value = i);
                   },
                   itemBuilder: (context, index) => PointerGestureRouter(
                     allowTap: () => _allowPaging.value,
-                    allowVerticalDrag: () => _allowPaging.value,
+                    allowVerticalDrag: () =>
+                        _allowPaging.value && _allowDragging.value,
                     onTap: () {
                       _chromeVisible.value = !_chromeVisible.value;
                     },
                     onVerticalDrag: (dy) {
-                      dismissOffset += dy * 0.7; // resistance
+                      dismissOffset += dy * _maxBottomSheetSize; // resistance
                       dismissOffset = dismissOffset.clamp(-200, 300);
                       setState(() {});
                     },
@@ -919,7 +1076,7 @@ class GalleryState extends State<Gallery> {
                         popWithCurrentIndex();
                       } else if (totalDy < -100) {
                         dismissOffset = 0;
-                        _showContextMenu();
+                        _expandBottomSheet();
                       } else {
                         dismissOffset = 0;
                         setState(() {});
@@ -939,7 +1096,8 @@ class GalleryState extends State<Gallery> {
                           ),
                           showControls: _chromeVisible.value,
                           setPaging: _setPaging,
-                          isActive: index == _currentIndex,
+                          setDragging: _setDragging,
+                          isActive: index == _currentIndex.value,
                         ),
                       ),
                     ),
@@ -964,16 +1122,14 @@ class GalleryState extends State<Gallery> {
                         context,
                       ).appBarTheme.backgroundColor,
                       title: Text(
-                        "${(_currentIndex) + 1} / ${widget.files.length}",
+                        "${(_currentIndex.value) + 1} / ${widget.files.length}",
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       actions: [
                         IconButton(
                           icon: const Icon(Icons.more_vert_rounded),
-                          onPressed: () {
-                            _showContextMenu();
-                          },
+                          onPressed: _expandBottomSheet,
                         ),
                       ],
                     ),
@@ -982,14 +1138,16 @@ class GalleryState extends State<Gallery> {
               ),
             ),
             ListenableBuilder(
-              listenable: _chromeVisible,
+              listenable: Listenable.merge([_chromeVisible, _allowDragging]),
               builder: (context, _) => DraggableScrollableSheet(
-                controller: contextMenuSheetController,
-                initialChildSize: _chromeVisible.value ? 0.13 : 0.0,
+                controller: _contextMenuSheetController,
+                initialChildSize: _chromeVisible.value && _allowDragging.value
+                    ? _defaultBottomSheetSize
+                    : 0.0,
                 minChildSize: 0,
-                maxChildSize: 0.7,
+                maxChildSize: _maxBottomSheetSize,
                 snap: true,
-                snapSizes: const [0.13, 0.7],
+                snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
                 snapAnimationDuration: const Duration(milliseconds: 100),
                 builder: (context, scrollController) {
                   return Container(
@@ -1028,7 +1186,7 @@ class GalleryState extends State<Gallery> {
                         SliverToBoxAdapter(
                           child: widget.buildContextMenu(
                             context,
-                            widget.files[_currentIndex].file,
+                            widget.files[_currentIndex.value].file,
                           ),
                         ),
                       ],
