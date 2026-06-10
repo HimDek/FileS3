@@ -10,6 +10,7 @@ import 'package:chewie/chewie.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:chewie_audio/chewie_audio.dart';
 import 'package:video_player/video_player.dart';
+import 'package:file_magic_number/file_magic_number.dart';
 import 'package:files3/utils/hybrid_image_provider.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/helpers.dart';
@@ -404,6 +405,33 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
         _pdfTextSearcher!.pageTextMatchPaintCallback,
     ],
     backgroundColor: Theme.of(context).colorScheme.surface,
+    loadingBannerBuilder: (context, bytesDownloaded, totalBytes) => Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(
+            value: totalBytes != null ? bytesDownloaded / totalBytes : null,
+          ),
+          SizedBox(height: 16),
+          Text(
+            totalBytes != null
+                ? 'Loading PDF... ${(bytesDownloaded / totalBytes * 100).toStringAsFixed(0)}%'
+                : 'Loading PDF...',
+            style: TextStyle(
+              fontSize: 18,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    ),
+    // linkHandlerParams: PdfLinkHandlerParams(
+    //   onLinkTap: (pdfLink) {
+    //     if (pdfLink.url != null) {
+    //       launchUrlString(pdfLink.url!);
+    //     }
+    //   }
+    // ),
     errorBannerBuilder: (context, error, stackTrace, documentRef) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -732,7 +760,7 @@ class TextInteractiveMediaState extends State<TextInteractiveMedia> {
 }
 
 class InteractiveMediaView extends StatefulWidget {
-  final String remoteKey;
+  final String? remoteKey;
   final String url;
   final String path;
   final String cachePath;
@@ -744,7 +772,7 @@ class InteractiveMediaView extends StatefulWidget {
 
   const InteractiveMediaView({
     super.key,
-    required this.remoteKey,
+    this.remoteKey,
     required this.url,
     required this.path,
     required this.cachePath,
@@ -760,8 +788,7 @@ class InteractiveMediaView extends StatefulWidget {
 }
 
 class InteractiveMediaViewState extends State<InteractiveMediaView> {
-  String get mediaType =>
-      getMediaType(widget.remoteKey) ?? 'application/octet-stream';
+  String mediaType = 'application/octet-stream';
 
   final PhotoViewController _photoViewController = PhotoViewController();
 
@@ -787,9 +814,23 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
         : Icons.insert_drive_file,
   );
 
+  Future<void> updateMediaType() async {
+    if (mounted) {
+      mediaType =
+          getMediaType(widget.path) ??
+          await FileMagicNumber.detectFileTypeFromPathOrBlob(widget.path).then(
+            (type) => type != FileMagicNumberType.unknown
+                ? mimeTypeFromMagic(type)
+                : 'application/octet-stream',
+          );
+      setState(() {});
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    updateMediaType();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mediaType.startsWith('image/')) {
         widget.setPaging?.call(true);
@@ -850,7 +891,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
               ],
             ),
             heroAttributes: PhotoViewHeroAttributes(
-              tag: widget.heroTag ?? widget.remoteKey,
+              tag: widget.heroTag ?? widget.remoteKey ?? widget.path,
             ),
             basePosition: Alignment.center,
             enableRotation: true,
@@ -863,7 +904,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             path: widget.path,
             cachePath: widget.cachePath,
             url: widget.url,
-            heroTag: widget.heroTag ?? widget.remoteKey,
+            heroTag: widget.heroTag ?? widget.remoteKey ?? widget.path,
             showControls: widget.showControls,
             setPaging: widget.setPaging,
           )
@@ -873,7 +914,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             cachePath: widget.cachePath,
             url: widget.url,
             mediaType: mediaType,
-            heroTag: widget.heroTag ?? widget.remoteKey,
+            heroTag: widget.heroTag ?? widget.remoteKey ?? widget.path,
             staypaused: !widget.isActive,
           )
         : mediaType.startsWith('video/')
@@ -882,7 +923,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             cachePath: widget.cachePath,
             url: widget.url,
             mediaType: mediaType,
-            heroTag: widget.heroTag ?? widget.remoteKey,
+            heroTag: widget.heroTag ?? widget.remoteKey ?? widget.path,
             staypaused: !widget.isActive,
           )
         : mediaType.startsWith('text/')
@@ -890,10 +931,10 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             path: widget.path,
             cachePath: widget.cachePath,
             url: widget.url,
-            heroTag: widget.heroTag ?? widget.remoteKey,
+            heroTag: widget.heroTag ?? widget.remoteKey ?? widget.path,
           )
         : Hero(
-            tag: widget.heroTag ?? widget.remoteKey,
+            tag: widget.heroTag ?? widget.remoteKey ?? widget.path,
             child: fallback(context, mediaType),
           );
   }

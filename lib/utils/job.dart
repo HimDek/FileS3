@@ -20,6 +20,7 @@ abstract class Main {
   static List<RemoteFile> _remoteFiles = <RemoteFile>[];
   static CustomTrigger setHomeState = CustomTrigger();
   static CustomTrigger onRemoteFilesChanged = CustomTrigger();
+  static String _cacheDir = '';
   static String _downloadCacheDir = '';
   static String _documentsDir = '';
   static final List<String> _ignoreKeyRegexps = <String>[
@@ -47,6 +48,8 @@ abstract class Main {
     _ensureDirectoryObjects();
     onRemoteFilesChanged.trigger();
   }
+
+  static String get cacheDir => _cacheDir;
 
   static String get downloadCacheDir => _downloadCacheDir;
 
@@ -353,6 +356,10 @@ abstract class Main {
   }
 
   static Future<void> init({bool background = false}) async {
+    if (_cacheDir.isEmpty) {
+      final directory = await getApplicationCacheDirectory();
+      _cacheDir = directory.path;
+    }
     if (_downloadCacheDir.isEmpty) {
       final directory = await getApplicationCacheDirectory();
       _downloadCacheDir = p.join(directory.path, 'Downloads');
@@ -595,14 +602,14 @@ abstract class Job {
   }
 
   static void clearCache() {
-    final directory = Directory(Main.downloadCacheDir);
+    final directory = Directory(Main.cacheDir);
     if (directory.existsSync()) {
       directory.deleteSync(recursive: true);
     }
   }
 
   static int cacheSize() {
-    final directory = Directory(Main.downloadCacheDir);
+    final directory = Directory(Main.cacheDir);
     int totalSize = 0;
 
     if (directory.existsSync()) {

@@ -45,6 +45,7 @@ dependencies:
   collection:
   photo_view:
   workmanager:
+  uri_content:
   url_launcher:
   video_player:
   chewie_audio:
@@ -52,13 +53,14 @@ dependencies:
   dynamic_color:
   path_provider:  
   file_selector:
+  receive_intent:
   cupertino_icons:
   device_info_plus:
+  file_magic_number:
   percent_indicator:
   shared_preferences:
   permission_handler:
   cached_network_image:
-  receive_sharing_intent:
   flutter_launcher_icons: 
   flutter_secure_storage:
   flutter_foreground_task:

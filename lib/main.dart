@@ -1,25 +1,20 @@
 import 'dart:io';
-import 'dart:math';
 import 'dart:async';
-import 'package:files3/media_view.dart';
 import 'package:files3/browser.dart';
+import 'package:files3/media_view.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:receive_intent/receive_intent.dart' as ReceiveIntent;
 import 'package:files3/utils/path_utils.dart' as p;
-import 'package:files3/utils/context_menu.dart';
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
-import 'package:files3/list_files.dart';
-import 'package:files3/settings.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
@@ -199,8 +194,10 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   late StreamSubscription _intentSub;
-  final ValueNotifier<List<SharedMediaFile>> _sharedFiles =
-      ValueNotifier<List<SharedMediaFile>>([]);
+  final ValueNotifier<List<String>> _sharedFiles = ValueNotifier<List<String>>(
+    [],
+  );
+  final ValueNotifier<String?> _openedFile = ValueNotifier<String?>(null);
 
   void _setBackupMode(String key, BackupMode? mode) {
     if (!(IniManager.config?.sections().contains('modes') ?? true)) {
@@ -764,6 +761,42 @@ class _HomeState extends State<Home> {
     });
   }
 
+  Future<void> _handleIntent(ReceiveIntent.Intent? intent) async {
+    if (intent == null) return;
+
+    switch (intent.action) {
+      case 'android.intent.action.SEND':
+        final uri = intent.extra?['android.intent.extra.STREAM'];
+
+        if (uri != null) {
+          final File file = await uriToFile(uri);
+          _sharedFiles.value = [file.path];
+        }
+        break;
+
+      case 'android.intent.action.SEND_MULTIPLE':
+        final uris = intent.extra?['android.intent.extra.STREAM'];
+
+        if (uris is List) {
+          _sharedFiles.value = await Future.wait(
+            uris.map((e) async {
+              return (await uriToFile(e)).path;
+            }),
+          );
+        }
+        break;
+
+      case 'android.intent.action.VIEW':
+        final uri = intent.data;
+
+        if (uri != null) {
+          final File file = await uriToFile(uri);
+          _openedFile.value = file.path;
+        }
+        break;
+    }
+  }
+
   @override
   void initState() {
     _init();
@@ -778,7 +811,7 @@ class _HomeState extends State<Home> {
               title: Text('Select Upload Location'),
               subtitle: SingleChildScrollView(
                 child: Text(
-                  '${sharedFiles.length} file${sharedFiles.length > 1 ? 's' : ''}: ${sharedFiles.map((e) => p.basename(e.path)).join(', ')}',
+                  '${sharedFiles.length} file${sharedFiles.length > 1 ? 's' : ''}: ${sharedFiles.map((e) => p.basename(e)).join(', ')}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -787,11 +820,11 @@ class _HomeState extends State<Home> {
                   loading.value = true;
                 });
                 for (final sharedFile in sharedFiles) {
-                  final fileName = p.basename(sharedFile.path);
+                  final fileName = p.basename(sharedFile);
                   final remoteKey = p
                       .join(path.key, fileName)
                       .replaceAll('\\', '/');
-                  await Main.uploadFile(remoteKey, File(sharedFile.path));
+                  await Main.uploadFile(remoteKey, File(sharedFile));
                 }
                 setState(() {
                   loading.value = false;
@@ -804,24 +837,54 @@ class _HomeState extends State<Home> {
       }
     });
 
-    // Listen to media sharing coming from outside the app while the app is in the memory.
-    _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen(
-      (value) {
-        _sharedFiles.value = value;
+    _openedFile.addListener(() {
+      final openedFile = _openedFile.value;
+      if (openedFile != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => Scaffold(
+              appBar: AppBar(
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(p.basename(openedFile)),
+                ),
+                actions: [
+                  IconButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _sharedFiles.value = [openedFile];
+                    },
+                    icon: Icon(Icons.cloud_upload),
+                  ),
+                ],
+              ),
+              body: Center(
+                child: InteractiveMediaView(
+                  url: openedFile,
+                  path: openedFile,
+                  cachePath: openedFile,
+                ),
+              ),
+            ),
+          ),
+        );
+        _openedFile.value = null;
+      }
+    });
+
+    _intentSub = ReceiveIntent.ReceiveIntent.receivedIntentStream.listen(
+      (intent) {
+        _handleIntent(intent);
       },
       onError: (err) {
-        showSnackBar(
-          SnackBar(content: Text('Error receiving shared media: $err')),
-        );
+        showSnackBar(SnackBar(content: Text('Error receiving intent: $err')));
       },
     );
 
-    // Get the media sharing coming from outside the app while the app is closed.
-    ReceiveSharingIntent.instance.getInitialMedia().then((value) {
-      _sharedFiles.value = value;
-      setState(() {
-        ReceiveSharingIntent.instance.reset();
-      });
+    ReceiveIntent.ReceiveIntent.getInitialIntent().then((intent) {
+      if (intent != null) {
+        _handleIntent(intent);
+      }
     });
   }
 

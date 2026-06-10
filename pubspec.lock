@@ -241,6 +241,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.1"
+  file_magic_number:
+    dependency: "direct main"
+    description:
+      name: file_magic_number
+      sha256: cd0ec23eb2511206152baa87edb90b4862dc1690b1fbe5ebcf06654d3ee3112b
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.4.2"
   file_selector:
     dependency: "direct main"
     description:
@@ -872,14 +880,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.0"
-  receive_sharing_intent:
+  receive_intent:
     dependency: "direct main"
     description:
-      name: receive_sharing_intent
-      sha256: ec76056e4d258ad708e76d85591d933678625318e411564dcb9059048ca3a593
+      name: receive_intent
+      sha256: "8e6b6edd1f4127265c1f19bfd53e8e92dd65f32cc9b377247bb7876a655479c8"
       url: "https://pub.dev"
     source: hosted
-    version: "1.8.1"
+    version: "0.2.7"
   record_use:
     dependency: transitive
     description:
@@ -1093,6 +1101,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  uri_content:
+    dependency: "direct main"
+    description:
+      name: uri_content
+      sha256: "34db4c58dcf934c92a72ca4943e1c363eaa2a9d525501b5216ed2870c4afb5d6"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.1.3"
   url_launcher:
     dependency: "direct main"
     description:

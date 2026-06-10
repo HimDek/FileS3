@@ -1,15 +1,42 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:file_magic_number/file_magic_number.dart';
 import 'package:ini/ini.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uri_content/uri_content.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
+
+final uriContent = UriContent();
+
+Future<File> uriToFile(String uriString) async {
+  File file;
+  Uint8List? bytes = await uriContent.fromOrNull(Uri.parse(uriString));
+  FileMagicNumberType type = FileMagicNumber.detectFileTypeFromBytes(
+    bytes ?? Uint8List(0),
+  );
+
+  String destinationPath = p.join(Main.cacheDir, p.basename(uriString));
+
+  if (!destinationPath.endsWith('.${type.toString().split('.').last}') &&
+      type != FileMagicNumberType.unknown &&
+      type != FileMagicNumberType.emptyFile) {
+    file = File('$destinationPath.${type.toString().split('.').last}');
+  } else {
+    file = File(destinationPath);
+  }
+
+  await file.parent.create(recursive: true);
+  await file.writeAsBytes(bytes ?? Uint8List(0));
+
+  return file;
+}
 
 Future<int?> Function(BuildContext) expiryDialog = (BuildContext context) =>
     showDialog<int>(
@@ -114,6 +141,70 @@ String timeToReadable(DateTime time) {
     return '${diff.inMinutes}m ago';
   }
   return "${localTime.day.toString().padLeft(2, '0')} ${monthToString(localTime.month)} ${localTime.year} ${(localTime.hour % 12).toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ${localTime.hour >= 12 ? 'PM' : 'AM'}";
+}
+
+String mimeTypeFromMagic(FileMagicNumberType type) {
+  switch (type) {
+    case FileMagicNumberType.png:
+      return 'image/png';
+
+    case FileMagicNumberType.jpg:
+      return 'image/jpeg';
+
+    case FileMagicNumberType.gif:
+      return 'image/gif';
+
+    case FileMagicNumberType.webp:
+      return 'image/webp';
+
+    case FileMagicNumberType.heic:
+      return 'image/heic';
+
+    case FileMagicNumberType.bmp:
+      return 'image/bmp';
+
+    case FileMagicNumberType.tiff:
+      return 'image/tiff';
+
+    case FileMagicNumberType.mp3:
+      return 'audio/mpeg';
+
+    case FileMagicNumberType.wav:
+      return 'audio/wav';
+
+    case FileMagicNumberType.mp4:
+      return 'video/mp4';
+
+    case FileMagicNumberType.avi:
+      return 'video/x-msvideo';
+
+    case FileMagicNumberType.pdf:
+      return 'application/pdf';
+
+    case FileMagicNumberType.zip:
+      return 'application/zip';
+
+    case FileMagicNumberType.rar:
+      return 'application/vnd.rar';
+
+    case FileMagicNumberType.sevenZ:
+      return 'application/x-7z-compressed';
+
+    case FileMagicNumberType.tar:
+      return 'application/x-tar';
+
+    case FileMagicNumberType.sqlite:
+      return 'application/vnd.sqlite3';
+
+    case FileMagicNumberType.exe:
+      return 'application/vnd.microsoft.portable-executable';
+
+    case FileMagicNumberType.elf:
+      return 'application/x-executable';
+
+    default:
+      return 'application/octet-stream';
+  }
 }
 
 String? getMediaType(String name) {
