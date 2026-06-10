@@ -4,6 +4,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:files3/globals.dart';
 import 'package:files3/utils/path_utils.dart' as p;
+import 'package:open_file/open_file.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -1319,47 +1321,292 @@ class MediaPreviewState extends State<MediaPreview> {
   }
 }
 
-class ExternalFileView extends StatelessWidget {
+class ExternalFileView extends StatefulWidget {
   final String path;
   final void Function()? upload;
 
   const ExternalFileView({super.key, required this.path, this.upload});
 
   @override
+  State<ExternalFileView> createState() => _ExternalFileViewState();
+}
+
+class _ExternalFileViewState extends State<ExternalFileView> {
+  static const double _defaultBottomSheetSize = 0.13;
+  static const double _maxBottomSheetSize = 0.5;
+
+  final DraggableScrollableController _contextMenuSheetController =
+      DraggableScrollableController();
+
+  final ValueNotifier<bool> _allowPaging = ValueNotifier<bool>(true);
+  final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _allowDragging = ValueNotifier<bool>(true);
+
+  void _setPaging(bool paging) {
+    _allowPaging.value = paging;
+    _chromeVisible.value = _allowPaging.value ? _chromeVisible.value : false;
+  }
+
+  void _setDragging(bool dragging) {
+    _allowDragging.value = dragging;
+  }
+
+  void _expandBottomSheet() {
+    _chromeVisible.value = true;
+    _contextMenuSheetController.animateTo(
+      _maxBottomSheetSize,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  void _collapseBottomSheet() {
+    _contextMenuSheetController.animateTo(
+      _defaultBottomSheetSize,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  void _hideBottomSheet() {
+    _contextMenuSheetController.animateTo(
+      0.0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeIn,
+    );
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    _chromeVisible.addListener(() {
+      if (_chromeVisible.value) {
+        _collapseBottomSheet();
+      } else {
+        _hideBottomSheet();
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chromeVisible.value = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    _allowPaging.dispose();
+    _chromeVisible.dispose();
+    _allowDragging.dispose();
+    _contextMenuSheetController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    String? mediaType = getMediaType(widget.path);
+
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Text(p.basename(path)),
-            ),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  Text(
-                    bytesToReadable(File(path).lengthSync()),
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    p.extension(path),
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
+      body: Stack(
+        children: [
+          ListenableBuilder(
+            listenable: Listenable.merge([_allowPaging, _chromeVisible]),
+            builder: (context, _) => AnimatedPadding(
+              padding: _chromeVisible.value
+                  ? EdgeInsets.only(
+                      top: kToolbarHeight + MediaQuery.of(context).padding.top,
+                      bottom:
+                          kToolbarHeight +
+                          MediaQuery.of(context).padding.bottom,
+                    )
+                  : EdgeInsets.zero,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: PointerGestureRouter(
+                allowTap: () => _allowPaging.value,
+                allowVerticalDrag: () => false,
+                onTap: () {
+                  _chromeVisible.value = !_chromeVisible.value;
+                },
+                child: InteractiveMediaView(
+                  url: widget.path,
+                  path: widget.path,
+                  cachePath: widget.path,
+                  showControls: _chromeVisible.value,
+                  setPaging: _setPaging,
+                  setDragging: _setDragging,
+                ),
               ),
             ),
-          ],
-        ),
-        actions: upload != null
-            ? [IconButton(onPressed: upload, icon: Icon(Icons.cloud_upload))]
-            : null,
-      ),
-      body: Center(
-        child: InteractiveMediaView(url: path, path: path, cachePath: path),
+          ),
+          ListenableBuilder(
+            listenable: _chromeVisible,
+            builder: (context, _) => SizedBox(
+              height: kToolbarHeight + MediaQuery.of(context).padding.top,
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 300),
+                offset: _chromeVisible.value
+                    ? Offset.zero
+                    : const Offset(0, -1),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 300),
+                  opacity: _chromeVisible.value ? 1.0 : 0.0,
+                  child: AppBar(
+                    backgroundColor: Theme.of(
+                      context,
+                    ).appBarTheme.backgroundColor,
+                    title: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Text(p.basename(widget.path)),
+                    ),
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.more_vert_rounded),
+                        onPressed: _expandBottomSheet,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          ListenableBuilder(
+            listenable: Listenable.merge([_chromeVisible, _allowDragging]),
+            builder: (context, _) => DraggableScrollableSheet(
+              controller: _contextMenuSheetController,
+              initialChildSize: _chromeVisible.value && _allowDragging.value
+                  ? _defaultBottomSheetSize
+                  : 0.0,
+              minChildSize: 0,
+              maxChildSize: _maxBottomSheetSize,
+              snap: true,
+              snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
+              snapAnimationDuration: const Duration(milliseconds: 100),
+              builder: (context, scrollController) {
+                return Container(
+                  clipBehavior: Clip.hardEdge,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).canvasColor,
+                    borderRadius:
+                        Theme.of(context).bottomSheetTheme.shape
+                            is RoundedRectangleBorder
+                        ? (Theme.of(context).bottomSheetTheme.shape
+                                  as RoundedRectangleBorder)
+                              .borderRadius
+                        : const BorderRadius.only(
+                            topLeft: Radius.circular(32),
+                            topRight: Radius.circular(32),
+                          ),
+                  ),
+                  child: CustomScrollView(
+                    controller: scrollController,
+                    slivers: [
+                      PinnedHeaderSliver(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          color: Theme.of(context).colorScheme.surface,
+                          alignment: Alignment.center,
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Column(
+                          children: [
+                            ListTile(
+                              visualDensity: VisualDensity.comfortable,
+                              leading: Icon(
+                                (mediaType ?? '').startsWith('image/')
+                                    ? Icons.image
+                                    : (mediaType ?? '').startsWith('video/')
+                                    ? Icons.videocam
+                                    : (mediaType ?? '').startsWith('audio/')
+                                    ? Icons.audiotrack
+                                    : (mediaType ?? '').startsWith('text/')
+                                    ? Icons.description
+                                    : (mediaType ?? '').startsWith('font/')
+                                    ? Icons.font_download
+                                    : (mediaType ?? '').startsWith('message/')
+                                    ? Icons.message
+                                    : (mediaType ?? '').startsWith('model/')
+                                    ? Icons.model_training
+                                    : (mediaType ?? '').startsWith(
+                                        'application/',
+                                      )
+                                    ? (mediaType ?? '').toLowerCase() ==
+                                              'application/pdf'
+                                          ? Icons.picture_as_pdf
+                                          : Icons.apps
+                                    : Icons.insert_drive_file,
+                              ),
+                              title: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(widget.path),
+                              ),
+                              subtitle: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      bytesToReadable(
+                                        File(widget.path).lengthSync(),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(p.extension(widget.path)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            ListTile(
+                              visualDensity: VisualDensity.comfortable,
+                              leading: const Icon(Icons.open_in_new),
+                              title: const Text('Open with...'),
+                              subtitle: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(widget.path),
+                              ),
+                              onTap: () {
+                                OpenFile.open(widget.path);
+                              },
+                            ),
+                            ListTile(
+                              visualDensity: VisualDensity.comfortable,
+                              leading: const Icon(Icons.share),
+                              title: const Text('Share'),
+                              onTap: () {
+                                SharePlus.instance.share(
+                                  ShareParams(
+                                    files: <XFile>[XFile(widget.path)],
+                                  ),
+                                );
+                              },
+                            ),
+                            if (widget.upload != null)
+                              ListTile(
+                                visualDensity: VisualDensity.comfortable,
+                                leading: const Icon(Icons.upload),
+                                title: const Text('Upload'),
+                                onTap: widget.upload,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

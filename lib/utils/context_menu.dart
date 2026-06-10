@@ -2283,6 +2283,7 @@ Widget buildFilesContextMenu(
             )
             .map(
               (option) => ListTile(
+                visualDensity: VisualDensity.comfortable,
                 leading: Icon(option.icon),
                 title: Text(option.title),
                 subtitle: option.subtitle != null
