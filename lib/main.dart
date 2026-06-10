@@ -4,7 +4,6 @@ import 'package:files3/browser.dart';
 import 'package:files3/media_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/rendering.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -842,29 +841,11 @@ class _HomeState extends State<Home> {
       if (openedFile != null) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => Scaffold(
-              appBar: AppBar(
-                title: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Text(p.basename(openedFile)),
-                ),
-                actions: [
-                  IconButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      _sharedFiles.value = [openedFile];
-                    },
-                    icon: Icon(Icons.cloud_upload),
-                  ),
-                ],
-              ),
-              body: Center(
-                child: InteractiveMediaView(
-                  url: openedFile,
-                  path: openedFile,
-                  cachePath: openedFile,
-                ),
-              ),
+            builder: (context) => ExternalFileView(
+              path: openedFile,
+              upload: () {
+                _sharedFiles.value = [openedFile];
+              },
             ),
           ),
         );

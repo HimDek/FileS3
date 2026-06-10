@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:async';
 import 'dart:convert';
 import 'package:files3/globals.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -1315,5 +1316,51 @@ class MediaPreviewState extends State<MediaPreview> {
             fit: BoxFit.cover,
           )
         : fallback(getMediaType(widget.item.key) ?? 'application/octet-stream');
+  }
+}
+
+class ExternalFileView extends StatelessWidget {
+  final String path;
+  final void Function()? upload;
+
+  const ExternalFileView({super.key, required this.path, this.upload});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(p.basename(path)),
+            ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Text(
+                    bytesToReadable(File(path).lengthSync()),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    p.extension(path),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: upload != null
+            ? [IconButton(onPressed: upload, icon: Icon(Icons.cloud_upload))]
+            : null,
+      ),
+      body: Center(
+        child: InteractiveMediaView(url: path, path: path, cachePath: path),
+      ),
+    );
   }
 }
