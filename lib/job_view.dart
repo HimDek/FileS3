@@ -7,14 +7,12 @@ import 'package:files3/models.dart';
 class JobView extends StatefulWidget {
   final Job job;
   final RemoteFile? relativeTo;
-  final Function()? onUpdate;
   final bool grid;
 
   const JobView({
     super.key,
     required this.job,
     this.relativeTo,
-    this.onUpdate,
     this.grid = false,
   });
 
@@ -25,79 +23,40 @@ class JobView extends StatefulWidget {
 class JobViewState extends State<JobView> {
   @override
   Widget build(BuildContext context) {
-    return widget.grid
-        ? Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Expanded(
-                child: Center(
-                  child: widget.job.status == JobStatus.completed
-                      ? widget.job.runtimeType == UploadJob
-                            ? Icon(Icons.done_all)
-                            : Icon(Icons.download_done)
-                      : widget.job.startable()
-                      ? Icon(
-                          widget.job.runtimeType == UploadJob
-                              ? Icons.arrow_circle_up
-                              : Icons.arrow_circle_down,
-                        )
-                      : widget.job.stoppable()
-                      ? Icon(Icons.pause_circle_filled)
-                      : Icon(Icons.info),
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        widget.job.status,
+        widget.job.bytesCompleted,
+        widget.job.statusMsg,
+      ]),
+      builder: (context, _) => widget.grid
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Expanded(
+                  child: Center(
+                    child: widget.job.status.value == JobStatus.completed
+                        ? widget.job.runtimeType == UploadJob
+                              ? Icon(Icons.done_all)
+                              : Icon(Icons.download_done)
+                        : widget.job.startable()
+                        ? Icon(
+                            widget.job.runtimeType == UploadJob
+                                ? Icons.arrow_circle_up
+                                : Icons.arrow_circle_down,
+                          )
+                        : widget.job.stoppable()
+                        ? Icon(Icons.pause_circle_filled)
+                        : Icon(Icons.info),
+                  ),
                 ),
-              ),
-              LinearPercentIndicator(
-                percent: widget.job.bytesCompleted / widget.job.bytes,
-                lineHeight: 2,
-                backgroundColor: Theme.of(context).colorScheme.surface,
-                progressColor: Theme.of(context).colorScheme.primary,
-              ),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Text(
-                  p.isWithin(widget.relativeTo?.key ?? '', widget.job.remoteKey)
-                      ? p.s3(
-                          p.relative(
-                            widget.job.remoteKey,
-                            from: widget.relativeTo?.key ?? '',
-                          ),
-                        )
-                      : widget.job.remoteKey,
+                LinearPercentIndicator(
+                  percent: widget.job.bytesCompleted.value / widget.job.bytes,
+                  lineHeight: 2,
+                  backgroundColor: Theme.of(context).colorScheme.surface,
+                  progressColor: Theme.of(context).colorScheme.primary,
                 ),
-              ),
-            ],
-          )
-        : Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                dense: MediaQuery.of(context).size.width < 600 ? true : false,
-                visualDensity: MediaQuery.of(context).size.width < 600
-                    ? VisualDensity.compact
-                    : VisualDensity.standard,
-                leading: widget.job.status == JobStatus.completed
-                    ? widget.job.runtimeType == UploadJob
-                          ? Icon(Icons.done_all)
-                          : Icon(Icons.download_done)
-                    : widget.job.startable()
-                    ? Icon(
-                        widget.job.runtimeType == UploadJob
-                            ? Icons.arrow_circle_up
-                            : Icons.arrow_circle_down,
-                      )
-                    : widget.job.stoppable()
-                    ? Icon(Icons.pause_circle_filled)
-                    : Icon(Icons.info),
-                onTap: widget.job.startable()
-                    ? () {
-                        widget.job.start();
-                      }
-                    : widget.job.stoppable()
-                    ? () {
-                        widget.job.stop();
-                      }
-                    : null,
-                title: SingleChildScrollView(
+                SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(
                     p.isWithin(
@@ -113,47 +72,94 @@ class JobViewState extends State<JobView> {
                         : widget.job.remoteKey,
                   ),
                 ),
-                subtitle: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      if (widget.job.statusMsg.isNotEmpty) ...[
-                        Text(widget.job.statusMsg, maxLines: 1),
-                        SizedBox(width: 16),
-                      ],
-                      Text(widget.job.localFile.path, maxLines: 1),
-                    ],
+              ],
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  dense: MediaQuery.of(context).size.width < 600 ? true : false,
+                  visualDensity: MediaQuery.of(context).size.width < 600
+                      ? VisualDensity.compact
+                      : VisualDensity.standard,
+                  leading: widget.job.status.value == JobStatus.completed
+                      ? widget.job.runtimeType == UploadJob
+                            ? Icon(Icons.done_all)
+                            : Icon(Icons.download_done)
+                      : widget.job.startable()
+                      ? Icon(
+                          widget.job.runtimeType == UploadJob
+                              ? Icons.arrow_circle_up
+                              : Icons.arrow_circle_down,
+                        )
+                      : widget.job.stoppable()
+                      ? Icon(Icons.pause_circle_filled)
+                      : Icon(Icons.info),
+                  onTap: widget.job.startable()
+                      ? () {
+                          widget.job.start();
+                        }
+                      : widget.job.stoppable()
+                      ? () {
+                          widget.job.stop();
+                        }
+                      : null,
+                  title: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Text(
+                      p.isWithin(
+                            widget.relativeTo?.key ?? '',
+                            widget.job.remoteKey,
+                          )
+                          ? p.s3(
+                              p.relative(
+                                widget.job.remoteKey,
+                                from: widget.relativeTo?.key ?? '',
+                              ),
+                            )
+                          : widget.job.remoteKey,
+                    ),
                   ),
+                  subtitle: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        if (widget.job.statusMsg.value.isNotEmpty) ...[
+                          Text(widget.job.statusMsg.value, maxLines: 1),
+                          SizedBox(width: 8),
+                        ],
+                        Text(widget.job.localFile.path, maxLines: 1),
+                      ],
+                    ),
+                  ),
+                  trailing: widget.job.dismissible()
+                      ? IconButton(
+                          onPressed: () {
+                            widget.job.dismiss();
+                          },
+                          icon: Icon(Icons.clear),
+                        )
+                      : widget.job.removable()
+                      ? IconButton(
+                          onPressed: () {
+                            widget.job.remove();
+                          },
+                          icon: Icon(Icons.cancel),
+                        )
+                      : null,
                 ),
-                trailing: widget.job.dismissible()
-                    ? IconButton(
-                        onPressed: () {
-                          widget.job.dismiss();
-                          if (widget.onUpdate != null) widget.onUpdate!();
-                        },
-                        icon: Icon(Icons.clear),
-                      )
-                    : widget.job.removable()
-                    ? IconButton(
-                        onPressed: () {
-                          widget.job.remove();
-                          if (widget.onUpdate != null) widget.onUpdate!();
-                        },
-                        icon: Icon(Icons.cancel),
-                      )
-                    : null,
-              ),
-              if (widget.job.status != JobStatus.completed)
-                LinearPercentIndicator(
-                  percent: widget.job.bytesCompleted / widget.job.bytes,
-                  lineHeight: 2,
-                  backgroundColor: Theme.of(context).colorScheme.surface,
-                  progressColor: Theme.of(context).colorScheme.primary,
-                )
-              else
-                SizedBox(height: 2),
-            ],
-          );
+                if (widget.job.status.value != JobStatus.completed)
+                  LinearPercentIndicator(
+                    percent: widget.job.bytesCompleted.value / widget.job.bytes,
+                    lineHeight: 2,
+                    backgroundColor: Theme.of(context).colorScheme.surface,
+                    progressColor: Theme.of(context).colorScheme.primary,
+                  )
+                else
+                  SizedBox(height: 2),
+              ],
+            ),
+    );
   }
 }

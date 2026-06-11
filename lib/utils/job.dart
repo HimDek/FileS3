@@ -18,7 +18,6 @@ abstract class Main {
   static final Set<Profile> _profiles = <Profile>{};
   static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
   static List<RemoteFile> _remoteFiles = <RemoteFile>[];
-  static CustomTrigger setHomeState = CustomTrigger();
   static CustomTrigger onRemoteFilesChanged = CustomTrigger();
   static String _cacheDir = '';
   static String _downloadCacheDir = '';
@@ -127,12 +126,11 @@ abstract class Main {
 
   static Future<void> onJobStatus(Job job, dynamic result) async {
     if (job is UploadJob &&
-        job.status == JobStatus.completed &&
+        job.status.value == JobStatus.completed &&
         result is RemoteFile) {
       _remoteFiles.removeWhere((file) => file.key == job.remoteKey);
-      _remoteFiles.add(result);
+      remoteFilesAdd(result);
     }
-    setHomeState.trigger();
   }
 
   static Future<void> stopWatchers() async {
@@ -372,9 +370,6 @@ abstract class Main {
       await ConfigManager.init();
     }
     Job.maxrun = ConfigManager.loadTransferConfig().maxConcurrentTransfers;
-    Job.onProgressUpdate = () {
-      setHomeState.trigger();
-    };
     refreshProfiles().then((_) {
       listDirectories(background: background);
     });
@@ -387,18 +382,24 @@ abstract class Job {
   final Digest md5;
   final int bytes;
   final Profile? profile;
+
   S3TransferTask? task;
-  int bytesCompleted = 0;
-  JobStatus status = JobStatus.initialized;
-  String statusMsg = '';
 
   static int maxrun = 5;
   static bool scheduled = false;
-  static final List<Job> jobs = [];
+
+  static final ValueNotifier<List<Job>> jobs = ValueNotifier<List<Job>>(
+    <Job>[],
+  );
+  static final CustomTrigger onProgressUpdate = CustomTrigger();
+
+  final ValueNotifier<JobStatus> status = ValueNotifier<JobStatus>(
+    JobStatus.initialized,
+  );
+  final ValueNotifier<String> statusMsg = ValueNotifier<String>('');
+  final ValueNotifier<int> bytesCompleted = ValueNotifier<int>(0);
 
   final void Function(Job job, dynamic result)? onStatus;
-
-  static void Function()? onProgressUpdate;
 
   Job({
     required this.localFile,
@@ -410,11 +411,11 @@ abstract class Job {
   });
 
   void add() {
-    if (jobs.any(
+    if (jobs.value.any(
       (job) =>
           job.localFile.path == localFile.path &&
           job.remoteKey == remoteKey &&
-          job.status != JobStatus.completed,
+          job.status.value != JobStatus.completed,
     )) {
       return;
     }
@@ -423,13 +424,15 @@ abstract class Job {
         "Adding job: ${runtimeType == UploadJob ? 'Upload' : 'Download'} - $remoteKey",
       );
     }
-    if (!jobs.contains(this)) jobs.add(this);
-    if (jobs.any((job) => job.status == JobStatus.initialized)) startall();
+    if (!jobs.value.contains(this)) jobs.value = [...jobs.value, this];
+    if (jobs.value.any((job) => job.status.value == JobStatus.initialized)) {
+      startall();
+    }
   }
 
   bool startable() {
-    return status != JobStatus.running &&
-        status != JobStatus.completed &&
+    return status.value != JobStatus.running &&
+        status.value != JobStatus.completed &&
         (profile?.accessible ?? false);
   }
 
@@ -437,7 +440,7 @@ abstract class Job {
     if (!startable()) return;
     try {
       if (runtimeType == UploadJob) {
-        status = JobStatus.running;
+        status.value = JobStatus.running;
         task = S3TransferTask(
           key: remoteKey,
           localFile: localFile,
@@ -445,18 +448,18 @@ abstract class Job {
           profile: profile,
           md5: md5,
           onProgress: (sent, total) {
-            bytesCompleted = sent;
+            bytesCompleted.value = sent;
             onStatus?.call(this, null);
           },
-          onStatus: (status) {
-            statusMsg = status;
+          onStatus: (value) {
+            statusMsg.value = value;
             onStatus?.call(this, null);
           },
         );
         final result = await task!.start();
-        status = JobStatus.stopped;
-        if (bytesCompleted >= bytes && result != null) {
-          status = JobStatus.completed;
+        status.value = JobStatus.stopped;
+        if (bytesCompleted.value >= bytes && result != null) {
+          status.value = JobStatus.completed;
           final resultFile = RemoteFile(
             key: remoteKey,
             size: bytes,
@@ -467,13 +470,13 @@ abstract class Job {
           );
           onStatus?.call(this, resultFile);
         } else {
-          status = JobStatus.failed;
-          bytesCompleted = 0;
+          status.value = JobStatus.failed;
+          bytesCompleted.value = 0;
           onStatus?.call(this, null);
         }
       }
       if (runtimeType == DownloadJob) {
-        status = JobStatus.running;
+        status.value = JobStatus.running;
         // final ifModifiedSince = await localFile.exists()
         //     ? localFile.lastModifiedSync()
         //     : null;
@@ -488,67 +491,69 @@ abstract class Job {
           profile: profile,
           md5: md5,
           onProgress: (received, total) {
-            bytesCompleted = received;
+            bytesCompleted.value = received;
             onStatus?.call(this, null);
           },
-          onStatus: (status) {
-            statusMsg = status;
+          onStatus: (value) {
+            statusMsg.value = value;
             onStatus?.call(this, null);
           },
         );
         await task!.start();
-        status = JobStatus.stopped;
-        if (bytesCompleted >= bytes) {
-          status = JobStatus.completed;
-          bytesCompleted = bytes;
+        status.value = JobStatus.stopped;
+        if (bytesCompleted.value >= bytes) {
+          status.value = JobStatus.completed;
+          bytesCompleted.value = bytes;
           onStatus?.call(this, null);
         }
       }
     } catch (e) {
-      status = JobStatus.failed;
-      bytesCompleted = 0;
-      statusMsg = "Error: ${e.toString()}";
+      status.value = JobStatus.failed;
+      bytesCompleted.value = 0;
+      statusMsg.value = "Error: ${e.toString()}";
       onStatus?.call(this, null);
     }
-    onProgressUpdate?.call();
+    onProgressUpdate.trigger();
     startall();
   }
 
   bool stoppable() {
-    return status == JobStatus.running || status == JobStatus.initialized;
+    return status.value == JobStatus.running ||
+        status.value == JobStatus.initialized;
   }
 
   void stop() {
     if (stoppable()) {
       task?.cancel.call();
-      status = JobStatus.stopped;
+      status.value = JobStatus.stopped;
       onStatus?.call(this, null);
-      onProgressUpdate?.call();
+      onProgressUpdate.trigger();
     }
   }
 
   bool removable() {
-    return status != JobStatus.running && jobs.contains(this);
+    return status.value != JobStatus.running && jobs.value.contains(this);
   }
 
   void remove() {
-    if (removable()) jobs.remove(this);
+    if (removable()) jobs.value = jobs.value.where((j) => j != this).toList();
   }
 
   bool dismissible() {
-    return status == JobStatus.completed;
+    return status.value == JobStatus.completed;
   }
 
   void dismiss() {
-    jobs.remove(this);
+    if (dismissible()) jobs.value = jobs.value.where((j) => j != this).toList();
   }
 
   static void continueAll() {
-    for (var job in jobs.where(
+    for (var job in jobs.value.where(
       (job) =>
-          job.status == JobStatus.stopped || job.status == JobStatus.failed,
+          job.status.value == JobStatus.stopped ||
+          job.status.value == JobStatus.failed,
     )) {
-      job.status = JobStatus.initialized;
+      job.status.value = JobStatus.initialized;
     }
     startall();
   }
@@ -566,20 +571,26 @@ abstract class Job {
     try {
       if (kDebugMode) {
         debugPrint(
-          "Starting jobs: Running ${Job.jobs.where((job) => job.status == JobStatus.running).length}, Max Run $maxrun, Pending ${Job.jobs.where((job) => job.status == JobStatus.initialized).length}",
+          "Starting jobs: Running ${Job.jobs.value.where((job) => job.status.value == JobStatus.running).length}, Max Run $maxrun, Pending ${Job.jobs.value.where((job) => job.status.value == JobStatus.initialized).length}",
         );
       }
 
-      while (Job.jobs.where((job) => job.status == JobStatus.running).length <
+      while (Job.jobs.value
+                  .where((job) => job.status.value == JobStatus.running)
+                  .length <
               maxrun &&
-          Job.jobs.any((job) => job.status == JobStatus.initialized)) {
-        Job job = jobs.firstWhere((job) => job.status == JobStatus.initialized);
+          Job.jobs.value.any(
+            (job) => job.status.value == JobStatus.initialized,
+          )) {
+        Job job = jobs.value.firstWhere(
+          (job) => job.status.value == JobStatus.initialized,
+        );
         job.start();
       }
 
       if (kDebugMode) {
         debugPrint(
-          "Job scheduling completed: Running ${Job.jobs.where((job) => job.status == JobStatus.running).length}, Max Run $maxrun, Pending ${Job.jobs.where((job) => job.status == JobStatus.initialized).length}",
+          "Job scheduling completed: Running ${Job.jobs.value.where((job) => job.status.value == JobStatus.running).length}, Max Run $maxrun, Pending ${Job.jobs.value.where((job) => job.status.value == JobStatus.initialized).length}",
         );
       }
     } finally {
@@ -588,17 +599,19 @@ abstract class Job {
   }
 
   static void stopall() {
-    for (var job in jobs) {
+    for (var job in jobs.value) {
       job.stop();
     }
   }
 
   static void clearCompleted() {
-    jobs.removeWhere((job) => job.status == JobStatus.completed);
+    jobs.value = jobs.value
+        .where((job) => job.status.value != JobStatus.completed)
+        .toList();
   }
 
   static void clear() {
-    jobs.clear();
+    jobs.value = [];
   }
 
   static void clearCache() {
@@ -672,9 +685,9 @@ class DownloadJob extends Job {
     if (offset > 0 &&
         offset < bytes &&
         localEtag == base64.encode(super.md5.bytes)) {
-      bytesCompleted = offset;
-      statusMsg =
-          "Downloaded ${bytesToReadable(bytesCompleted)} of ${bytesToReadable(bytes)}";
+      bytesCompleted.value = offset;
+      statusMsg.value =
+          "Downloaded ${bytesToReadable(bytesCompleted.value)} of ${bytesToReadable(bytes)}";
     } else {
       offset = 0;
       if (tempFile.existsSync()) tempFile.deleteSync();
@@ -735,7 +748,7 @@ class Watcher {
     }
 
     if (kDebugMode) {
-      debugPrint("Analyzing sync status for ${localDir.path}");
+      debugPrint("Analyzing sync status.value for ${localDir.path}");
     }
     final analyzer = SyncAnalyzer(
       localRoot: localDir,
@@ -766,11 +779,11 @@ class Watcher {
 
     for (File file in [...result.newFile, ...result.modifiedLocally]) {
       final key = Main.keyFromPath(file.path) ?? '';
-      if (Job.jobs.any(
+      if (Job.jobs.value.any(
             (job) =>
                 job.localFile.path == file.path &&
                 job.remoteKey == key &&
-                job.status != JobStatus.completed,
+                job.status.value != JobStatus.completed,
           ) ||
           Main.ignoreKeyRegexps.any((regexp) => RegExp(regexp).hasMatch(key))) {
         continue;
@@ -784,9 +797,10 @@ class Watcher {
     }
 
     for (RemoteFile file in result.modifiedRemotely) {
-      if (Job.jobs.any(
+      if (Job.jobs.value.any(
             (job) =>
-                job.remoteKey == file.key && job.status != JobStatus.completed,
+                job.remoteKey == file.key &&
+                job.status.value != JobStatus.completed,
           ) ||
           Main.ignoreKeyRegexps.any(
             (regexp) => RegExp(regexp).hasMatch(file.key),
@@ -800,9 +814,10 @@ class Watcher {
     }
 
     for (RemoteFile file in result.remoteOnly) {
-      if (Job.jobs.any(
+      if (Job.jobs.value.any(
             (job) =>
-                job.remoteKey == file.key && job.status != JobStatus.completed,
+                job.remoteKey == file.key &&
+                job.status.value != JobStatus.completed,
           ) ||
           Main.ignoreKeyRegexps.any(
             (regexp) => RegExp(regexp).hasMatch(file.key),

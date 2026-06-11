@@ -46,6 +46,14 @@ class FileContextActionHandler extends ContextActionHandler {
     return File(Main.pathFromKey(file.key) ?? file.key).existsSync();
   }
 
+  bool active() {
+    return Job.jobs.value.any(
+      (job) =>
+          job.localFile.path == Main.pathFromKey(file.key) &&
+          ![JobStatus.completed, JobStatus.failed].contains(job.status.value),
+    );
+  }
+
   bool removable() {
     return !p.isDir(file.key) &&
         File(Main.pathFromKey(file.key) ?? file.key).existsSync() &&
@@ -67,7 +75,7 @@ class FileContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return !rootExists() || downloaded() || downloadFile == null
+    return !rootExists() || downloaded() || active() || downloadFile == null
         ? null
         : () {
             downloadFile!(file);
@@ -176,6 +184,21 @@ class FilesContextActionHandler extends ContextActionHandler {
         .toList();
   }
 
+  List<RemoteFile> activeFiles() {
+    return files
+        .where(
+          (file) => Job.jobs.value.any(
+            (job) =>
+                job.localFile.path == Main.pathFromKey(file.key) &&
+                ![
+                  JobStatus.completed,
+                  JobStatus.failed,
+                ].contains(job.status.value),
+          ),
+        )
+        .toList();
+  }
+
   List<RemoteFile> removableFiles() {
     return files
         .where(
@@ -189,16 +212,22 @@ class FilesContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return downloadedFiles().length == files.length || downloadFile == null
+    return downloadedFiles().length == files.length ||
+            downloadedFiles()
+                    .map((f) => f.key)
+                    .toSet()
+                    .union(activeFiles().map((f) => f.key).toSet())
+                    .length ==
+                files.length ||
+            downloadFile == null
         ? null
         : () {
-            files
-                .where(
-                  (file) => !File(
-                    Main.pathFromKey(file.key) ?? file.key,
-                  ).existsSync(),
-                )
-                .map(downloadFile!);
+            for (RemoteFile file in files.where(
+              (file) =>
+                  !File(Main.pathFromKey(file.key) ?? file.key).existsSync(),
+            )) {
+              downloadFile!(file);
+            }
           };
   }
 
@@ -559,7 +588,9 @@ class FileContextOption {
       FileContextOption(
         title: handler.download() == null
             ? handler.rootExists()
-                  ? 'Downloaded'
+                  ? handler.active()
+                        ? 'Active Job'
+                        : 'Downloaded'
                   : 'Cannot Download'
             : 'Download',
         subtitle: handler.download() == null
@@ -567,7 +598,7 @@ class FileContextOption {
                   ? Main.pathFromKey(handler.file.key)
                   : 'Set backup folder to enable downloads'
             : null,
-        icon: handler.download() == null
+        icon: handler.download() == null && !handler.active()
             ? handler.rootExists()
                   ? Icons.file_download_done_rounded
                   : Icons.file_download_off_rounded
@@ -869,6 +900,14 @@ class FilesContextOption {
             ? 'Download'
             : handler.downloadedFiles().length == handler.files.length
             ? 'Downloaded'
+            : handler
+                      .downloadedFiles()
+                      .map((f) => f.key)
+                      .toSet()
+                      .union(handler.activeFiles().map((f) => f.key).toSet())
+                      .length ==
+                  handler.files.length
+            ? 'Active Jobs'
             : 'Cannot Download',
         subtitle: handler.download() != null
             ? "Only missing files with backup folder set will be downloaded"
@@ -879,6 +918,14 @@ class FilesContextOption {
             ? Icons.file_download_rounded
             : handler.downloadedFiles().length == handler.files.length
             ? Icons.file_download_done_rounded
+            : handler
+                      .downloadedFiles()
+                      .map((f) => f.key)
+                      .toSet()
+                      .union(handler.activeFiles().map((f) => f.key).toSet())
+                      .length ==
+                  handler.files.length
+            ? Icons.file_download_rounded
             : Icons.file_download_off_rounded,
         action: handler.download(),
         popOnInvoked: false,
@@ -2155,6 +2202,7 @@ Widget buildFileContextMenu(
   Future<void> Function(List<String>, List<String>)? moveFiles,
   Function(String)? deleteLocal,
   Future<void> Function(List<String>)? deleteFiles,
+  void Function()? onInvoked,
 ) {
   String? mediaType = getMediaType(item.key);
   FileContextActionHandler handler = FileContextActionHandler(
@@ -2240,6 +2288,7 @@ Widget buildFileContextMenu(
                       : () async {
                           if (option.popOnInvoked) globalNavigator?.pop();
                           await option.action!();
+                          onInvoked?.call();
                         },
                   enabled: option.action != null,
                 ),
@@ -2261,6 +2310,7 @@ Widget buildFilesContextMenu(
   Function(String)? deleteLocal,
   Future<void> Function(List<String>)? deleteFiles,
   Function() clearSelection,
+  void Function()? onInvoked,
 ) {
   FilesContextActionHandler handler = FilesContextActionHandler(
     files: items,
@@ -2299,6 +2349,7 @@ Widget buildFilesContextMenu(
                     ? () async {
                         if (option.popOnInvoked) globalNavigator?.pop();
                         await option.action!();
+                        onInvoked?.call();
                       }
                     : null,
                 enabled: option.action != null,
@@ -2322,6 +2373,7 @@ Widget buildDirectoryContextMenu(
   int Function(RemoteFile) dirSize,
   String Function(RemoteFile) dirModified,
   Function(String, BackupMode) setBackupMode,
+  void Function()? onInvoked,
 ) {
   DirectoryContextActionHandler handler = DirectoryContextActionHandler(
     file: file,
@@ -2474,6 +2526,7 @@ Widget buildDirectoryContextMenu(
                       ? () async {
                           if (option.popOnInvoked) globalNavigator?.pop();
                           await option.action!();
+                          onInvoked?.call();
                         }
                       : null,
                   enabled: option.action != null,
@@ -2495,6 +2548,7 @@ Widget buildDirectoriesContextMenu(
   Function(String)? deleteLocal,
   Future<void> Function(List<String>)? deleteDirectories,
   Function() clearSelection,
+  void Function()? onInvoked,
 ) {
   DirectoriesContextActionHandler handler = DirectoriesContextActionHandler(
     directories: dirs,
@@ -2525,6 +2579,7 @@ Widget buildDirectoriesContextMenu(
                     ? () async {
                         if (option.popOnInvoked) globalNavigator?.pop();
                         await option.action!();
+                        onInvoked?.call();
                       }
                     : null,
                 enabled: option.action != null,
@@ -2550,6 +2605,7 @@ Widget buildBulkContextMenu(
   Future<void> Function(List<String>)? deleteFiles,
   Future<void> Function(List<String>)? deleteDirectories,
   Function() clearSelection,
+  void Function()? onInvoked,
 ) {
   if (!items.any((item) => p.isDir(item.key))) {
     return buildFilesContextMenu(
@@ -2564,6 +2620,7 @@ Widget buildBulkContextMenu(
       deleteLocal,
       deleteFiles,
       clearSelection,
+      onInvoked,
     );
   } else if (items.every((item) => p.isDir(item.key))) {
     return buildDirectoriesContextMenu(
@@ -2577,6 +2634,7 @@ Widget buildBulkContextMenu(
       deleteLocal,
       deleteDirectories,
       clearSelection,
+      onInvoked,
     );
   } else {
     DirectoriesContextActionHandler dirHandler =
@@ -2619,6 +2677,7 @@ Widget buildBulkContextMenu(
                       ? () async {
                           if (option.popOnInvoked) globalNavigator?.pop();
                           await option.action!(context);
+                          onInvoked?.call();
                         }
                       : null,
                   enabled: option.action != null,

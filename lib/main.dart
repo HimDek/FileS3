@@ -25,9 +25,9 @@ Future<void> runJob({
   required void Function(double progress) onProgress,
 }) async {
   await Main.init(background: true);
-  Job.onProgressUpdate = () {
-    final runningJobs = Job.jobs
-        .where((job) => job.status == JobStatus.running)
+  Job.onProgressUpdate.addListener(() {
+    final runningJobs = Job.jobs.value
+        .where((job) => job.status.value == JobStatus.running)
         .toList();
     if (runningJobs.isEmpty) {
       onProgress(1.0);
@@ -35,11 +35,11 @@ Future<void> runJob({
     }
     double totalProgress = 0.0;
     for (final job in runningJobs) {
-      totalProgress += job.bytesCompleted / job.bytes;
+      totalProgress += job.bytesCompleted.value / job.bytes;
     }
     onProgress(totalProgress / runningJobs.length);
-  };
-  if (Job.jobs.any((job) => job.status == JobStatus.initialized)) {
+  });
+  if (Job.jobs.value.any((job) => job.status.value == JobStatus.initialized)) {
     await Future.delayed(const Duration(seconds: 2), () {
       // TODO: Run Jobs?
     });
@@ -554,6 +554,7 @@ class _HomeState extends State<Home> {
   }
 
   void _downloadFile(RemoteFile file, {String? localPath}) {
+    print('Checking file: ${file.key}, localPath: $localPath');
     if (!File(Main.pathFromKey(file.key) ?? file.key).existsSync()) {
       if (Main.backupModeFromKey(file.key) != BackupMode.sync &&
           (localPath ?? Main.pathFromKey(file.key)) ==

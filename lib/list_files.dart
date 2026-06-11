@@ -242,11 +242,7 @@ class ListFilesState extends State<ListFiles> {
 
   Widget listItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
-        ? JobView(
-            job: item.job!,
-            relativeTo: widget.relativeto,
-            onUpdate: widget.onUpdate,
-          )
+        ? JobView(job: item.job!, relativeTo: widget.relativeto)
         : p.isDir(item.key)
         ? ListTile(
             dense: MediaQuery.of(context).size.width < 600 ? true : false,
@@ -436,12 +432,7 @@ class ListFilesState extends State<ListFiles> {
 
   Widget gridItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
-        ? JobView(
-            job: item.job!,
-            relativeTo: widget.relativeto,
-            onUpdate: widget.onUpdate,
-            grid: true,
-          )
+        ? JobView(job: item.job!, relativeTo: widget.relativeto, grid: true)
         : p.isDir(item.key)
         ? MyGridTile(
             selected: widget.selection.any(
