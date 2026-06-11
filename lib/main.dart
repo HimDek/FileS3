@@ -819,10 +819,7 @@ class _HomeState extends State<Home> {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ExternalFileView(
-              path: ValueNotifier<String>(openedFile),
-              pathIsUri: ValueNotifier<bool>(
-                RegExp(r'^[a-zA-Z]+://').hasMatch(openedFile),
-              ),
+              path: openedFile,
               upload: () {
                 _sharedFiles.value = [openedFile];
               },

@@ -1321,16 +1321,10 @@ class MediaPreviewState extends State<MediaPreview> {
 }
 
 class ExternalFileView extends StatefulWidget {
-  final ValueNotifier<String> path;
-  final ValueNotifier<bool>? pathIsUri;
+  final String path;
   final void Function()? upload;
 
-  const ExternalFileView({
-    super.key,
-    required this.path,
-    this.pathIsUri,
-    this.upload,
-  });
+  const ExternalFileView({super.key, required this.path, this.upload});
 
   @override
   State<ExternalFileView> createState() => _ExternalFileViewState();
@@ -1347,6 +1341,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
   final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _allowDragging = ValueNotifier<bool>(true);
   final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
+  final ValueNotifier<String?> _path = ValueNotifier<String?>(null);
 
   String? _mediaType;
 
@@ -1388,13 +1383,11 @@ class _ExternalFileViewState extends State<ExternalFileView> {
   }
 
   void _uriToPath() async {
-    if (widget.pathIsUri?.value == true) {
-      widget.path.value = (await uriToFile(
-        widget.path.value,
+    if (RegExp(r'^[a-zA-Z]+://').hasMatch(widget.path)) {
+      _path.value = (await uriToFile(
+        widget.path,
         onProgress: (d, t) => _progress.value = d / t,
       )).path;
-      widget.pathIsUri?.value = false;
-      setState(() {});
     }
   }
 
@@ -1403,7 +1396,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
     _uriToPath();
     super.initState();
 
-    _mediaType = getMediaType(widget.path.value);
+    _mediaType = getMediaType(widget.path);
 
     _chromeVisible.addListener(() {
       if (_chromeVisible.value) {
@@ -1435,8 +1428,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
             listenable: Listenable.merge([
               _allowPaging,
               _chromeVisible,
-              widget.path,
-              widget.pathIsUri,
+              _path,
               _progress,
             ]),
             builder: (context, _) => AnimatedPadding(
@@ -1458,13 +1450,13 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                 },
                 child: Expanded(
                   child: Center(
-                    child: widget.pathIsUri?.value != true
+                    child: _path.value != null
                         ? InteractiveMediaView(
-                            url: widget.pathIsUri?.value == true
-                                ? widget.path.value
-                                : "file://${widget.path.value}",
-                            path: widget.path.value,
-                            cachePath: widget.path.value,
+                            url: RegExp(r'^[a-zA-Z]+://').hasMatch(widget.path)
+                                ? widget.path
+                                : "file://${widget.path}",
+                            path: _path.value!,
+                            cachePath: _path.value!,
                             showControls: _chromeVisible.value,
                             setPaging: _setPaging,
                             setDragging: _setDragging,
@@ -1476,7 +1468,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
             ),
           ),
           ListenableBuilder(
-            listenable: Listenable.merge([_chromeVisible, widget.path]),
+            listenable: Listenable.merge([_chromeVisible, _path]),
             builder: (context, _) => SizedBox(
               height: kToolbarHeight + MediaQuery.of(context).padding.top,
               child: AnimatedSlide(
@@ -1491,7 +1483,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                     backgroundColor: Colors.black,
                     title: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: Text(p.basename(widget.path.value)),
+                      child: Text(p.basename(_path.value ?? widget.path)),
                     ),
                     actions: [
                       IconButton(
@@ -1508,8 +1500,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
             listenable: Listenable.merge([
               _chromeVisible,
               _allowDragging,
-              widget.pathIsUri,
-              widget.path,
+              _path,
             ]),
             builder: (context, _) => DraggableScrollableSheet(
               controller: _contextMenuSheetController,
@@ -1586,21 +1577,23 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                               ),
                               title: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
-                                child: Text(widget.path.value),
+                                child: Text(widget.path),
                               ),
                               subtitle: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 child: Row(
                                   children: [
-                                    if (widget.pathIsUri?.value != true) ...[
+                                    if (_path.value != null) ...[
                                       Text(
                                         bytesToReadable(
-                                          File(widget.path.value).lengthSync(),
+                                          File(_path.value!).lengthSync(),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
                                     ],
-                                    Text(p.extension(widget.path.value)),
+                                    Text(
+                                      p.extension(_path.value ?? widget.path),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1611,11 +1604,11 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                               title: const Text('Open with...'),
                               subtitle: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
-                                child: Text(widget.path.value),
+                                child: Text(_path.value ?? widget.path),
                               ),
-                              onTap: widget.pathIsUri?.value != true
+                              onTap: _path.value != null
                                   ? () {
-                                      OpenFile.open(widget.path.value);
+                                      OpenFile.open(_path.value!);
                                     }
                                   : null,
                             ),
@@ -1623,13 +1616,11 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                               visualDensity: VisualDensity.comfortable,
                               leading: const Icon(Icons.share),
                               title: const Text('Share'),
-                              onTap: widget.pathIsUri?.value != true
+                              onTap: _path.value != null
                                   ? () {
                                       SharePlus.instance.share(
                                         ShareParams(
-                                          files: <XFile>[
-                                            XFile(widget.path.value),
-                                          ],
+                                          files: <XFile>[XFile(_path.value!)],
                                         ),
                                       );
                                     }
@@ -1640,7 +1631,9 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                                 visualDensity: VisualDensity.comfortable,
                                 leading: const Icon(Icons.upload),
                                 title: const Text('Upload'),
-                                onTap: widget.upload,
+                                onTap: _path.value != null
+                                    ? widget.upload
+                                    : null,
                               ),
                           ],
                         ),
