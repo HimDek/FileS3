@@ -407,7 +407,7 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
       if (_pdfTextSearcher != null)
         _pdfTextSearcher!.pageTextMatchPaintCallback,
     ],
-    backgroundColor: Theme.of(context).colorScheme.surface,
+    backgroundColor: Colors.black,
     loadingBannerBuilder: (context, bytesDownloaded, totalBytes) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1162,9 +1162,7 @@ class GalleryState extends State<Gallery> {
                     duration: const Duration(milliseconds: 300),
                     opacity: _chromeVisible.value ? 1.0 : 0.0,
                     child: AppBar(
-                      backgroundColor: Theme.of(
-                        context,
-                      ).appBarTheme.backgroundColor,
+                      backgroundColor: Colors.black,
                       title: Text(
                         "${(_currentIndex.value) + 1} / ${widget.files.length}",
                         maxLines: 1,
@@ -1197,7 +1195,7 @@ class GalleryState extends State<Gallery> {
                   return Container(
                     clipBehavior: Clip.hardEdge,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).canvasColor,
+                      color: Colors.black,
                       borderRadius:
                           Theme.of(context).bottomSheetTheme.shape
                               is RoundedRectangleBorder
@@ -1215,7 +1213,7 @@ class GalleryState extends State<Gallery> {
                         PinnedHeaderSliver(
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            color: Theme.of(context).colorScheme.surface,
+                            color: Colors.black,
                             alignment: Alignment.center,
                             child: Container(
                               width: 40,
@@ -1241,6 +1239,7 @@ class GalleryState extends State<Gallery> {
             ),
           ],
         ),
+        backgroundColor: Colors.black,
       ),
     );
   }
@@ -1489,9 +1488,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                   duration: const Duration(milliseconds: 300),
                   opacity: _chromeVisible.value ? 1.0 : 0.0,
                   child: AppBar(
-                    backgroundColor: Theme.of(
-                      context,
-                    ).appBarTheme.backgroundColor,
+                    backgroundColor: Colors.black,
                     title: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Text(p.basename(widget.path.value)),
@@ -1528,7 +1525,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                 return Container(
                   clipBehavior: Clip.hardEdge,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).canvasColor,
+                    color: Colors.black,
                     borderRadius:
                         Theme.of(context).bottomSheetTheme.shape
                             is RoundedRectangleBorder
@@ -1546,7 +1543,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                       PinnedHeaderSliver(
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          color: Theme.of(context).colorScheme.surface,
+                          color: Colors.black,
                           alignment: Alignment.center,
                           child: Container(
                             width: 40,
@@ -1656,6 +1653,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
           ),
         ],
       ),
+      backgroundColor: Colors.black,
     );
   }
 }

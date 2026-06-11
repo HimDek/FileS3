@@ -1695,7 +1695,18 @@ class BrowserState extends State<Browser> {
                 dirSize: _dirSize,
                 dirModified: _dirModified,
               ),
-              SliverToBoxAdapter(child: SizedBox(height: 256)),
+              SliverToBoxAdapter(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onLongPress: widget.onPick == null
+                      ? () async {
+                          await Main.stopWatchers();
+                          await _showContextMenu(_driveDir);
+                        }
+                      : null,
+                  child: SizedBox(height: 256, width: double.infinity),
+                ),
+              ),
             ],
           ),
           floatingActionButton: floatingActionButton(context),
