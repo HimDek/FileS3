@@ -1698,7 +1698,7 @@ class BrowserState extends State<Browser> {
               SliverToBoxAdapter(
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onLongPress: widget.onPick == null
+                  onLongPress: widget.onPick == null && _driveDir.key.isNotEmpty
                       ? () async {
                           await Main.stopWatchers();
                           await _showContextMenu(_driveDir);
