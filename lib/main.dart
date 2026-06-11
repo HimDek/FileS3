@@ -777,8 +777,7 @@ class _HomeState extends State<Home> {
                 ),
               ),
               onInit: RegExp(r'^[a-zA-Z]+://').hasMatch(sharedFiles.first)
-                  ? null
-                  : () async {
+                  ? () async {
                       loading.value = true;
                       int totalCount = sharedFiles.length;
                       int progressCount = 0;
@@ -794,7 +793,8 @@ class _HomeState extends State<Home> {
                         }),
                       );
                       loading.value = false;
-                    },
+                    }
+                  : null,
               onPick: (path) async {
                 loading.value = true;
                 for (final sharedFile in sharedFiles) {
