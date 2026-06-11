@@ -1033,6 +1033,12 @@ class GalleryState extends State<Gallery> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chromeVisible.value = true;
     });
+
+    _contextMenuSheetController.addListener(() {
+      if (_contextMenuSheetController.size <= 0) {
+        _chromeVisible.value = false;
+      }
+    });
   }
 
   void popWithCurrentIndex() {
@@ -1408,6 +1414,12 @@ class _ExternalFileViewState extends State<ExternalFileView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _chromeVisible.value = true;
     });
+
+    _contextMenuSheetController.addListener(() {
+      if (_contextMenuSheetController.size <= 0) {
+        _chromeVisible.value = false;
+      }
+    });
   }
 
   @override
@@ -1448,21 +1460,19 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                 onTap: () {
                   _chromeVisible.value = !_chromeVisible.value;
                 },
-                child: Expanded(
-                  child: Center(
-                    child: _path.value != null
-                        ? InteractiveMediaView(
-                            url: RegExp(r'^[a-zA-Z]+://').hasMatch(widget.path)
-                                ? widget.path
-                                : "file://${widget.path}",
-                            path: _path.value!,
-                            cachePath: _path.value!,
-                            showControls: _chromeVisible.value,
-                            setPaging: _setPaging,
-                            setDragging: _setDragging,
-                          )
-                        : CircularProgressIndicator(value: _progress.value),
-                  ),
+                child: Center(
+                  child: _path.value != null
+                      ? InteractiveMediaView(
+                          url: RegExp(r'^[a-zA-Z]+://').hasMatch(widget.path)
+                              ? widget.path
+                              : "file://${widget.path}",
+                          path: _path.value!,
+                          cachePath: _path.value!,
+                          showControls: _chromeVisible.value,
+                          setPaging: _setPaging,
+                          setDragging: _setDragging,
+                        )
+                      : CircularProgressIndicator(value: _progress.value),
                 ),
               ),
             ),
