@@ -43,19 +43,15 @@ android {
 
     buildTypes {
         debug {
+            manifestPlaceholders["appName"] = "FileS3 Dev"
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            manifestPlaceholders["appName"] = "FileS3 Dev"
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
             manifestPlaceholders["appName"] = "FileS3"
 
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            isMinifyEnabled = false
+            isShrinkResources = false
 
             signingConfig = signingConfigs.getByName("release")
         }
