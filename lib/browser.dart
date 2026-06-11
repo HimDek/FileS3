@@ -609,20 +609,6 @@ class BrowserState extends State<Browser> {
     _controlsVisible.value = true;
     _driveDir.value = dir;
     _profile = Main.profileFromKey(_driveDir.value.key);
-    if (IniManager.config?.get('list_options', _driveDir.value.key) != null) {
-      _globalListOptions.value = false;
-    } else {
-      _globalListOptions.value = true;
-    }
-    _listOptions.value = ListOptions.fromJson(
-      IniManager.config?.get(
-            'list_options',
-            _globalListOptions.value || _navIndex.value != 0
-                ? 'navindex_$_navIndex.value'
-                : _driveDir.value.key,
-          ) ??
-          ListOptions().toJson(),
-    );
     for (RemoteFile item in _selection.value) {
       if (p.isWithin(item.key, _driveDir.value.key) ||
           item.key == _driveDir.value.key) {
@@ -1204,6 +1190,23 @@ class BrowserState extends State<Browser> {
           !_controlsVisible.value) {
         _controlsVisible.value = true;
       }
+    });
+
+    Listenable.merge([_navIndex, _driveDir]).addListener(() {
+      if (IniManager.config?.get('list_options', _driveDir.value.key) != null) {
+        _globalListOptions.value = false;
+      } else {
+        _globalListOptions.value = true;
+      }
+      _listOptions.value = ListOptions.fromJson(
+        IniManager.config?.get(
+              'list_options',
+              _globalListOptions.value || _navIndex.value != 0
+                  ? 'navindex_${_navIndex.value}'
+                  : _driveDir.value.key,
+            ) ??
+            ListOptions().toJson(),
+      );
     });
 
     _currentItems.addListener(() {

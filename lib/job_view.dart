@@ -50,12 +50,15 @@ class JobViewState extends State<JobView> {
                         : Icon(Icons.info),
                   ),
                 ),
-                LinearPercentIndicator(
-                  percent: widget.job.bytesCompleted.value / widget.job.bytes,
-                  lineHeight: 2,
-                  backgroundColor: Theme.of(context).colorScheme.surface,
-                  progressColor: Theme.of(context).colorScheme.primary,
-                ),
+                if (widget.job.status.value != JobStatus.completed)
+                  LinearPercentIndicator(
+                    percent: widget.job.bytesCompleted.value / widget.job.bytes,
+                    lineHeight: 2,
+                    backgroundColor: Theme.of(context).colorScheme.surface,
+                    progressColor: Theme.of(context).colorScheme.primary,
+                  )
+                else
+                  SizedBox(height: 2),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(
