@@ -14,6 +14,7 @@ import 'package:files3/list_files.dart';
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/settings.dart';
+import 'package:open_file/open_file.dart';
 
 class PathPicker extends Browser {
   const PathPicker({
@@ -1638,7 +1639,11 @@ class BrowserState extends State<Browser> {
                                                   ).textTheme.labelSmall,
                                                 ),
                                                 onTap: () {
-                                                  // TODO: Open file explorer at this location
+                                                  OpenFile.open(
+                                                    Main.pathFromKey(
+                                                      _driveDir.key,
+                                                    )!,
+                                                  );
                                                 },
                                               ),
                                             ),

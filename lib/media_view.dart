@@ -358,7 +358,6 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
   double _initialZoom = 1.0;
   double _currentZoom = 1.0;
   Size _thumbSize = Size(40, 72);
-  int _instance = 0;
 
   String? _pdfPath;
   String? _pdfUrl;
@@ -675,7 +674,7 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
         ),
         _pdfPath != null
             ? PdfViewer.file(
-                key: ValueKey('$_pdfPath-$_instance'),
+                key: ValueKey('$_pdfPath'),
                 _pdfPath!,
                 controller: _pdfViewerController,
                 passwordProvider: _passwordProvider,
@@ -683,7 +682,7 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
               )
             : _pdfUrl != null
             ? PdfViewer.uri(
-                key: ValueKey('$_pdfUrl-$_instance'),
+                key: ValueKey('$_pdfUrl'),
                 Uri.parse(_pdfUrl!),
                 controller: _pdfViewerController,
                 passwordProvider: _passwordProvider,

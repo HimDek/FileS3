@@ -265,9 +265,9 @@ class S3FileManager {
       'Host': host,
       'x-amz-content-sha256': contentHash,
       'x-amz-date': amzDate,
-      if (copySource != null) 'x-amz-copy-source': copySource,
-      if (contentMD5 != null) 'Content-MD5': contentMD5,
-      if (contentType != null) 'Content-Type': contentType,
+      'x-amz-copy-source': ?copySource,
+      'Content-MD5': ?contentMD5,
+      'Content-Type': ?contentType,
     };
     if (method == 'PUT' && contentType == null) {
       headers['Content-Type'] = 'application/octet-stream';

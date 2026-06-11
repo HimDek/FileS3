@@ -10,7 +10,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:receive_intent/receive_intent.dart' as ReceiveIntent;
+import 'package:receive_intent/receive_intent.dart' as receive_intent;
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
@@ -723,7 +723,7 @@ class _HomeState extends State<Home> {
     loading.value = false;
   }
 
-  Future<void> _handleIntent(ReceiveIntent.Intent? intent) async {
+  Future<void> _handleIntent(receive_intent.Intent? intent) async {
     if (intent == null) return;
 
     switch (intent.action) {
@@ -810,7 +810,7 @@ class _HomeState extends State<Home> {
           ),
         );
         _sharedFiles.value = [];
-        ReceiveIntent.ReceiveIntent.setResult(200);
+        receive_intent.ReceiveIntent.setResult(200);
       }
     });
 
@@ -828,21 +828,21 @@ class _HomeState extends State<Home> {
           ),
         );
         _openedFile.value = null;
-        ReceiveIntent.ReceiveIntent.setResult(200);
+        receive_intent.ReceiveIntent.setResult(200);
       }
     });
 
-    _intentSub = ReceiveIntent.ReceiveIntent.receivedIntentStream.listen(
+    _intentSub = receive_intent.ReceiveIntent.receivedIntentStream.listen(
       (intent) {
         _handleIntent(intent);
       },
       onError: (err) {
         showSnackBar(SnackBar(content: Text('Error receiving intent: $err')));
-        ReceiveIntent.ReceiveIntent.setResult(500);
+        receive_intent.ReceiveIntent.setResult(500);
       },
     );
 
-    ReceiveIntent.ReceiveIntent.getInitialIntent().then((intent) {
+    receive_intent.ReceiveIntent.getInitialIntent().then((intent) {
       if (intent != null) {
         _handleIntent(intent);
       }
