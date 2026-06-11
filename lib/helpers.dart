@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:file_magic_number/file_magic_number.dart';
+import 'package:files3/globals.dart';
 import 'package:ini/ini.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
@@ -13,11 +14,42 @@ import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
 
-final uriContent = UriContent();
+HttpClient httpClient = HttpClient();
+UriContent uriContent = UriContent(httpClient: httpClient);
 
-Future<File> uriToFile(String uriString) async {
+Future<File> uriToFile(
+  String uriString, {
+  void Function(int, int)? onProgress,
+}) async {
   File file;
-  Uint8List? bytes = await uriContent.fromOrNull(Uri.parse(uriString));
+  Uint8List? bytes;
+
+  try {
+    final uri = Uri.parse(uriString);
+
+    final int? totalBytes = await uriContent.getContentLengthOrNull(uri);
+    final Stream<List<int>> byteStream = uriContent.getContentStream(uri);
+    final BytesBuilder bytesBuilder = BytesBuilder(copy: false);
+    int bytesRead = 0;
+
+    await for (final List<int> chunk in byteStream) {
+      bytesBuilder.add(chunk);
+      bytesRead += chunk.length;
+
+      if (totalBytes != null && totalBytes > 0) {
+        onProgress?.call(bytesRead, totalBytes);
+      } else {
+        onProgress?.call(1, 2);
+      }
+    }
+
+    bytes = bytesBuilder.takeBytes();
+  } catch (e) {
+    debugPrint("Error reading content URI bytes: $e");
+    showSnackBar(SnackBar(content: Text('Failed to read file bytes: $e')));
+    bytes = null;
+  }
+
   FileMagicNumberType type = FileMagicNumber.detectFileTypeFromBytes(
     bytes ?? Uint8List(0),
   );

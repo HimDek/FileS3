@@ -1322,10 +1322,16 @@ class MediaPreviewState extends State<MediaPreview> {
 }
 
 class ExternalFileView extends StatefulWidget {
-  final String path;
+  final ValueNotifier<String> path;
+  final ValueNotifier<bool>? pathIsUri;
   final void Function()? upload;
 
-  const ExternalFileView({super.key, required this.path, this.upload});
+  const ExternalFileView({
+    super.key,
+    required this.path,
+    this.pathIsUri,
+    this.upload,
+  });
 
   @override
   State<ExternalFileView> createState() => _ExternalFileViewState();
@@ -1341,6 +1347,9 @@ class _ExternalFileViewState extends State<ExternalFileView> {
   final ValueNotifier<bool> _allowPaging = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _allowDragging = ValueNotifier<bool>(true);
+  final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
+
+  String? _mediaType;
 
   void _setPaging(bool paging) {
     _allowPaging.value = paging;
@@ -1379,9 +1388,23 @@ class _ExternalFileViewState extends State<ExternalFileView> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
   }
 
+  void _uriToPath() async {
+    if (widget.pathIsUri?.value == true) {
+      widget.path.value = (await uriToFile(
+        widget.path.value,
+        onProgress: (d, t) => _progress.value = d / t,
+      )).path;
+      widget.pathIsUri?.value = false;
+      setState(() {});
+    }
+  }
+
   @override
   void initState() {
+    _uriToPath();
     super.initState();
+
+    _mediaType = getMediaType(widget.path.value);
 
     _chromeVisible.addListener(() {
       if (_chromeVisible.value) {
@@ -1406,13 +1429,17 @@ class _ExternalFileViewState extends State<ExternalFileView> {
 
   @override
   Widget build(BuildContext context) {
-    String? mediaType = getMediaType(widget.path);
-
     return Scaffold(
       body: Stack(
         children: [
           ListenableBuilder(
-            listenable: Listenable.merge([_allowPaging, _chromeVisible]),
+            listenable: Listenable.merge([
+              _allowPaging,
+              _chromeVisible,
+              widget.path,
+              widget.pathIsUri,
+              _progress,
+            ]),
             builder: (context, _) => AnimatedPadding(
               padding: _chromeVisible.value
                   ? EdgeInsets.only(
@@ -1430,19 +1457,27 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                 onTap: () {
                   _chromeVisible.value = !_chromeVisible.value;
                 },
-                child: InteractiveMediaView(
-                  url: widget.path,
-                  path: widget.path,
-                  cachePath: widget.path,
-                  showControls: _chromeVisible.value,
-                  setPaging: _setPaging,
-                  setDragging: _setDragging,
+                child: Expanded(
+                  child: Center(
+                    child: widget.pathIsUri?.value != true
+                        ? InteractiveMediaView(
+                            url: widget.pathIsUri?.value == true
+                                ? widget.path.value
+                                : "file://${widget.path.value}",
+                            path: widget.path.value,
+                            cachePath: widget.path.value,
+                            showControls: _chromeVisible.value,
+                            setPaging: _setPaging,
+                            setDragging: _setDragging,
+                          )
+                        : CircularProgressIndicator(value: _progress.value),
+                  ),
                 ),
               ),
             ),
           ),
           ListenableBuilder(
-            listenable: _chromeVisible,
+            listenable: Listenable.merge([_chromeVisible, widget.path]),
             builder: (context, _) => SizedBox(
               height: kToolbarHeight + MediaQuery.of(context).padding.top,
               child: AnimatedSlide(
@@ -1459,7 +1494,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                     ).appBarTheme.backgroundColor,
                     title: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: Text(p.basename(widget.path)),
+                      child: Text(p.basename(widget.path.value)),
                     ),
                     actions: [
                       IconButton(
@@ -1473,7 +1508,12 @@ class _ExternalFileViewState extends State<ExternalFileView> {
             ),
           ),
           ListenableBuilder(
-            listenable: Listenable.merge([_chromeVisible, _allowDragging]),
+            listenable: Listenable.merge([
+              _chromeVisible,
+              _allowDragging,
+              widget.pathIsUri,
+              widget.path,
+            ]),
             builder: (context, _) => DraggableScrollableSheet(
               controller: _contextMenuSheetController,
               initialChildSize: _chromeVisible.value && _allowDragging.value
@@ -1524,24 +1564,24 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                             ListTile(
                               visualDensity: VisualDensity.comfortable,
                               leading: Icon(
-                                (mediaType ?? '').startsWith('image/')
+                                (_mediaType ?? '').startsWith('image/')
                                     ? Icons.image
-                                    : (mediaType ?? '').startsWith('video/')
+                                    : (_mediaType ?? '').startsWith('video/')
                                     ? Icons.videocam
-                                    : (mediaType ?? '').startsWith('audio/')
+                                    : (_mediaType ?? '').startsWith('audio/')
                                     ? Icons.audiotrack
-                                    : (mediaType ?? '').startsWith('text/')
+                                    : (_mediaType ?? '').startsWith('text/')
                                     ? Icons.description
-                                    : (mediaType ?? '').startsWith('font/')
+                                    : (_mediaType ?? '').startsWith('font/')
                                     ? Icons.font_download
-                                    : (mediaType ?? '').startsWith('message/')
+                                    : (_mediaType ?? '').startsWith('message/')
                                     ? Icons.message
-                                    : (mediaType ?? '').startsWith('model/')
+                                    : (_mediaType ?? '').startsWith('model/')
                                     ? Icons.model_training
-                                    : (mediaType ?? '').startsWith(
+                                    : (_mediaType ?? '').startsWith(
                                         'application/',
                                       )
-                                    ? (mediaType ?? '').toLowerCase() ==
+                                    ? (_mediaType ?? '').toLowerCase() ==
                                               'application/pdf'
                                           ? Icons.picture_as_pdf
                                           : Icons.apps
@@ -1549,19 +1589,21 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                               ),
                               title: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
-                                child: Text(widget.path),
+                                child: Text(widget.path.value),
                               ),
                               subtitle: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 child: Row(
                                   children: [
-                                    Text(
-                                      bytesToReadable(
-                                        File(widget.path).lengthSync(),
+                                    if (widget.pathIsUri?.value != true) ...[
+                                      Text(
+                                        bytesToReadable(
+                                          File(widget.path.value).lengthSync(),
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(p.extension(widget.path)),
+                                      const SizedBox(width: 8),
+                                    ],
+                                    Text(p.extension(widget.path.value)),
                                   ],
                                 ),
                               ),
@@ -1572,23 +1614,29 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                               title: const Text('Open with...'),
                               subtitle: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
-                                child: Text(widget.path),
+                                child: Text(widget.path.value),
                               ),
-                              onTap: () {
-                                OpenFile.open(widget.path);
-                              },
+                              onTap: widget.pathIsUri?.value != true
+                                  ? () {
+                                      OpenFile.open(widget.path.value);
+                                    }
+                                  : null,
                             ),
                             ListTile(
                               visualDensity: VisualDensity.comfortable,
                               leading: const Icon(Icons.share),
                               title: const Text('Share'),
-                              onTap: () {
-                                SharePlus.instance.share(
-                                  ShareParams(
-                                    files: <XFile>[XFile(widget.path)],
-                                  ),
-                                );
-                              },
+                              onTap: widget.pathIsUri?.value != true
+                                  ? () {
+                                      SharePlus.instance.share(
+                                        ShareParams(
+                                          files: <XFile>[
+                                            XFile(widget.path.value),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                  : null,
                             ),
                             if (widget.upload != null)
                               ListTile(

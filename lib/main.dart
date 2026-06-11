@@ -219,13 +219,10 @@ class _HomeState extends State<Home> {
       }
     }
     IniManager.save();
-    setState(() {});
   }
 
   Future<void> _createDirectory(String dir) async {
-    setState(() {
-      loading.value = true;
-    });
+    loading.value = true;
     try {
       await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
       Main.remoteFilesAdd(
@@ -242,9 +239,7 @@ class _HomeState extends State<Home> {
     } catch (e) {
       showSnackBar(SnackBar(content: Text('Error creating directory: $e')));
     }
-    setState(() {
-      loading.value = false;
-    });
+    loading.value = false;
   }
 
   Future<void> _copyFile(
@@ -252,9 +247,7 @@ class _HomeState extends State<Home> {
     String newKey, {
     bool refresh = true,
   }) async {
-    setState(() {
-      loading.value = true;
-    });
+    loading.value = true;
 
     RemoteFile oldFile = Main.remoteFiles.firstWhere((file) => file.key == key);
     RemoteFile newFile = RemoteFile(
@@ -297,9 +290,7 @@ class _HomeState extends State<Home> {
 
     Main.remoteFilesAdd(newFile);
     if (refresh) {
-      setState(() {
-        loading.value = false;
-      });
+      loading.value = false;
     }
   }
 
@@ -309,9 +300,7 @@ class _HomeState extends State<Home> {
     bool refresh = true,
     ValueNotifier<double>? preprogress,
   }) async {
-    setState(() {
-      loading.value = true;
-    });
+    loading.value = true;
     final files = Main.remoteFiles
         .where(
           (file) =>
@@ -333,9 +322,7 @@ class _HomeState extends State<Home> {
     }
 
     if (refresh) {
-      setState(() {
-        loading.value = false;
-      });
+      loading.value = false;
     }
   }
 
@@ -372,9 +359,7 @@ class _HomeState extends State<Home> {
     bool refresh = true,
     ValueNotifier<double>? preprogress,
   }) async {
-    setState(() {
-      loading.value = true;
-    });
+    loading.value = true;
 
     final List<String> files = Main.remoteFiles
         .where((file) => keys.contains(file.key) && !p.isDir(file.key))
@@ -412,9 +397,7 @@ class _HomeState extends State<Home> {
     }
 
     if (refresh) {
-      setState(() {
-        loading.value = false;
-      });
+      loading.value = false;
     }
   }
 
@@ -423,9 +406,7 @@ class _HomeState extends State<Home> {
     bool refresh = true,
     ValueNotifier<double>? preprogress,
   }) async {
-    setState(() {
-      loading.value = true;
-    });
+    loading.value = true;
 
     final List<RemoteFile> files = Main.remoteFiles
         .where(
@@ -492,9 +473,7 @@ class _HomeState extends State<Home> {
     }
 
     if (refresh) {
-      setState(() {
-        loading.value = false;
-      });
+      loading.value = false;
     }
   }
 
@@ -503,9 +482,7 @@ class _HomeState extends State<Home> {
     bool refresh = true,
     ValueNotifier<double>? preprogress,
   }) async {
-    setState(() {
-      loading.value = true;
-    });
+    loading.value = true;
 
     await _deleteS3(dirs, refresh: false, preprogress: preprogress ?? progress);
 
@@ -517,9 +494,7 @@ class _HomeState extends State<Home> {
     }
 
     if (refresh) {
-      setState(() {
-        loading.value = false;
-      });
+      loading.value = false;
     }
   }
 
@@ -528,9 +503,7 @@ class _HomeState extends State<Home> {
     List<String> newKeys, {
     bool refresh = true,
   }) async {
-    setState(() {
-      loading.value = true;
-    });
+    loading.value = true;
     for (int i = 0; i < keys.length; i++) {
       progress.value = (i + 1) * 0.5 / keys.length;
       await _copyFile(keys[i], newKeys[i], refresh: false);
@@ -546,9 +519,7 @@ class _HomeState extends State<Home> {
     await _deleteFiles(keys, refresh: false, preprogress: preprogress);
     preprogress.dispose();
     if (refresh) {
-      setState(() {
-        loading.value = false;
-      });
+      loading.value = false;
     }
   }
 
@@ -557,9 +528,7 @@ class _HomeState extends State<Home> {
     List<String> newDirs, {
     bool refresh = true,
   }) async {
-    setState(() {
-      loading.value = true;
-    });
+    loading.value = true;
     for (int i = 0; i < dirs.length; i++) {
       final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
       preprogress.addListener(() {
@@ -580,9 +549,7 @@ class _HomeState extends State<Home> {
     await _deleteDirectories(dirs, refresh: false, preprogress: preprogress);
     preprogress.dispose();
     if (refresh) {
-      setState(() {
-        loading.value = false;
-      });
+      loading.value = false;
     }
   }
 
@@ -745,9 +712,7 @@ class _HomeState extends State<Home> {
       }
     }
 
-    setState(() {
-      loading.value = true;
-    });
+    loading.value = true;
 
     await Main.init();
 
@@ -755,9 +720,7 @@ class _HomeState extends State<Home> {
     themeController.update(uiConfig.colorMode);
     ultraDarkController.update(uiConfig.ultraDark);
 
-    setState(() {
-      loading.value = false;
-    });
+    loading.value = false;
   }
 
   Future<void> _handleIntent(ReceiveIntent.Intent? intent) async {
@@ -789,8 +752,7 @@ class _HomeState extends State<Home> {
         final uri = intent.data;
 
         if (uri != null) {
-          final File file = await uriToFile(uri);
-          _openedFile.value = file.path;
+          _openedFile.value = uri;
         }
         break;
     }
@@ -802,7 +764,7 @@ class _HomeState extends State<Home> {
     super.initState();
 
     _sharedFiles.addListener(() {
-      final sharedFiles = _sharedFiles.value;
+      List<String> sharedFiles = _sharedFiles.value;
       if (sharedFiles.isNotEmpty) {
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -814,10 +776,27 @@ class _HomeState extends State<Home> {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
+              onInit: p.isAbsolute(sharedFiles.first)
+                  ? null
+                  : () async {
+                      loading.value = true;
+                      int totalCount = sharedFiles.length;
+                      int progressCount = 0;
+                      sharedFiles = await Future.wait(
+                        sharedFiles.map((e) async {
+                          String f = (await uriToFile(
+                            e,
+                            onProgress: (d, t) => progress.value =
+                                (progressCount + d / t) / totalCount,
+                          )).path;
+                          progressCount += 1;
+                          return f;
+                        }),
+                      );
+                      loading.value = false;
+                    },
               onPick: (path) async {
-                setState(() {
-                  loading.value = true;
-                });
+                loading.value = true;
                 for (final sharedFile in sharedFiles) {
                   final fileName = p.basename(sharedFile);
                   final remoteKey = p
@@ -825,9 +804,7 @@ class _HomeState extends State<Home> {
                       .replaceAll('\\', '/');
                   await Main.uploadFile(remoteKey, File(sharedFile));
                 }
-                setState(() {
-                  loading.value = false;
-                });
+                loading.value = false;
               },
             ),
           ),
@@ -837,12 +814,13 @@ class _HomeState extends State<Home> {
     });
 
     _openedFile.addListener(() {
-      final openedFile = _openedFile.value;
+      String? openedFile = _openedFile.value;
       if (openedFile != null) {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ExternalFileView(
-              path: openedFile,
+              path: ValueNotifier<String>(openedFile),
+              pathIsUri: ValueNotifier<bool>(!p.isAbsolute(openedFile)),
               upload: () {
                 _sharedFiles.value = [openedFile];
               },

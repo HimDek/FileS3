@@ -21,6 +21,7 @@ class PathPicker extends Browser {
     super.title,
     super.subtitle,
     super.initialDir,
+    super.onInit,
     required super.onPick,
   });
 
@@ -72,6 +73,7 @@ class MyBrowser extends Browser {
     super.title,
     super.subtitle,
     super.initialDir,
+    super.onInit,
     required super.setBackupMode,
     required super.downloadFile,
     required super.downloadDirectory,
@@ -362,6 +364,7 @@ class MyBrowserState extends BrowserState {
 class Browser extends StatefulWidget {
   final Widget title;
   final Widget? subtitle;
+  final Function()? onInit;
   final RemoteFile initialDir;
   final Widget? floatingActionButton;
   final Widget? bottomNavigationBar;
@@ -388,6 +391,7 @@ class Browser extends StatefulWidget {
     this.title = const Text('Select Path'),
     this.subtitle,
     this.initialDir = const RemoteFile(key: '', size: 0, etag: ''),
+    this.onInit,
     this.floatingActionButton,
     this.bottomNavigationBar,
     this.setBackupMode,
@@ -555,40 +559,38 @@ class BrowserState extends State<Browser> {
 
   Function()? _changeDirectory(RemoteFile dir) => () {
     final oldDir = _driveDir;
-    setState(() {
-      _navIndex = 0;
-      _controlsVisible.value = true;
-      _driveDir = dir;
-      _profile = Main.profileFromKey(_driveDir.key);
-      if (IniManager.config?.get('list_options', _driveDir.key) != null) {
-        _globalListOptions.value = false;
-      } else {
-        _globalListOptions.value = true;
-      }
-      _listOptions.value = ListOptions.fromJson(
-        IniManager.config?.get(
-              'list_options',
-              _globalListOptions.value || _navIndex != 0
-                  ? 'navindex_$_navIndex'
-                  : _driveDir.key,
-            ) ??
-            ListOptions().toJson(),
-      );
-      for (RemoteFile item in _selection) {
-        if (p.isWithin(item.key, _driveDir.key) || item.key == _driveDir.key) {
-          _driveDir = () {
-            String dir = _driveDir.key;
-            while (p.isWithin(item.key, dir) || item.key == dir) {
-              dir = p.s3(p.dirname(dir));
-              if (dir == '') {
-                break;
-              }
+    _navIndex = 0;
+    _controlsVisible.value = true;
+    _driveDir = dir;
+    _profile = Main.profileFromKey(_driveDir.key);
+    if (IniManager.config?.get('list_options', _driveDir.key) != null) {
+      _globalListOptions.value = false;
+    } else {
+      _globalListOptions.value = true;
+    }
+    _listOptions.value = ListOptions.fromJson(
+      IniManager.config?.get(
+            'list_options',
+            _globalListOptions.value || _navIndex != 0
+                ? 'navindex_$_navIndex'
+                : _driveDir.key,
+          ) ??
+          ListOptions().toJson(),
+    );
+    for (RemoteFile item in _selection) {
+      if (p.isWithin(item.key, _driveDir.key) || item.key == _driveDir.key) {
+        _driveDir = () {
+          String dir = _driveDir.key;
+          while (p.isWithin(item.key, dir) || item.key == dir) {
+            dir = p.s3(p.dirname(dir));
+            if (dir == '') {
+              break;
             }
-            return Main.remoteFiles.firstWhere((file) => file.key == dir);
-          }();
-        }
+          }
+          return Main.remoteFiles.firstWhere((file) => file.key == dir);
+        }();
       }
-    });
+    }
     _updateCounts();
     _scrollToFile(oldDir);
     if (_searching.value) {
@@ -667,10 +669,7 @@ class BrowserState extends State<Browser> {
   }
 
   Future<void> _search() async {
-    setState(() {
-      loading.value = true;
-    });
-
+    loading.value = true;
     _searchResults =
         [
           ...Main.remoteFiles.where(
@@ -702,9 +701,7 @@ class BrowserState extends State<Browser> {
           return false;
         }).toList();
 
-    setState(() {
-      loading.value = false;
-    });
+    loading.value = false;
   }
 
   void _setListOptions(ListOptions options) {
@@ -811,97 +808,96 @@ class BrowserState extends State<Browser> {
         };
 
   Widget _buildContextMenu(BuildContext context, RemoteFile? file) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: loading,
-      builder: (context, value, _) => SingleChildScrollView(
-        child: file == null
-            ? buildBulkContextMenu(
-                context,
-                _selection.toList(),
-                _getLink,
-                loading.value ? null : widget.downloadFile,
-                loading.value ? null : widget.downloadDirectory,
-                loading.value ? null : widget.saveFile,
-                loading.value ? null : widget.saveDirectory,
-                loading.value
-                    ? null
-                    : (keys, newKeys) async => await widget.moveFiles?.call(
-                        keys,
-                        newKeys,
-                        refresh: true,
-                      ),
-                loading.value
-                    ? null
-                    : (dirs, newDirs) async => await widget.moveDirectories
-                          ?.call(dirs, newDirs, refresh: true),
-                loading.value ? null : _cut,
-                loading.value ? null : _copy,
-                loading.value ? null : widget.deleteLocal,
-                loading.value
-                    ? null
-                    : (keys) async =>
-                          await widget.deleteFiles?.call(keys, refresh: true),
-                loading.value
-                    ? null
-                    : (dirs) async => await widget.deleteDirectories?.call(
-                        dirs,
-                        refresh: true,
-                      ),
-                () {
-                  _selection.clear();
-                  setState(() {});
-                },
-              )
-            : p.isDir(file.key)
-            ? buildDirectoryContextMenu(
-                context,
-                file,
-                loading.value ? null : widget.downloadDirectory,
-                loading.value ? null : widget.saveDirectory,
-                loading.value ? null : _cut,
-                loading.value ? null : _copy,
-                loading.value
-                    ? null
-                    : (List<String> dirs, List<String> newDirs) async =>
-                          await widget.moveDirectories?.call(
-                            dirs,
-                            newDirs,
-                            refresh: true,
-                          ),
-                loading.value ? null : widget.deleteLocal,
-                loading.value
-                    ? null
-                    : (List<String> dirs) async => await widget
-                          .deleteDirectories
-                          ?.call(dirs, refresh: true),
-                _count,
-                _dirSize,
-                _dirModified,
-                widget.setBackupMode!,
-              )
-            : buildFileContextMenu(
-                context,
-                file,
-                _getLink,
-                loading.value ? null : widget.downloadFile,
-                loading.value ? null : widget.saveFile,
-                loading.value ? null : _cut,
-                loading.value ? null : _copy,
-                loading.value
-                    ? null
-                    : (List<String> keys, List<String> newKeys) async =>
-                          await widget.moveFiles?.call(
-                            keys,
-                            newKeys,
-                            refresh: true,
-                          ),
-                loading.value ? null : widget.deleteLocal,
-                loading.value
-                    ? null
-                    : (List<String> keys) async =>
-                          await widget.deleteFiles?.call(keys, refresh: true),
-              ),
-      ),
+    return SingleChildScrollView(
+      child: file == null
+          ? buildBulkContextMenu(
+              context,
+              _selection.toList(),
+              _getLink,
+              loading.value ? null : widget.downloadFile,
+              loading.value ? null : widget.downloadDirectory,
+              loading.value ? null : widget.saveFile,
+              loading.value ? null : widget.saveDirectory,
+              loading.value
+                  ? null
+                  : (keys, newKeys) async => await widget.moveFiles?.call(
+                      keys,
+                      newKeys,
+                      refresh: true,
+                    ),
+              loading.value
+                  ? null
+                  : (dirs, newDirs) async => await widget.moveDirectories?.call(
+                      dirs,
+                      newDirs,
+                      refresh: true,
+                    ),
+              loading.value ? null : _cut,
+              loading.value ? null : _copy,
+              loading.value ? null : widget.deleteLocal,
+              loading.value
+                  ? null
+                  : (keys) async =>
+                        await widget.deleteFiles?.call(keys, refresh: true),
+              loading.value
+                  ? null
+                  : (dirs) async => await widget.deleteDirectories?.call(
+                      dirs,
+                      refresh: true,
+                    ),
+              () {
+                _selection.clear();
+                setState(() {});
+              },
+            )
+          : p.isDir(file.key)
+          ? buildDirectoryContextMenu(
+              context,
+              file,
+              loading.value ? null : widget.downloadDirectory,
+              loading.value ? null : widget.saveDirectory,
+              loading.value ? null : _cut,
+              loading.value ? null : _copy,
+              loading.value
+                  ? null
+                  : (List<String> dirs, List<String> newDirs) async =>
+                        await widget.moveDirectories?.call(
+                          dirs,
+                          newDirs,
+                          refresh: true,
+                        ),
+              loading.value ? null : widget.deleteLocal,
+              loading.value
+                  ? null
+                  : (List<String> dirs) async => await widget.deleteDirectories
+                        ?.call(dirs, refresh: true),
+              _count,
+              _dirSize,
+              _dirModified,
+              widget.setBackupMode!,
+            )
+          : buildFileContextMenu(
+              context,
+              file,
+              _getLink,
+              loading.value ? null : widget.downloadFile,
+              loading.value ? null : widget.saveFile,
+              loading.value ? null : _cut,
+              loading.value ? null : _copy,
+              loading.value
+                  ? null
+                  : (List<String> keys, List<String> newKeys) async =>
+                        await widget.moveFiles?.call(
+                          keys,
+                          newKeys,
+                          refresh: true,
+                        ),
+              loading.value ? null : widget.deleteLocal,
+              loading.value
+                  ? null
+                  : (List<String> keys) async =>
+                        await widget.deleteFiles?.call(keys, refresh: true),
+            ),
     );
   }
 
@@ -938,193 +934,181 @@ class BrowserState extends State<Browser> {
   }
 
   Widget _buildPopupMenu({bool showSettings = true}) {
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        loading,
-        _searching,
-        _listOptions,
-        _globalListOptions,
-      ]),
-      builder: (context, _) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(height: 0, width: 128),
-          ListTile(
-            dense: true,
-            enabled: !loading.value && !_searching.value,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Refresh', maxLines: 1),
-            trailing: loading.value
-                ? Icon(Icons.hourglass_empty)
-                : Icon(Icons.refresh),
-            onTap: () {
-              Main.listDirectories();
-            },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(height: 0, width: 128),
+        ListTile(
+          dense: true,
+          enabled: !loading.value && !_searching.value,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.only(left: 16, right: 16),
+          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+          title: Text('Refresh', maxLines: 1),
+          trailing: loading.value
+              ? Icon(Icons.hourglass_empty)
+              : Icon(Icons.refresh),
+          onTap: () {
+            Main.listDirectories();
+          },
+        ),
+        const PopupMenuDivider(),
+        ListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.only(left: 16, right: 16),
+          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+          title: Text('Name'),
+          trailing: _listOptions.value.sortMode == SortMode.nameAsc
+              ? Icon(Icons.arrow_upward)
+              : _listOptions.value.sortMode == SortMode.nameDesc
+              ? Icon(Icons.arrow_downward)
+              : null,
+          onTap: () {
+            _listOptions.value = _listOptions.value.sortMode == SortMode.nameAsc
+                ? _listOptions.value.copyWith(sortMode: SortMode.nameDesc)
+                : _listOptions.value.copyWith(sortMode: SortMode.nameAsc);
+            _setListOptions(_listOptions.value);
+          },
+        ),
+        ListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.only(left: 16, right: 16),
+          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+          title: Text('Date'),
+          trailing: _listOptions.value.sortMode == SortMode.dateAsc
+              ? Icon(Icons.arrow_upward)
+              : _listOptions.value.sortMode == SortMode.dateDesc
+              ? Icon(Icons.arrow_downward)
+              : null,
+          onTap: () {
+            _listOptions.value = _listOptions.value.sortMode == SortMode.dateAsc
+                ? _listOptions.value.copyWith(sortMode: SortMode.dateDesc)
+                : _listOptions.value.copyWith(sortMode: SortMode.dateAsc);
+            _setListOptions(_listOptions.value);
+          },
+        ),
+        ListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.only(left: 16, right: 16),
+          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+          title: Text('Size'),
+          trailing: _listOptions.value.sortMode == SortMode.sizeAsc
+              ? Icon(Icons.arrow_upward)
+              : _listOptions.value.sortMode == SortMode.sizeDesc
+              ? Icon(Icons.arrow_downward)
+              : null,
+          onTap: () {
+            _listOptions.value = _listOptions.value.sortMode == SortMode.sizeAsc
+                ? _listOptions.value.copyWith(sortMode: SortMode.sizeDesc)
+                : _listOptions.value.copyWith(sortMode: SortMode.sizeAsc);
+            _setListOptions(_listOptions.value);
+          },
+        ),
+        ListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.only(left: 16, right: 16),
+          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+          title: Text('Type'),
+          trailing: _listOptions.value.sortMode == SortMode.typeAsc
+              ? Icon(Icons.arrow_upward)
+              : _listOptions.value.sortMode == SortMode.typeDesc
+              ? Icon(Icons.arrow_downward)
+              : null,
+          onTap: () {
+            _listOptions.value = _listOptions.value.sortMode == SortMode.typeAsc
+                ? _listOptions.value.copyWith(sortMode: SortMode.typeDesc)
+                : _listOptions.value.copyWith(sortMode: SortMode.typeAsc);
+            _setListOptions(_listOptions.value);
+          },
+        ),
+        const PopupMenuDivider(),
+        CheckboxListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.only(left: 16, right: 16),
+          title: Text(
+            'Folders First',
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
+          value: _listOptions.value.foldersFirst,
+          onChanged: (value) {
+            _listOptions.value = _listOptions.value.copyWith(
+              foldersFirst: value ?? true,
+            );
+            _setListOptions(_listOptions.value);
+          },
+        ),
+        CheckboxListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.only(left: 16, right: 16),
+          title: Text(
+            'Grid View',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          value: _listOptions.value.viewMode == ViewMode.grid,
+          onChanged: (value) {
+            _listOptions.value = _listOptions.value.copyWith(
+              viewMode: value! ? ViewMode.grid : ViewMode.list,
+            );
+            _setListOptions(_listOptions.value);
+          },
+        ),
+        CheckboxListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.only(left: 16, right: 16),
+          title: Text(
+            'Grouped View',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          value: _listOptions.value.group,
+          onChanged: (value) {
+            _listOptions.value = _listOptions.value.copyWith(
+              group: value ?? true,
+            );
+            _setListOptions(_listOptions.value);
+          },
+        ),
+        const PopupMenuDivider(),
+        CheckboxListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          contentPadding: EdgeInsets.only(left: 16, right: 16),
+          title: Text(
+            'Use Global',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          value: _globalListOptions.value,
+          onChanged: (value) {
+            setState(() {
+              _globalListOptions.value = value ?? true;
+            });
+            _setListOptions(_listOptions.value);
+          },
+        ),
+        if (showSettings) ...[
           const PopupMenuDivider(),
           ListTile(
             dense: true,
             visualDensity: VisualDensity.compact,
             contentPadding: EdgeInsets.only(left: 16, right: 16),
             titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Name'),
-            trailing: _listOptions.value.sortMode == SortMode.nameAsc
-                ? Icon(Icons.arrow_upward)
-                : _listOptions.value.sortMode == SortMode.nameDesc
-                ? Icon(Icons.arrow_downward)
-                : null,
+            title: Text('Settings', maxLines: 1),
+            trailing: Icon(Icons.settings),
             onTap: () {
-              _listOptions.value =
-                  _listOptions.value.sortMode == SortMode.nameAsc
-                  ? _listOptions.value.copyWith(sortMode: SortMode.nameDesc)
-                  : _listOptions.value.copyWith(sortMode: SortMode.nameAsc);
-              _setListOptions(_listOptions.value);
+              Navigator.of(context).pop();
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
             },
           ),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Date'),
-            trailing: _listOptions.value.sortMode == SortMode.dateAsc
-                ? Icon(Icons.arrow_upward)
-                : _listOptions.value.sortMode == SortMode.dateDesc
-                ? Icon(Icons.arrow_downward)
-                : null,
-            onTap: () {
-              _listOptions.value =
-                  _listOptions.value.sortMode == SortMode.dateAsc
-                  ? _listOptions.value.copyWith(sortMode: SortMode.dateDesc)
-                  : _listOptions.value.copyWith(sortMode: SortMode.dateAsc);
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Size'),
-            trailing: _listOptions.value.sortMode == SortMode.sizeAsc
-                ? Icon(Icons.arrow_upward)
-                : _listOptions.value.sortMode == SortMode.sizeDesc
-                ? Icon(Icons.arrow_downward)
-                : null,
-            onTap: () {
-              _listOptions.value =
-                  _listOptions.value.sortMode == SortMode.sizeAsc
-                  ? _listOptions.value.copyWith(sortMode: SortMode.sizeDesc)
-                  : _listOptions.value.copyWith(sortMode: SortMode.sizeAsc);
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Type'),
-            trailing: _listOptions.value.sortMode == SortMode.typeAsc
-                ? Icon(Icons.arrow_upward)
-                : _listOptions.value.sortMode == SortMode.typeDesc
-                ? Icon(Icons.arrow_downward)
-                : null,
-            onTap: () {
-              _listOptions.value =
-                  _listOptions.value.sortMode == SortMode.typeAsc
-                  ? _listOptions.value.copyWith(sortMode: SortMode.typeDesc)
-                  : _listOptions.value.copyWith(sortMode: SortMode.typeAsc);
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          const PopupMenuDivider(),
-          CheckboxListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            title: Text(
-              'Folders First',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            value: _listOptions.value.foldersFirst,
-            onChanged: (value) {
-              _listOptions.value = _listOptions.value.copyWith(
-                foldersFirst: value ?? true,
-              );
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          CheckboxListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            title: Text(
-              'Grid View',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            value: _listOptions.value.viewMode == ViewMode.grid,
-            onChanged: (value) {
-              _listOptions.value = _listOptions.value.copyWith(
-                viewMode: value! ? ViewMode.grid : ViewMode.list,
-              );
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          CheckboxListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            title: Text(
-              'Grouped View',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            value: _listOptions.value.group,
-            onChanged: (value) {
-              _listOptions.value = _listOptions.value.copyWith(
-                group: value ?? true,
-              );
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          const PopupMenuDivider(),
-          CheckboxListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            title: Text(
-              'Use Global',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            value: _globalListOptions.value,
-            onChanged: (value) {
-              setState(() {
-                _globalListOptions.value = value ?? true;
-              });
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          if (showSettings) ...[
-            const PopupMenuDivider(),
-            ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              contentPadding: EdgeInsets.only(left: 16, right: 16),
-              titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-              title: Text('Settings', maxLines: 1),
-              trailing: Icon(Icons.settings),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
-              },
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 
@@ -1132,6 +1116,7 @@ class BrowserState extends State<Browser> {
   void initState() {
     _driveDir = widget.initialDir;
     super.initState();
+    widget.onInit?.call();
     _changeDirectory(widget.initialDir)?.call();
 
     _scrollController.addListener(() {
@@ -1145,15 +1130,11 @@ class BrowserState extends State<Browser> {
       }
     });
 
-    loading.addListener(() {
-      setState(() {});
-    });
     Main.setHomeState.addListener(() {
       setState(() {});
     });
     Main.onRemoteFilesChanged.addListener(() {
       _updateCounts();
-      setState(() {});
     });
   }
 
@@ -1217,9 +1198,8 @@ class BrowserState extends State<Browser> {
           return;
         }
         if (_searching.value) {
-          _searching.value = false;
           _selection.clear();
-          setState(() {});
+          _searching.value = false;
           return;
         }
         if (_navIndex != 0) {
@@ -1234,474 +1214,493 @@ class BrowserState extends State<Browser> {
           return;
         }
       },
-      child: Scaffold(
-        body: CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            SliverAppBar(
-              floating: _selection.isEmpty,
-              snap: _selection.isEmpty,
-              pinned: true,
-              actionsPadding: EdgeInsets.only(right: 24, top: 4, bottom: 4),
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_navIndex == 0)
-                    if (_searching.value && widget.onPick == null)
-                      Form(
-                        child: TextFormField(
-                          autofocus: true,
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            visualDensity: VisualDensity.compact,
-                            hintText: 'Search',
-                            border: InputBorder.none,
-                            isDense: true,
+      child: ListenableBuilder(
+        listenable: Listenable.merge([
+          loading,
+          _searching,
+          _listOptions,
+          _globalListOptions,
+        ]),
+        builder: (context, _) => Scaffold(
+          body: CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              SliverAppBar(
+                floating: _selection.isEmpty,
+                snap: _selection.isEmpty,
+                pinned: true,
+                actionsPadding: EdgeInsets.only(right: 24, top: 4, bottom: 4),
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_navIndex == 0)
+                      if (_searching.value && widget.onPick == null)
+                        Form(
+                          child: TextFormField(
+                            autofocus: true,
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              visualDensity: VisualDensity.compact,
+                              hintText: 'Search',
+                              border: InputBorder.none,
+                              isDense: true,
+                            ),
+                            onChanged: (value) {
+                              _selection.clear();
+                              _search();
+                            },
+                            onFieldSubmitted: (value) {
+                              _selection.clear();
+                              _search();
+                            },
                           ),
-                          onChanged: (value) {
-                            _selection.clear();
-                            _search();
-                          },
-                          onFieldSubmitted: (value) {
-                            _selection.clear();
-                            _search();
-                          },
-                        ),
-                      )
-                    else ...[
-                      widget.title,
-                      widget.subtitle ?? SizedBox.shrink(),
-                    ]
-                  else if (_navIndex == 1)
-                    const Text("Completed Jobs")
-                  else
-                    const Text("Active Jobs"),
+                        )
+                      else ...[
+                        widget.title,
+                        widget.subtitle ?? SizedBox.shrink(),
+                      ]
+                    else if (_navIndex == 1)
+                      const Text("Completed Jobs")
+                    else
+                      const Text("Active Jobs"),
 
-                  if (_navIndex == 0)
-                    _selection.isNotEmpty
-                        ? Text(
-                            "${_selectionAction == SelectionAction.none
-                                ? 'Selected '
-                                : _selectionAction == SelectionAction.cut
-                                ? 'Moving '
-                                : 'Copying '}${_selection.where((item) => p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => p.isDir(item.key)).length} Folders ' : ''}${_selection.where((item) => !p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => !p.isDir(item.key)).length} Files ' : ''}",
+                    if (_navIndex == 0)
+                      _selection.isNotEmpty
+                          ? Text(
+                              "${_selectionAction == SelectionAction.none
+                                  ? 'Selected '
+                                  : _selectionAction == SelectionAction.cut
+                                  ? 'Moving '
+                                  : 'Copying '}${_selection.where((item) => p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => p.isDir(item.key)).length} Folders ' : ''}${_selection.where((item) => !p.isDir(item.key)).isNotEmpty ? '${_selection.where((item) => !p.isDir(item.key)).length} Files ' : ''}",
 
-                            style: Theme.of(context).textTheme.bodySmall,
-                          )
-                        : _navIndex == 0 && widget.onPick == null
-                        ? Text(
-                            _searching.value
-                                ? "${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).length} Folders ' : ''}${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).length} Files ' : ''}found"
-                                : _dirCount > 0 || _fileCount > 0
-                                ? "${_dirCount > 0 ? '$_dirCount Folders ' : ''}${_fileCount > 0 ? '$_fileCount Files' : ''}"
-                                : "Empty",
-                            style: Theme.of(context).textTheme.bodySmall,
-                          )
-                        : SizedBox.shrink(),
-                ],
-              ),
-              actions: _navIndex == 1
-                  ? [
-                      if (Job.jobs
-                          .where((job) => job.status == JobStatus.completed)
-                          .isNotEmpty)
-                        IconButton(
-                          onPressed: () {
-                            Job.clearCompleted();
-                            setState(() {});
-                          },
-                          icon: Icon(Icons.clear_all_rounded),
-                        ),
-                    ]
-                  : _navIndex == 2
-                  ? [
-                      if (Job.jobs
-                          .where((job) => job.status != JobStatus.completed)
-                          .isNotEmpty)
-                        Job.jobs.any((job) => job.status == JobStatus.running)
-                            ? IconButton(
-                                onPressed: () {
-                                  Job.stopall();
-                                  setState(() {});
-                                },
-                                icon: Icon(Icons.stop),
-                              )
-                            : IconButton(
-                                onPressed: () {
-                                  Job.continueAll();
-                                  setState(() {});
-                                },
-                                icon: Icon(Icons.start),
-                              ),
-                    ]
-                  : _selection.isNotEmpty
-                  ? _selectionAction == SelectionAction.none
-                        ? [
-                            if (_selection.length < _allSelectableItems.length)
+                              style: Theme.of(context).textTheme.bodySmall,
+                            )
+                          : _navIndex == 0 && widget.onPick == null
+                          ? Text(
+                              _searching.value
+                                  ? "${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && p.isDir(item.key)).length} Folders ' : ''}${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).isNotEmpty ? '${_searchResults.where((item) => item is RemoteFile && !p.isDir(item.key)).length} Files ' : ''}found"
+                                  : _dirCount > 0 || _fileCount > 0
+                                  ? "${_dirCount > 0 ? '$_dirCount Folders ' : ''}${_fileCount > 0 ? '$_fileCount Files' : ''}"
+                                  : "Empty",
+                              style: Theme.of(context).textTheme.bodySmall,
+                            )
+                          : SizedBox.shrink(),
+                  ],
+                ),
+                actions: _navIndex == 1
+                    ? [
+                        if (Job.jobs
+                            .where((job) => job.status == JobStatus.completed)
+                            .isNotEmpty)
+                          IconButton(
+                            onPressed: () {
+                              Job.clearCompleted();
+                              setState(() {});
+                            },
+                            icon: Icon(Icons.clear_all_rounded),
+                          ),
+                      ]
+                    : _navIndex == 2
+                    ? [
+                        if (Job.jobs
+                            .where((job) => job.status != JobStatus.completed)
+                            .isNotEmpty)
+                          Job.jobs.any((job) => job.status == JobStatus.running)
+                              ? IconButton(
+                                  onPressed: () {
+                                    Job.stopall();
+                                    setState(() {});
+                                  },
+                                  icon: Icon(Icons.stop),
+                                )
+                              : IconButton(
+                                  onPressed: () {
+                                    Job.continueAll();
+                                    setState(() {});
+                                  },
+                                  icon: Icon(Icons.start),
+                                ),
+                      ]
+                    : _selection.isNotEmpty
+                    ? _selectionAction == SelectionAction.none
+                          ? [
+                              if (_selection.length <
+                                  _allSelectableItems.length)
+                                IconButton(
+                                  onPressed: () {
+                                    _selection.addAll(_allSelectableItems);
+                                    setState(() {});
+                                  },
+                                  icon: const Icon(Icons.select_all),
+                                ),
                               IconButton(
                                 onPressed: () {
-                                  _selection.addAll(_allSelectableItems);
+                                  _selection.clear();
                                   setState(() {});
                                 },
-                                icon: const Icon(Icons.select_all),
+                                icon: Icon(Icons.close),
                               ),
+                              if (!loading.value)
+                                IconButton(
+                                  onPressed: () async {
+                                    await Main.stopWatchers();
+                                    await _showContextMenu(null);
+                                  },
+                                  icon: Icon(Icons.more_vert),
+                                ),
+                            ]
+                          : [
+                              if (!loading.value)
+                                IconButton(
+                                  onPressed: _paste(),
+                                  icon: const Icon(Icons.paste),
+                                ),
+                              IconButton(
+                                onPressed: () {
+                                  _selectionAction = SelectionAction.none;
+                                  setState(() {});
+                                },
+                                icon: const Icon(Icons.close),
+                              ),
+                            ]
+                    : [
+                        if (!loading.value && widget.onPick == null) ...[
+                          if (!_searching.value ||
+                              _searchController.text.trim().isNotEmpty)
                             IconButton(
+                              icon: _searching.value
+                                  ? Icon(Icons.backspace)
+                                  : Icon(Icons.search),
+                              onPressed: _searching.value
+                                  ? () {
+                                      _selection.clear();
+                                      _searchController.clear();
+                                      _search();
+                                    }
+                                  : () async {
+                                      _selection.clear();
+                                      _searching.value = true;
+                                      _search();
+                                    },
+                            ),
+                          if (_searching.value)
+                            IconButton(
+                              icon: const Icon(Icons.close),
                               onPressed: () {
+                                _searching.value = false;
                                 _selection.clear();
                                 setState(() {});
                               },
-                              icon: Icon(Icons.close),
                             ),
-                            if (!loading.value)
-                              IconButton(
-                                onPressed: () async {
-                                  await Main.stopWatchers();
-                                  await _showContextMenu(null);
-                                },
-                                icon: Icon(Icons.more_vert),
-                              ),
-                          ]
-                        : [
-                            if (!loading.value)
-                              IconButton(
-                                onPressed: _paste(),
-                                icon: const Icon(Icons.paste),
-                              ),
-                            IconButton(
-                              onPressed: () {
-                                _selectionAction = SelectionAction.none;
-                                setState(() {});
-                              },
-                              icon: const Icon(Icons.close),
-                            ),
-                          ]
-                  : [
-                      if (!loading.value && widget.onPick == null) ...[
-                        if (!_searching.value ||
-                            _searchController.text.trim().isNotEmpty)
-                          IconButton(
-                            icon: _searching.value
-                                ? Icon(Icons.backspace)
-                                : Icon(Icons.search),
-                            onPressed: _searching.value
-                                ? () {
-                                    _selection.clear();
-                                    _searchController.clear();
-                                    _search();
-                                  }
-                                : () async {
-                                    _selection.clear();
-                                    _searching.value = true;
-                                    _search();
-                                  },
-                          ),
-                        if (_searching.value)
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () {
-                              _searching.value = false;
-                              _selection.clear();
-                              setState(() {});
-                            },
-                          ),
-                      ],
-                      IconButton(
-                        icon: const Icon(Icons.more_vert),
-                        onPressed: () {
-                          showMenu(
-                            context: context,
-                            position: RelativeRect.fromLTRB(1000, 60, 0, 0),
-                            menuPadding: EdgeInsets.zero,
-                            items: [
-                              PopupMenuItem(
-                                padding: EdgeInsets.zero,
-                                enabled: false,
-                                child: _buildPopupMenu(
-                                  showSettings: widget.onPick == null,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
-              bottom: _navIndex == 0
-                  ? PreferredSize(
-                      preferredSize: Size.fromHeight(() {
-                        return (28 +
-                                (_driveDir.key != '' ? 24 : 0) +
-                                (Main.pathFromKey(_driveDir.key) != null
-                                    ? 16
-                                    : 0) +
-                                (!(_profile?.accessible ?? false)
-                                    ? 16
-                                    : loading.value
-                                    ? 4
-                                    : 0))
-                            .toDouble();
-                      }()),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height:
-                            28 +
-                            (_driveDir.key != '' ? 24 : 0) +
-                            (Main.pathFromKey(_driveDir.key) != null ? 16 : 0) +
-                            (!(_profile == null
-                                    ? true
-                                    : _profile?.accessible ?? false)
-                                ? 16
-                                : loading.value
-                                ? 4
-                                : 0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.max,
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: EdgeInsets.only(
-                                left: 16,
-                                right: 16,
-                                top: 4,
-                                bottom: 8,
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: Row(
-                                      children: [
-                                        Text(
-                                          _dirModified(_driveDir),
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.labelSmall,
-                                        ),
-                                        SizedBox(width: 6),
-                                        Text(
-                                          bytesToReadable(_dirSize(_driveDir)),
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.labelSmall,
-                                        ),
-                                        SizedBox(width: 6),
-                                        Text(
-                                          () {
-                                            final count = _count(
-                                              _driveDir,
-                                              recursive: true,
-                                            );
-                                            if (count.$1 == 0) {
-                                              return '${count.$2} files';
-                                            }
-                                            if (count.$2 == 0) {
-                                              return '${count.$1} subfolders';
-                                            }
-                                            return '${count.$2} files in ${count.$1} subfolders';
-                                          }(),
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.labelSmall,
-                                        ),
-                                      ],
-                                    ),
+                        ],
+                        IconButton(
+                          icon: const Icon(Icons.more_vert),
+                          onPressed: () {
+                            showMenu(
+                              context: context,
+                              position: RelativeRect.fromLTRB(1000, 60, 0, 0),
+                              menuPadding: EdgeInsets.zero,
+                              items: [
+                                PopupMenuItem(
+                                  padding: EdgeInsets.zero,
+                                  enabled: false,
+                                  child: _buildPopupMenu(
+                                    showSettings: widget.onPick == null,
                                   ),
-                                  if (_driveDir.key != '')
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                bottom: _navIndex == 0
+                    ? PreferredSize(
+                        preferredSize: Size.fromHeight(() {
+                          return (28 +
+                                  (_driveDir.key != '' ? 24 : 0) +
+                                  (Main.pathFromKey(_driveDir.key) != null
+                                      ? 16
+                                      : 0) +
+                                  (!(_profile?.accessible ?? false)
+                                      ? 16
+                                      : loading.value
+                                      ? 4
+                                      : 0))
+                              .toDouble();
+                        }()),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height:
+                              28 +
+                              (_driveDir.key != '' ? 24 : 0) +
+                              (Main.pathFromKey(_driveDir.key) != null
+                                  ? 16
+                                  : 0) +
+                              (!(_profile == null
+                                      ? true
+                                      : _profile?.accessible ?? false)
+                                  ? 16
+                                  : loading.value
+                                  ? 4
+                                  : 0),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.max,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: EdgeInsets.only(
+                                  left: 16,
+                                  right: 16,
+                                  top: 4,
+                                  bottom: 8,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     SingleChildScrollView(
                                       scrollDirection: Axis.horizontal,
                                       child: Row(
-                                        children:
-                                            <Widget>[
-                                                  GestureDetector(
-                                                    onTap: _changeDirectory(
-                                                      RemoteFile(
-                                                        key: '',
-                                                        size: 0,
-                                                        etag: '',
+                                        children: [
+                                          Text(
+                                            _dirModified(_driveDir),
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.labelSmall,
+                                          ),
+                                          SizedBox(width: 6),
+                                          Text(
+                                            bytesToReadable(
+                                              _dirSize(_driveDir),
+                                            ),
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.labelSmall,
+                                          ),
+                                          SizedBox(width: 6),
+                                          Text(
+                                            () {
+                                              final count = _count(
+                                                _driveDir,
+                                                recursive: true,
+                                              );
+                                              if (count.$1 == 0) {
+                                                return '${count.$2} files';
+                                              }
+                                              if (count.$2 == 0) {
+                                                return '${count.$1} subfolders';
+                                              }
+                                              return '${count.$2} files in ${count.$1} subfolders';
+                                            }(),
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.labelSmall,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (_driveDir.key != '')
+                                      SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: Row(
+                                          children:
+                                              <Widget>[
+                                                    GestureDetector(
+                                                      onTap: _changeDirectory(
+                                                        RemoteFile(
+                                                          key: '',
+                                                          size: 0,
+                                                          etag: '',
+                                                        ),
+                                                      ),
+                                                      child: Text(
+                                                        'FileS3',
+                                                        style: Theme.of(
+                                                          context,
+                                                        ).textTheme.bodyLarge,
                                                       ),
                                                     ),
-                                                    child: Text(
-                                                      'FileS3',
-                                                      style: Theme.of(
-                                                        context,
-                                                      ).textTheme.bodyLarge,
-                                                    ),
-                                                  ),
-                                                ]
-                                                .followedBy(
-                                                  p
-                                                      .split(_driveDir.key)
-                                                      .where(
-                                                        (dir) => dir.isNotEmpty,
-                                                      )
-                                                      .map(
-                                                        (
-                                                          dir,
-                                                        ) => GestureDetector(
-                                                          onTap: () {
-                                                            String newPath = '';
-                                                            for (final part
-                                                                in p.split(
-                                                                  _driveDir.key,
-                                                                )) {
-                                                              if (part
-                                                                  .isEmpty) {
-                                                                continue;
-                                                              }
-                                                              newPath += p
-                                                                  .asDir(part);
-                                                              if (part == dir) {
-                                                                break;
-                                                              }
-                                                            }
-                                                            _changeDirectory(
-                                                              Main.remoteFiles
-                                                                  .firstWhere(
-                                                                    (file) =>
-                                                                        p.s3(
-                                                                          file.key,
-                                                                        ) ==
-                                                                        p.s3(
-                                                                          newPath,
-                                                                        ),
-                                                                  ),
-                                                            )?.call();
-                                                          },
-                                                          child: Text(
+                                                  ]
+                                                  .followedBy(
+                                                    p
+                                                        .split(_driveDir.key)
+                                                        .where(
+                                                          (dir) =>
+                                                              dir.isNotEmpty,
+                                                        )
+                                                        .map(
+                                                          (
                                                             dir,
-                                                            style:
-                                                                Theme.of(
-                                                                      context,
-                                                                    )
-                                                                    .textTheme
-                                                                    .bodyLarge,
+                                                          ) => GestureDetector(
+                                                            onTap: () {
+                                                              String newPath =
+                                                                  '';
+                                                              for (final part
+                                                                  in p.split(
+                                                                    _driveDir
+                                                                        .key,
+                                                                  )) {
+                                                                if (part
+                                                                    .isEmpty) {
+                                                                  continue;
+                                                                }
+                                                                newPath += p
+                                                                    .asDir(
+                                                                      part,
+                                                                    );
+                                                                if (part ==
+                                                                    dir) {
+                                                                  break;
+                                                                }
+                                                              }
+                                                              _changeDirectory(
+                                                                Main.remoteFiles
+                                                                    .firstWhere(
+                                                                      (file) =>
+                                                                          p.s3(
+                                                                            file.key,
+                                                                          ) ==
+                                                                          p.s3(
+                                                                            newPath,
+                                                                          ),
+                                                                    ),
+                                                              )?.call();
+                                                            },
+                                                            child: Text(
+                                                              dir,
+                                                              style:
+                                                                  Theme.of(
+                                                                        context,
+                                                                      )
+                                                                      .textTheme
+                                                                      .bodyLarge,
+                                                            ),
+                                                          ),
+                                                        )
+                                                        .map(
+                                                          (widget) => Row(
+                                                            children: [
+                                                              const Icon(
+                                                                Icons
+                                                                    .chevron_right,
+                                                                size: 16,
+                                                              ),
+                                                              widget,
+                                                            ],
                                                           ),
                                                         ),
-                                                      )
-                                                      .map(
-                                                        (widget) => Row(
-                                                          children: [
-                                                            const Icon(
-                                                              Icons
-                                                                  .chevron_right,
-                                                              size: 16,
-                                                            ),
-                                                            widget,
-                                                          ],
-                                                        ),
-                                                      ),
-                                                )
-                                                .toList(),
-                                      ),
-                                    ),
-                                  if (Main.pathFromKey(_driveDir.key) != null)
-                                    Row(
-                                      children: [
-                                        Text(
-                                          '${Main.backupModeFromKey(_driveDir.key).name}: ',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.labelSmall,
+                                                  )
+                                                  .toList(),
                                         ),
-                                        SizedBox(width: 4),
-                                        Expanded(
-                                          child: SingleChildScrollView(
-                                            scrollDirection: Axis.horizontal,
-                                            child: GestureDetector(
-                                              child: Text(
-                                                Main.pathFromKey(
-                                                      _driveDir.key,
-                                                    ) ??
-                                                    '',
-                                                style: Theme.of(
-                                                  context,
-                                                ).textTheme.labelSmall,
+                                      ),
+                                    if (Main.pathFromKey(_driveDir.key) != null)
+                                      Row(
+                                        children: [
+                                          Text(
+                                            '${Main.backupModeFromKey(_driveDir.key).name}: ',
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.labelSmall,
+                                          ),
+                                          SizedBox(width: 4),
+                                          Expanded(
+                                            child: SingleChildScrollView(
+                                              scrollDirection: Axis.horizontal,
+                                              child: GestureDetector(
+                                                child: Text(
+                                                  Main.pathFromKey(
+                                                        _driveDir.key,
+                                                      ) ??
+                                                      '',
+                                                  style: Theme.of(
+                                                    context,
+                                                  ).textTheme.labelSmall,
+                                                ),
+                                                onTap: () {
+                                                  // TODO: Open file explorer at this location
+                                                },
                                               ),
-                                              onTap: () {
-                                                // TODO: Open file explorer at this location
-                                              },
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                ],
-                              ),
-                            ),
-                            if (!(_profile == null
-                                ? true
-                                : _profile?.accessible ?? false))
-                              Container(
-                                width: double.infinity,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.errorContainer,
-                                alignment: Alignment.center,
-                                child: Text(
-                                  'Remote access failed!',
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onErrorContainer,
+                                        ],
                                       ),
+                                  ],
                                 ),
                               ),
-                            if ((_profile == null
-                                    ? true
-                                    : _profile?.accessible ?? false) &&
-                                loading.value)
-                              ValueListenableBuilder<double>(
-                                valueListenable: progress,
-                                builder: (context, value, _) =>
-                                    LinearProgressIndicator(
-                                      value: value <= 0.0 || value >= 1.0
-                                          ? null
-                                          : value,
-                                    ),
-                              ),
-                          ],
+                              if (!(_profile == null
+                                  ? true
+                                  : _profile?.accessible ?? false))
+                                Container(
+                                  width: double.infinity,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.errorContainer,
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    'Remote access failed!',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onErrorContainer,
+                                        ),
+                                  ),
+                                ),
+                              if ((_profile == null
+                                      ? true
+                                      : _profile?.accessible ?? false) &&
+                                  loading.value)
+                                LinearProgressIndicator(
+                                  value:
+                                      progress.value <= 0.0 ||
+                                          progress.value >= 1.0
+                                      ? null
+                                      : progress.value,
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                    )
-                  : null,
-            ),
-            ListFiles(
-              files: _getCurrentItems().toList(),
-              galleryFiles: _galleryFiles,
-              setGalleryFiles: _setGalleryFiles,
-              keysOffsetMap: _keysOffsetMap,
-              sortMode: _listOptions.value.sortMode,
-              gridView: _listOptions.value.viewMode == ViewMode.grid,
-              group: _listOptions.value.group,
-              relativeto: _driveDir,
-              selection: _selection,
-              selectionAction: _selectionAction,
-              showGallery: _pushGallery,
-              onUpdate: () {
-                setState(() {});
-              },
-              changeDirectory: _changeDirectory,
-              getSelectAction: widget.onPick == null
-                  ? _getSelectAction
-                  : (RemoteFile file) => () {},
-              showContextMenu: widget.onPick == null
-                  ? (file) async {
-                      await Main.stopWatchers();
-                      await _showContextMenu(file);
-                    }
-                  : null,
-              count: _count,
-              dirSize: _dirSize,
-              dirModified: _dirModified,
-            ),
-            SliverToBoxAdapter(child: SizedBox(height: 256)),
-          ],
+                      )
+                    : null,
+              ),
+              ListFiles(
+                files: _getCurrentItems().toList(),
+                galleryFiles: _galleryFiles,
+                setGalleryFiles: _setGalleryFiles,
+                keysOffsetMap: _keysOffsetMap,
+                sortMode: _listOptions.value.sortMode,
+                gridView: _listOptions.value.viewMode == ViewMode.grid,
+                group: _listOptions.value.group,
+                relativeto: _driveDir,
+                selection: _selection,
+                selectionAction: _selectionAction,
+                showGallery: _pushGallery,
+                onUpdate: () {
+                  setState(() {});
+                },
+                changeDirectory: _changeDirectory,
+                getSelectAction: widget.onPick == null
+                    ? _getSelectAction
+                    : (RemoteFile file) => () {},
+                showContextMenu: widget.onPick == null
+                    ? (file) async {
+                        await Main.stopWatchers();
+                        await _showContextMenu(file);
+                      }
+                    : null,
+                count: _count,
+                dirSize: _dirSize,
+                dirModified: _dirModified,
+              ),
+              SliverToBoxAdapter(child: SizedBox(height: 256)),
+            ],
+          ),
+          floatingActionButton: floatingActionButton(context),
+          bottomNavigationBar: bottomNavigationBar(context),
         ),
-        floatingActionButton: floatingActionButton(context),
-        bottomNavigationBar: bottomNavigationBar(context),
       ),
     );
   }
