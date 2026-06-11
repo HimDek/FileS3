@@ -776,7 +776,7 @@ class _HomeState extends State<Home> {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-              onInit: p.isAbsolute(sharedFiles.first)
+              onInit: RegExp(r'^[a-zA-Z]+://').hasMatch(sharedFiles.first)
                   ? null
                   : () async {
                       loading.value = true;
@@ -820,7 +820,9 @@ class _HomeState extends State<Home> {
           MaterialPageRoute(
             builder: (context) => ExternalFileView(
               path: ValueNotifier<String>(openedFile),
-              pathIsUri: ValueNotifier<bool>(!p.isAbsolute(openedFile)),
+              pathIsUri: ValueNotifier<bool>(
+                RegExp(r'^[a-zA-Z]+://').hasMatch(openedFile),
+              ),
               upload: () {
                 _sharedFiles.value = [openedFile];
               },
