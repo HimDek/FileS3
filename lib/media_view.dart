@@ -836,13 +836,10 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
     updateMediaType();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mediaType.startsWith('image/')) {
-        widget.setPaging?.call(true);
         widget.setDragging?.call(true);
       } else if (mediaType.toLowerCase() == 'application/pdf') {
-        widget.setPaging?.call(true);
         widget.setDragging?.call(false);
       } else {
-        widget.setPaging?.call(true);
         widget.setDragging?.call(true);
       }
     });
@@ -1030,14 +1027,15 @@ class GalleryState extends State<Gallery> {
         _hideBottomSheet();
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _chromeVisible.value = true;
-    });
 
     _contextMenuSheetController.addListener(() {
       if (_contextMenuSheetController.size <= 0) {
         _chromeVisible.value = false;
       }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chromeVisible.value = true;
     });
   }
 
@@ -1405,20 +1403,23 @@ class _ExternalFileViewState extends State<ExternalFileView> {
     _mediaType = getMediaType(widget.path);
 
     _chromeVisible.addListener(() {
-      if (_chromeVisible.value) {
+      if (_chromeVisible.value &&
+          _contextMenuSheetController.size <= _defaultBottomSheetSize) {
         _collapseBottomSheet();
-      } else {
+      } else if (!_chromeVisible.value &&
+          _contextMenuSheetController.size > 0) {
         _hideBottomSheet();
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _chromeVisible.value = true;
-    });
 
     _contextMenuSheetController.addListener(() {
-      if (_contextMenuSheetController.size <= 0) {
+      if (_contextMenuSheetController.size <= 0 && _chromeVisible.value) {
         _chromeVisible.value = false;
       }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chromeVisible.value = true;
     });
   }
 
