@@ -554,7 +554,6 @@ class _HomeState extends State<Home> {
   }
 
   void _downloadFile(RemoteFile file, {String? localPath}) {
-    print('Checking file: ${file.key}, localPath: $localPath');
     if (!File(Main.pathFromKey(file.key) ?? file.key).existsSync()) {
       if (Main.backupModeFromKey(file.key) != BackupMode.sync &&
           (localPath ?? Main.pathFromKey(file.key)) ==
