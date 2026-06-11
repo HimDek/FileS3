@@ -14,9 +14,6 @@ import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
 
-HttpClient httpClient = HttpClient();
-UriContent uriContent = UriContent(httpClient: httpClient);
-
 Future<File> uriToFile(
   String uriString, {
   void Function(int, int)? onProgress,
@@ -388,9 +385,6 @@ class BoolNotifier extends ChangeNotifier {
     notifyListeners();
   }
 }
-
-final themeController = ThemeController();
-final ultraDarkController = UltraDarkController();
 
 abstract class IniManager {
   static late File _file;

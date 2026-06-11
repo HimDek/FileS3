@@ -1,4 +1,7 @@
+import 'dart:io';
+import 'package:uri_content/uri_content.dart';
 import 'package:flutter/material.dart';
+import 'package:files3/helpers.dart';
 
 GlobalKey globalKey = GlobalKey();
 BuildContext? get globalContext => globalKey.currentContext;
@@ -8,6 +11,12 @@ NavigatorState? get globalNavigator =>
     globalContext == null ? null : Navigator.of(globalContext!);
 ThemeData? get globalTheme =>
     globalContext == null ? null : Theme.of(globalContext!);
+
+final themeController = ThemeController();
+final ultraDarkController = UltraDarkController();
+
+HttpClient httpClient = HttpClient();
+UriContent uriContent = UriContent(httpClient: httpClient);
 
 ValueNotifier<bool> loading = ValueNotifier<bool>(true);
 ValueNotifier<double> progress = ValueNotifier<double>(0.0);

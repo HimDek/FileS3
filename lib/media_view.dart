@@ -655,6 +655,7 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _pdfPath = null;
     _pdfUrl = null;
     _pdfViewerController = null;
@@ -1054,11 +1055,11 @@ class GalleryState extends State<Gallery> {
   @override
   void dispose() {
     _pageController.dispose();
+    _contextMenuSheetController.dispose();
     _currentIndex.dispose();
     _allowPaging.dispose();
     _chromeVisible.dispose();
     _allowDragging.dispose();
-    _contextMenuSheetController.dispose();
     super.dispose();
   }
 
@@ -1337,7 +1338,6 @@ class _ExternalFileViewState extends State<ExternalFileView> {
 
   final DraggableScrollableController _contextMenuSheetController =
       DraggableScrollableController();
-
   final ValueNotifier<bool> _allowPaging = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _allowDragging = ValueNotifier<bool>(true);
@@ -1418,10 +1418,12 @@ class _ExternalFileViewState extends State<ExternalFileView> {
 
   @override
   void dispose() {
+    _contextMenuSheetController.dispose();
     _allowPaging.dispose();
     _chromeVisible.dispose();
     _allowDragging.dispose();
-    _contextMenuSheetController.dispose();
+    _progress.dispose();
+    _path.dispose();
     super.dispose();
   }
 

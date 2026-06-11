@@ -763,10 +763,10 @@ class _HomeState extends State<Home> {
     _init();
     super.initState();
 
-    _sharedFiles.addListener(() {
+    _sharedFiles.addListener(() async {
       List<String> sharedFiles = _sharedFiles.value;
       if (sharedFiles.isNotEmpty) {
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => PathPicker(
               title: Text('Select Upload Location'),
@@ -810,13 +810,14 @@ class _HomeState extends State<Home> {
           ),
         );
         _sharedFiles.value = [];
+        ReceiveIntent.ReceiveIntent.setResult(200);
       }
     });
 
-    _openedFile.addListener(() {
+    _openedFile.addListener(() async {
       String? openedFile = _openedFile.value;
       if (openedFile != null) {
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ExternalFileView(
               path: openedFile,
@@ -827,6 +828,7 @@ class _HomeState extends State<Home> {
           ),
         );
         _openedFile.value = null;
+        ReceiveIntent.ReceiveIntent.setResult(200);
       }
     });
 
@@ -836,6 +838,7 @@ class _HomeState extends State<Home> {
       },
       onError: (err) {
         showSnackBar(SnackBar(content: Text('Error receiving intent: $err')));
+        ReceiveIntent.ReceiveIntent.setResult(500);
       },
     );
 
@@ -849,6 +852,8 @@ class _HomeState extends State<Home> {
   @override
   void dispose() {
     _intentSub.cancel();
+    _sharedFiles.dispose();
+    _openedFile.dispose();
     super.dispose();
   }
 

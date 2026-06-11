@@ -418,6 +418,10 @@ class Browser extends StatefulWidget {
 class BrowserState extends State<Browser> {
   final Set<RemoteFile> _selection = <RemoteFile>{};
   final List<RemoteFile> _allSelectableItems = <RemoteFile>[];
+  final List<Object> _searchResults = <Object>[];
+  final List<GalleryProps> _galleryFiles = <GalleryProps>[];
+  final Map<String, double> _keysOffsetMap = <String, double>{};
+
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
   );
@@ -426,15 +430,13 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<bool> _controlsVisible = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _globalListOptions = ValueNotifier<bool>(true);
   final ValueNotifier<ListOptions> _listOptions = ValueNotifier(ListOptions());
-  final Map<String, double> _keysOffsetMap = <String, double>{};
-  final List<GalleryProps> _galleryFiles = <GalleryProps>[];
+
   late RemoteFile _driveDir;
   Timer? _inaccessibleTimer;
-  List<Object> _searchResults = <Object>[];
+  Profile? _profile;
   SelectionAction _selectionAction = SelectionAction.none;
   int _dirCount = 0;
   int _fileCount = 0;
-  Profile? _profile;
   int _navIndex = 0;
 
   String _dirModified(RemoteFile dir) {
@@ -670,36 +672,38 @@ class BrowserState extends State<Browser> {
 
   Future<void> _search() async {
     loading.value = true;
-    _searchResults =
-        [
-          ...Main.remoteFiles.where(
-            (file) =>
-                p.isWithin(p.s3(_driveDir.key), p.s3(file.key)) &&
-                !Job.jobs.any(
-                  (job) =>
-                      job.remoteKey == file.key &&
-                      job.status != JobStatus.completed,
-                ),
-          ),
-          ...Job.jobs.where(
-            (job) =>
-                p.isWithin(p.s3(_driveDir.key), p.s3(job.remoteKey)) &&
-                job.status != JobStatus.completed,
-          ),
-        ].where((item) {
-          if (item is RemoteFile) {
-            return p
-                .s3(p.relative(item.key, from: _driveDir.key))
-                .toLowerCase()
-                .contains(_searchController.text.trim().toLowerCase());
-          } else if (item is Job) {
-            return p
-                .s3(p.relative(item.remoteKey, from: _driveDir.key))
-                .toLowerCase()
-                .contains(_searchController.text.trim().toLowerCase());
-          }
-          return false;
-        }).toList();
+    _searchResults.clear();
+    _searchResults.addAll(
+      [
+        ...Main.remoteFiles.where(
+          (file) =>
+              p.isWithin(p.s3(_driveDir.key), p.s3(file.key)) &&
+              !Job.jobs.any(
+                (job) =>
+                    job.remoteKey == file.key &&
+                    job.status != JobStatus.completed,
+              ),
+        ),
+        ...Job.jobs.where(
+          (job) =>
+              p.isWithin(p.s3(_driveDir.key), p.s3(job.remoteKey)) &&
+              job.status != JobStatus.completed,
+        ),
+      ].where((item) {
+        if (item is RemoteFile) {
+          return p
+              .s3(p.relative(item.key, from: _driveDir.key))
+              .toLowerCase()
+              .contains(_searchController.text.trim().toLowerCase());
+        } else if (item is Job) {
+          return p
+              .s3(p.relative(item.remoteKey, from: _driveDir.key))
+              .toLowerCase()
+              .contains(_searchController.text.trim().toLowerCase());
+        }
+        return false;
+      }).toList(),
+    );
 
     loading.value = false;
   }
@@ -808,96 +812,97 @@ class BrowserState extends State<Browser> {
         };
 
   Widget _buildContextMenu(BuildContext context, RemoteFile? file) {
-    return SingleChildScrollView(
-      child: file == null
-          ? buildBulkContextMenu(
-              context,
-              _selection.toList(),
-              _getLink,
-              loading.value ? null : widget.downloadFile,
-              loading.value ? null : widget.downloadDirectory,
-              loading.value ? null : widget.saveFile,
-              loading.value ? null : widget.saveDirectory,
-              loading.value
-                  ? null
-                  : (keys, newKeys) async => await widget.moveFiles?.call(
-                      keys,
-                      newKeys,
-                      refresh: true,
-                    ),
-              loading.value
-                  ? null
-                  : (dirs, newDirs) async => await widget.moveDirectories?.call(
-                      dirs,
-                      newDirs,
-                      refresh: true,
-                    ),
-              loading.value ? null : _cut,
-              loading.value ? null : _copy,
-              loading.value ? null : widget.deleteLocal,
-              loading.value
-                  ? null
-                  : (keys) async =>
-                        await widget.deleteFiles?.call(keys, refresh: true),
-              loading.value
-                  ? null
-                  : (dirs) async => await widget.deleteDirectories?.call(
-                      dirs,
-                      refresh: true,
-                    ),
-              () {
-                _selection.clear();
-                setState(() {});
-              },
-            )
-          : p.isDir(file.key)
-          ? buildDirectoryContextMenu(
-              context,
-              file,
-              loading.value ? null : widget.downloadDirectory,
-              loading.value ? null : widget.saveDirectory,
-              loading.value ? null : _cut,
-              loading.value ? null : _copy,
-              loading.value
-                  ? null
-                  : (List<String> dirs, List<String> newDirs) async =>
-                        await widget.moveDirectories?.call(
-                          dirs,
-                          newDirs,
-                          refresh: true,
-                        ),
-              loading.value ? null : widget.deleteLocal,
-              loading.value
-                  ? null
-                  : (List<String> dirs) async => await widget.deleteDirectories
-                        ?.call(dirs, refresh: true),
-              _count,
-              _dirSize,
-              _dirModified,
-              widget.setBackupMode!,
-            )
-          : buildFileContextMenu(
-              context,
-              file,
-              _getLink,
-              loading.value ? null : widget.downloadFile,
-              loading.value ? null : widget.saveFile,
-              loading.value ? null : _cut,
-              loading.value ? null : _copy,
-              loading.value
-                  ? null
-                  : (List<String> keys, List<String> newKeys) async =>
-                        await widget.moveFiles?.call(
-                          keys,
-                          newKeys,
-                          refresh: true,
-                        ),
-              loading.value ? null : widget.deleteLocal,
-              loading.value
-                  ? null
-                  : (List<String> keys) async =>
-                        await widget.deleteFiles?.call(keys, refresh: true),
-            ),
+    return ListenableBuilder(
+      listenable: loading,
+      builder: (context, _) => SingleChildScrollView(
+        child: file == null
+            ? buildBulkContextMenu(
+                context,
+                _selection.toList(),
+                _getLink,
+                loading.value ? null : widget.downloadFile,
+                loading.value ? null : widget.downloadDirectory,
+                loading.value ? null : widget.saveFile,
+                loading.value ? null : widget.saveDirectory,
+                loading.value
+                    ? null
+                    : (keys, newKeys) async => await widget.moveFiles?.call(
+                        keys,
+                        newKeys,
+                        refresh: true,
+                      ),
+                loading.value
+                    ? null
+                    : (dirs, newDirs) async => await widget.moveDirectories
+                          ?.call(dirs, newDirs, refresh: true),
+                loading.value ? null : _cut,
+                loading.value ? null : _copy,
+                loading.value ? null : widget.deleteLocal,
+                loading.value
+                    ? null
+                    : (keys) async =>
+                          await widget.deleteFiles?.call(keys, refresh: true),
+                loading.value
+                    ? null
+                    : (dirs) async => await widget.deleteDirectories?.call(
+                        dirs,
+                        refresh: true,
+                      ),
+                () {
+                  _selection.clear();
+                  setState(() {});
+                },
+              )
+            : p.isDir(file.key)
+            ? buildDirectoryContextMenu(
+                context,
+                file,
+                loading.value ? null : widget.downloadDirectory,
+                loading.value ? null : widget.saveDirectory,
+                loading.value ? null : _cut,
+                loading.value ? null : _copy,
+                loading.value
+                    ? null
+                    : (List<String> dirs, List<String> newDirs) async =>
+                          await widget.moveDirectories?.call(
+                            dirs,
+                            newDirs,
+                            refresh: true,
+                          ),
+                loading.value ? null : widget.deleteLocal,
+                loading.value
+                    ? null
+                    : (List<String> dirs) async => await widget
+                          .deleteDirectories
+                          ?.call(dirs, refresh: true),
+                _count,
+                _dirSize,
+                _dirModified,
+                widget.setBackupMode!,
+              )
+            : buildFileContextMenu(
+                context,
+                file,
+                _getLink,
+                loading.value ? null : widget.downloadFile,
+                loading.value ? null : widget.saveFile,
+                loading.value ? null : _cut,
+                loading.value ? null : _copy,
+                loading.value
+                    ? null
+                    : (List<String> keys, List<String> newKeys) async =>
+                          await widget.moveFiles?.call(
+                            keys,
+                            newKeys,
+                            refresh: true,
+                          ),
+                loading.value ? null : widget.deleteLocal,
+                loading.value
+                    ? null
+                    : (List<String> keys) async =>
+                          await widget.deleteFiles?.call(keys, refresh: true),
+              ),
+      ),
     );
   }
 
@@ -934,181 +939,193 @@ class BrowserState extends State<Browser> {
   }
 
   Widget _buildPopupMenu({bool showSettings = true}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(height: 0, width: 128),
-        ListTile(
-          dense: true,
-          enabled: !loading.value && !_searching.value,
-          visualDensity: VisualDensity.compact,
-          contentPadding: EdgeInsets.only(left: 16, right: 16),
-          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-          title: Text('Refresh', maxLines: 1),
-          trailing: loading.value
-              ? Icon(Icons.hourglass_empty)
-              : Icon(Icons.refresh),
-          onTap: () {
-            Main.listDirectories();
-          },
-        ),
-        const PopupMenuDivider(),
-        ListTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          contentPadding: EdgeInsets.only(left: 16, right: 16),
-          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-          title: Text('Name'),
-          trailing: _listOptions.value.sortMode == SortMode.nameAsc
-              ? Icon(Icons.arrow_upward)
-              : _listOptions.value.sortMode == SortMode.nameDesc
-              ? Icon(Icons.arrow_downward)
-              : null,
-          onTap: () {
-            _listOptions.value = _listOptions.value.sortMode == SortMode.nameAsc
-                ? _listOptions.value.copyWith(sortMode: SortMode.nameDesc)
-                : _listOptions.value.copyWith(sortMode: SortMode.nameAsc);
-            _setListOptions(_listOptions.value);
-          },
-        ),
-        ListTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          contentPadding: EdgeInsets.only(left: 16, right: 16),
-          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-          title: Text('Date'),
-          trailing: _listOptions.value.sortMode == SortMode.dateAsc
-              ? Icon(Icons.arrow_upward)
-              : _listOptions.value.sortMode == SortMode.dateDesc
-              ? Icon(Icons.arrow_downward)
-              : null,
-          onTap: () {
-            _listOptions.value = _listOptions.value.sortMode == SortMode.dateAsc
-                ? _listOptions.value.copyWith(sortMode: SortMode.dateDesc)
-                : _listOptions.value.copyWith(sortMode: SortMode.dateAsc);
-            _setListOptions(_listOptions.value);
-          },
-        ),
-        ListTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          contentPadding: EdgeInsets.only(left: 16, right: 16),
-          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-          title: Text('Size'),
-          trailing: _listOptions.value.sortMode == SortMode.sizeAsc
-              ? Icon(Icons.arrow_upward)
-              : _listOptions.value.sortMode == SortMode.sizeDesc
-              ? Icon(Icons.arrow_downward)
-              : null,
-          onTap: () {
-            _listOptions.value = _listOptions.value.sortMode == SortMode.sizeAsc
-                ? _listOptions.value.copyWith(sortMode: SortMode.sizeDesc)
-                : _listOptions.value.copyWith(sortMode: SortMode.sizeAsc);
-            _setListOptions(_listOptions.value);
-          },
-        ),
-        ListTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          contentPadding: EdgeInsets.only(left: 16, right: 16),
-          titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-          title: Text('Type'),
-          trailing: _listOptions.value.sortMode == SortMode.typeAsc
-              ? Icon(Icons.arrow_upward)
-              : _listOptions.value.sortMode == SortMode.typeDesc
-              ? Icon(Icons.arrow_downward)
-              : null,
-          onTap: () {
-            _listOptions.value = _listOptions.value.sortMode == SortMode.typeAsc
-                ? _listOptions.value.copyWith(sortMode: SortMode.typeDesc)
-                : _listOptions.value.copyWith(sortMode: SortMode.typeAsc);
-            _setListOptions(_listOptions.value);
-          },
-        ),
-        const PopupMenuDivider(),
-        CheckboxListTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          contentPadding: EdgeInsets.only(left: 16, right: 16),
-          title: Text(
-            'Folders First',
-            style: Theme.of(context).textTheme.bodyMedium,
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        loading,
+        _searching,
+        _listOptions,
+        _globalListOptions,
+      ]),
+      builder: (context, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: 0, width: 128),
+          ListTile(
+            dense: true,
+            enabled: !loading.value && !_searching.value,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Refresh', maxLines: 1),
+            trailing: loading.value
+                ? Icon(Icons.hourglass_empty)
+                : Icon(Icons.refresh),
+            onTap: () {
+              Main.listDirectories();
+            },
           ),
-          value: _listOptions.value.foldersFirst,
-          onChanged: (value) {
-            _listOptions.value = _listOptions.value.copyWith(
-              foldersFirst: value ?? true,
-            );
-            _setListOptions(_listOptions.value);
-          },
-        ),
-        CheckboxListTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          contentPadding: EdgeInsets.only(left: 16, right: 16),
-          title: Text(
-            'Grid View',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          value: _listOptions.value.viewMode == ViewMode.grid,
-          onChanged: (value) {
-            _listOptions.value = _listOptions.value.copyWith(
-              viewMode: value! ? ViewMode.grid : ViewMode.list,
-            );
-            _setListOptions(_listOptions.value);
-          },
-        ),
-        CheckboxListTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          contentPadding: EdgeInsets.only(left: 16, right: 16),
-          title: Text(
-            'Grouped View',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          value: _listOptions.value.group,
-          onChanged: (value) {
-            _listOptions.value = _listOptions.value.copyWith(
-              group: value ?? true,
-            );
-            _setListOptions(_listOptions.value);
-          },
-        ),
-        const PopupMenuDivider(),
-        CheckboxListTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          contentPadding: EdgeInsets.only(left: 16, right: 16),
-          title: Text(
-            'Use Global',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          value: _globalListOptions.value,
-          onChanged: (value) {
-            setState(() {
-              _globalListOptions.value = value ?? true;
-            });
-            _setListOptions(_listOptions.value);
-          },
-        ),
-        if (showSettings) ...[
           const PopupMenuDivider(),
           ListTile(
             dense: true,
             visualDensity: VisualDensity.compact,
             contentPadding: EdgeInsets.only(left: 16, right: 16),
             titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Settings', maxLines: 1),
-            trailing: Icon(Icons.settings),
+            title: Text('Name'),
+            trailing: _listOptions.value.sortMode == SortMode.nameAsc
+                ? Icon(Icons.arrow_upward)
+                : _listOptions.value.sortMode == SortMode.nameDesc
+                ? Icon(Icons.arrow_downward)
+                : null,
             onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
+              _listOptions.value =
+                  _listOptions.value.sortMode == SortMode.nameAsc
+                  ? _listOptions.value.copyWith(sortMode: SortMode.nameDesc)
+                  : _listOptions.value.copyWith(sortMode: SortMode.nameAsc);
+              _setListOptions(_listOptions.value);
             },
           ),
+          ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Date'),
+            trailing: _listOptions.value.sortMode == SortMode.dateAsc
+                ? Icon(Icons.arrow_upward)
+                : _listOptions.value.sortMode == SortMode.dateDesc
+                ? Icon(Icons.arrow_downward)
+                : null,
+            onTap: () {
+              _listOptions.value =
+                  _listOptions.value.sortMode == SortMode.dateAsc
+                  ? _listOptions.value.copyWith(sortMode: SortMode.dateDesc)
+                  : _listOptions.value.copyWith(sortMode: SortMode.dateAsc);
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Size'),
+            trailing: _listOptions.value.sortMode == SortMode.sizeAsc
+                ? Icon(Icons.arrow_upward)
+                : _listOptions.value.sortMode == SortMode.sizeDesc
+                ? Icon(Icons.arrow_downward)
+                : null,
+            onTap: () {
+              _listOptions.value =
+                  _listOptions.value.sortMode == SortMode.sizeAsc
+                  ? _listOptions.value.copyWith(sortMode: SortMode.sizeDesc)
+                  : _listOptions.value.copyWith(sortMode: SortMode.sizeAsc);
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+            title: Text('Type'),
+            trailing: _listOptions.value.sortMode == SortMode.typeAsc
+                ? Icon(Icons.arrow_upward)
+                : _listOptions.value.sortMode == SortMode.typeDesc
+                ? Icon(Icons.arrow_downward)
+                : null,
+            onTap: () {
+              _listOptions.value =
+                  _listOptions.value.sortMode == SortMode.typeAsc
+                  ? _listOptions.value.copyWith(sortMode: SortMode.typeDesc)
+                  : _listOptions.value.copyWith(sortMode: SortMode.typeAsc);
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          const PopupMenuDivider(),
+          CheckboxListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            title: Text(
+              'Folders First',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            value: _listOptions.value.foldersFirst,
+            onChanged: (value) {
+              _listOptions.value = _listOptions.value.copyWith(
+                foldersFirst: value ?? true,
+              );
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          CheckboxListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            title: Text(
+              'Grid View',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            value: _listOptions.value.viewMode == ViewMode.grid,
+            onChanged: (value) {
+              _listOptions.value = _listOptions.value.copyWith(
+                viewMode: value! ? ViewMode.grid : ViewMode.list,
+              );
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          CheckboxListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            title: Text(
+              'Grouped View',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            value: _listOptions.value.group,
+            onChanged: (value) {
+              _listOptions.value = _listOptions.value.copyWith(
+                group: value ?? true,
+              );
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          const PopupMenuDivider(),
+          CheckboxListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.only(left: 16, right: 16),
+            title: Text(
+              'Use Global',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            value: _globalListOptions.value,
+            onChanged: (value) {
+              setState(() {
+                _globalListOptions.value = value ?? true;
+              });
+              _setListOptions(_listOptions.value);
+            },
+          ),
+          if (showSettings) ...[
+            const PopupMenuDivider(),
+            ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              contentPadding: EdgeInsets.only(left: 16, right: 16),
+              titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+              title: Text('Settings', maxLines: 1),
+              trailing: Icon(Icons.settings),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
+              },
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -1142,6 +1159,9 @@ class BrowserState extends State<Browser> {
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
+    _searching.dispose();
+    _controlsVisible.dispose();
+    _globalListOptions.dispose();
     _listOptions.dispose();
     _inaccessibleTimer?.cancel();
     super.dispose();
