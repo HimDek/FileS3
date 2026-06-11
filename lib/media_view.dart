@@ -1183,63 +1183,60 @@ class GalleryState extends State<Gallery> {
                 ),
               ),
             ),
-            ListenableBuilder(
-              listenable: Listenable.merge([_chromeVisible, _allowDragging]),
-              builder: (context, _) => DraggableScrollableSheet(
-                controller: _contextMenuSheetController,
-                initialChildSize: _chromeVisible.value && _allowDragging.value
-                    ? _defaultBottomSheetSize
-                    : 0.0,
-                minChildSize: 0,
-                maxChildSize: _maxBottomSheetSize,
-                snap: true,
-                snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
-                snapAnimationDuration: const Duration(milliseconds: 100),
-                builder: (context, scrollController) {
-                  return Container(
-                    clipBehavior: Clip.hardEdge,
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius:
-                          Theme.of(context).bottomSheetTheme.shape
-                              is RoundedRectangleBorder
-                          ? (Theme.of(context).bottomSheetTheme.shape
-                                    as RoundedRectangleBorder)
-                                .borderRadius
-                          : const BorderRadius.only(
-                              topLeft: Radius.circular(32),
-                              topRight: Radius.circular(32),
-                            ),
-                    ),
-                    child: CustomScrollView(
-                      controller: scrollController,
-                      slivers: [
-                        PinnedHeaderSliver(
+            DraggableScrollableSheet(
+              controller: _contextMenuSheetController,
+              initialChildSize: _chromeVisible.value && _allowDragging.value
+                  ? _defaultBottomSheetSize
+                  : 0.0,
+              minChildSize: 0,
+              maxChildSize: _maxBottomSheetSize,
+              snap: true,
+              snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
+              snapAnimationDuration: const Duration(milliseconds: 100),
+              builder: (context, scrollController) {
+                return Container(
+                  clipBehavior: Clip.hardEdge,
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius:
+                        Theme.of(context).bottomSheetTheme.shape
+                            is RoundedRectangleBorder
+                        ? (Theme.of(context).bottomSheetTheme.shape
+                                  as RoundedRectangleBorder)
+                              .borderRadius
+                        : const BorderRadius.only(
+                            topLeft: Radius.circular(32),
+                            topRight: Radius.circular(32),
+                          ),
+                  ),
+                  child: CustomScrollView(
+                    controller: scrollController,
+                    slivers: [
+                      PinnedHeaderSliver(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          color: Colors.black,
+                          alignment: Alignment.center,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            color: Colors.black,
-                            alignment: Alignment.center,
-                            child: Container(
-                              width: 40,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.onSurface,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              borderRadius: BorderRadius.circular(2),
                             ),
                           ),
                         ),
-                        SliverToBoxAdapter(
-                          child: widget.buildContextMenu(
-                            context,
-                            widget.files[_currentIndex.value].file,
-                          ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: widget.buildContextMenu(
+                          context,
+                          widget.files[_currentIndex.value].file,
                         ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -1342,7 +1339,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
       DraggableScrollableController();
 
   final ValueNotifier<bool> _allowPaging = ValueNotifier<bool>(true);
-  final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _allowDragging = ValueNotifier<bool>(true);
   final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
   final ValueNotifier<String?> _path = ValueNotifier<String?>(null);
@@ -1416,10 +1413,6 @@ class _ExternalFileViewState extends State<ExternalFileView> {
       if (_contextMenuSheetController.size <= 0 && _chromeVisible.value) {
         _chromeVisible.value = false;
       }
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _chromeVisible.value = true;
     });
   }
 
@@ -1507,24 +1500,20 @@ class _ExternalFileViewState extends State<ExternalFileView> {
               ),
             ),
           ),
-          ListenableBuilder(
-            listenable: Listenable.merge([
-              _chromeVisible,
-              _allowDragging,
-              _path,
-            ]),
-            builder: (context, _) => DraggableScrollableSheet(
-              controller: _contextMenuSheetController,
-              initialChildSize: _chromeVisible.value && _allowDragging.value
-                  ? _defaultBottomSheetSize
-                  : 0.0,
-              minChildSize: 0,
-              maxChildSize: _maxBottomSheetSize,
-              snap: true,
-              snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
-              snapAnimationDuration: const Duration(milliseconds: 100),
-              builder: (context, scrollController) {
-                return Container(
+          DraggableScrollableSheet(
+            controller: _contextMenuSheetController,
+            initialChildSize: _chromeVisible.value && _allowDragging.value
+                ? _defaultBottomSheetSize
+                : 0.0,
+            minChildSize: 0,
+            maxChildSize: _maxBottomSheetSize,
+            snap: true,
+            snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
+            snapAnimationDuration: const Duration(milliseconds: 100),
+            builder: (context, scrollController) {
+              return ListenableBuilder(
+                listenable: _path,
+                builder: (context, _) => Container(
                   clipBehavior: Clip.hardEdge,
                   decoration: BoxDecoration(
                     color: Colors.black,
@@ -1651,9 +1640,9 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                       ),
                     ],
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
         ],
       ),
