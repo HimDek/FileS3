@@ -1,6 +1,11 @@
+import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
@@ -21,16 +26,6 @@ class SettingsPageState extends State<SettingsPage> {
       appBar: AppBar(title: Text('Settings')),
       body: ListView(
         children: [
-          // ListTile(
-          //   leading: Icon(Icons.cloud),
-          //   title: Text("AWS S3 Configuration"),
-          //   subtitle: Text(
-          //     "Configure AWS S3 access key, secret key, region, bucket, host etc.",
-          //   ),
-          //   onTap: () async => await Navigator.of(
-          //     context,
-          //   ).push(MaterialPageRoute(builder: (context) => S3ConfigPage())),
-          // ),
           ListTile(
             leading: Icon(Icons.palette),
             title: Text("Appearance"),
@@ -67,9 +62,13 @@ class S3ConfigPage extends StatefulWidget {
 class S3ConfigPageState extends State<S3ConfigPage> {
   bool _loading = true;
   bool _obscureSecret = true;
+  bool _includeKeys = false;
+  bool _includeBackupConfig = false;
   S3Config? _s3Config;
   String? _permissionPolicy;
   Profile? _profile;
+  final Map<String, dynamic> _exportData = {};
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final FocusNode _profileFocusNode = FocusNode();
   final FocusNode _accessFocusNode = FocusNode();
   final FocusNode _secretFocusNode = FocusNode();
@@ -84,6 +83,11 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   final TextEditingController _bucketController = TextEditingController();
   final TextEditingController _prefixController = TextEditingController();
   final TextEditingController _hostController = TextEditingController();
+  String? _localDir;
+  BackupMode _backupMode = BackupMode.sync;
+
+  bool get _profileNameExists =>
+      Main.profiles.any((p) => p.name == _profileNameController.text);
 
   Future<void> _readConfig() async {
     setState(() {
@@ -107,18 +111,18 @@ class S3ConfigPageState extends State<S3ConfigPage> {
       _bucketController.text = _s3Config?.bucket ?? '';
       _prefixController.text = _s3Config?.prefix ?? '';
       _hostController.text = _s3Config?.host ?? '';
+      _localDir = _profile == null ? null : Main.pathFromKey(_profile!.name);
+      _backupMode = _profile == null
+          ? BackupMode.sync
+          : Main.backupModeFromKey(_profile!.name);
       _loading = false;
     });
   }
 
-  Future<void> Function()? _saveConfig() =>
-      _loading ||
-          _accessKeyController.text.isEmpty ||
-          _secretKeyController.text.isEmpty ||
-          _regionController.text.isEmpty ||
-          _bucketController.text.isEmpty
+  Future<void> Function()? _saveConfig() => _loading
       ? null
       : () async {
+          if (!_formKey.currentState!.validate()) return;
           setState(() {
             _loading = true;
           });
@@ -134,6 +138,33 @@ class S3ConfigPageState extends State<S3ConfigPage> {
               host: _hostController.text,
             ),
           );
+          setBackupMode('${_profileNameController.text}/', _backupMode);
+          if (!IniManager.config!.sections().contains('directories')) {
+            IniManager.config!.addSection('directories');
+          }
+          if (_localDir != null &&
+              !p.isAbsolute(_localDir!) &&
+              File(_localDir!).existsSync()) {
+            IniManager.config!.set(
+              'directories',
+              '${_profileNameController.text}/',
+              _localDir!,
+            );
+            IniManager.cleanDirectories(
+              keepKey: '${_profileNameController.text}/',
+            );
+            IniManager.save();
+          } else if (_localDir == null) {
+            IniManager.config!.removeOption(
+              'directories',
+              '${_profileNameController.text}/',
+            );
+            IniManager.cleanDirectories(
+              keepKey: '${_profileNameController.text}/',
+            );
+            IniManager.save();
+          }
+          Main.listDirectories();
           showSnackBar(SnackBar(content: Text('Configuration saved')));
           await Main.refreshProfiles();
           await _readConfig();
@@ -159,6 +190,26 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   }
 
   @override
+  void dispose() {
+    _formKey.currentState?.dispose();
+    _profileFocusNode.dispose();
+    _accessFocusNode.dispose();
+    _secretFocusNode.dispose();
+    _regionFocusNode.dispose();
+    _bucketFocusNode.dispose();
+    _prefixFocusNode.dispose();
+    _hostFocusNode.dispose();
+    _profileNameController.dispose();
+    _accessKeyController.dispose();
+    _secretKeyController.dispose();
+    _regionController.dispose();
+    _bucketController.dispose();
+    _prefixController.dispose();
+    _hostController.dispose();
+    super.dispose();
+  }
+
+  @override
   void setState(VoidCallback fn) {
     if (mounted) {
       super.setState(() {
@@ -168,6 +219,24 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                   ? '{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}/${_prefixController.text}*"\n        },\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}"\n        }\n    ]\n}'
                   : '{\n    "Version": "2012-10-17",\n    "Statement": [\n        {\n            "Effect": "Allow",\n            "Action": [\n                "s3:ListBucket",\n                "s3:GetObject",\n                "s3:PutObject",\n                "s3:DeleteObject"\n            ],\n            "Resource": "arn:aws:s3:::${_bucketController.text}*"\n        }\n    ]\n}'
             : null;
+        if (_profile != null) {
+          _exportData.clear();
+          _exportData['profile'] = _profile!.name;
+          if (_includeKeys) {
+            _exportData['accessKey'] = _profile!.cfg.accessKey;
+            _exportData['secretKey'] = _profile!.cfg.secretKey;
+          }
+          _exportData['region'] = _profile!.cfg.region;
+          _exportData['bucket'] = _profile!.cfg.bucket;
+          _exportData['prefix'] = _profile!.cfg.prefix;
+          _exportData['host'] = _profile!.cfg.host;
+          if (_includeBackupConfig) {
+            _exportData['backupMode'] = Main.backupModeFromKey(
+              _profile!.name,
+            ).value;
+            _exportData['localDir'] = Main.pathFromKey(_profile!.name);
+          }
+        }
       });
     }
   }
@@ -204,241 +273,363 @@ class S3ConfigPageState extends State<S3ConfigPage> {
           child: ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
-              TextField(
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.cloud_circle),
-                  labelText: 'Profile Name',
-                  hintText: 'A unique name for this S3 configuration',
-                  helperText:
-                      'Used to identify this configuration in the app. Can\'t be changed later.',
-                ),
-                focusNode: _profileFocusNode,
-                controller: _profileNameController,
-                keyboardType: TextInputType.text,
-                onChanged: (value) {
-                  setState(() {});
-                },
-                enabled: !_loading && _profile == null,
-                autofillHints: const ['profile', 's3 profile', 's3_profile'],
-                textInputAction: TextInputAction.next,
-              ),
-              SizedBox(height: 16),
-              TextField(
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.vpn_key),
-                  labelText: 'Access Key',
-                  hintText: 'Your AWS access key ID',
-                ),
-                focusNode: _accessFocusNode,
-                controller: _accessKeyController,
-                keyboardType: TextInputType.visiblePassword,
-                onChanged: (value) {
-                  setState(() {});
-                },
-                enabled: !_loading,
-                autofillHints: const [AutofillHints.username],
-                textInputAction: TextInputAction.next,
-              ),
-              SizedBox(height: 8),
-              TextField(
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.lock),
-                  labelText: 'Secret Key',
-                  hintText: 'Your AWS secret access key',
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureSecret ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: _loading
-                        ? null
-                        : () {
-                            setState(() {
-                              _obscureSecret = !_obscureSecret;
-                            });
-                          },
-                  ),
-                ),
-                focusNode: _secretFocusNode,
-                controller: _secretKeyController,
-                keyboardType: TextInputType.visiblePassword,
-                obscureText: _obscureSecret,
-                onChanged: (value) {
-                  setState(() {});
-                },
-                enabled: !_loading,
-                autofillHints: const [AutofillHints.password],
-                textInputAction: TextInputAction.next,
-              ),
-              SizedBox(height: 16),
-              Autocomplete<String>(
-                focusNode: _regionFocusNode,
-                textEditingController: _regionController,
-                onSelected: (String selection) {
-                  setState(() {});
-                },
-                fieldViewBuilder: (context, controller, focusNode, onSubmit) {
-                  focusNode.addListener(() {
-                    if (focusNode.hasFocus && controller.text.isEmpty) {
-                      controller.value = controller.value.copyWith();
-                    }
-                  });
-                  return TextField(
-                    decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.public),
-                      labelText: 'Region',
-                      hintText: 'e.g. us-east-1',
-                      helperText: 'AWS region where your S3 bucket is located',
-                    ),
-                    focusNode: focusNode,
-                    controller: controller,
-                    onChanged: (value) {
-                      setState(() {});
-                    },
-                    onSubmitted: (value) => onSubmit(),
-                    enabled: !_loading,
-                    autofillHints: const [
-                      'region',
-                      's3 region',
-                      's3_region',
-                      'aws region',
-                      'aws_region',
-                    ],
-                    textInputAction: TextInputAction.next,
-                  );
-                },
-                optionsBuilder: (value) {
-                  if (value.text.isEmpty) {
-                    return awsRegions.keys
-                        .map((key) => awsRegions[key]!.keys)
-                        .expand((element) => element);
-                  }
-                  return awsRegions.keys
-                      .map(
-                        (key) =>
-                            key.toLowerCase().contains(value.text.toLowerCase())
-                            ? awsRegions[key]!.keys
-                            : awsRegions[key]!.keys.where(
-                                (region) =>
-                                    region.toLowerCase().contains(
-                                      value.text.toLowerCase(),
-                                    ) ||
-                                    awsRegions[key]![region]!
-                                        .toLowerCase()
-                                        .contains(value.text.toLowerCase()),
-                              ),
-                      )
-                      .expand((element) => element);
-                },
-                optionsViewBuilder: (context, onSelected, options) => Container(
-                  decoration: BoxDecoration(
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 5.0,
-                        offset: Offset(1, 1),
+              Form(
+                key: _formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                child: Column(
+                  children: [
+                    TextFormField(
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.cloud_circle),
+                        labelText: 'Profile Name',
+                        hintText: 'A unique name for this S3 configuration',
+                        helperText:
+                            'Used to identify this configuration in the app. Can\'t be changed later.',
                       ),
-                    ],
-                  ),
-                  child: Material(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.all(8.0),
-                      itemCount: options.length,
-                      itemBuilder: (context, index) {
-                        final option = options.elementAt(index);
-                        return ListTile(
-                          subtitle: Text(option),
-                          title: Text(
-                            '(${awsRegions.keys.firstWhere((key) => awsRegions[key]!.containsKey(option))}) ${awsRegions.values.firstWhere((regionMap) => regionMap.containsKey(option), orElse: () => {}).entries.firstWhere((entry) => entry.key == option, orElse: () => MapEntry('', '')).value}',
-                          ),
-                          dense: true,
-                          visualDensity: VisualDensity.compact,
-                          onTap: () => onSelected(option),
-                          selected: _regionController.text == option,
-                        );
+                      focusNode: _profileFocusNode,
+                      controller: _profileNameController,
+                      keyboardType: TextInputType.text,
+                      onChanged: (value) {
+                        setState(() {});
+                      },
+                      enabled: !_loading && _profile == null,
+                      autofillHints: const [
+                        'profile',
+                        's3 profile',
+                        's3_profile',
+                      ],
+                      textInputAction: TextInputAction.next,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Profile name is required';
+                        }
+                        if (_profile == null && _profileNameExists) {
+                          return 'Profile name already exists';
+                        }
+                        return null;
                       },
                     ),
-                  ),
+                    SizedBox(height: 16),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.vpn_key),
+                        labelText: 'Access Key',
+                        hintText: 'Your AWS access key ID',
+                      ),
+                      focusNode: _accessFocusNode,
+                      controller: _accessKeyController,
+                      keyboardType: TextInputType.visiblePassword,
+                      onChanged: (value) {
+                        setState(() {});
+                      },
+                      enabled: !_loading,
+                      autofillHints: const [AutofillHints.username],
+                      textInputAction: TextInputAction.next,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Access key is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: 8),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.lock),
+                        labelText: 'Secret Key',
+                        hintText: 'Your AWS secret access key',
+                        suffixIcon: _secretKeyController.text.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(
+                                  _obscureSecret
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                ),
+                                onPressed: _loading
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          _obscureSecret = !_obscureSecret;
+                                        });
+                                      },
+                              )
+                            : null,
+                      ),
+                      focusNode: _secretFocusNode,
+                      controller: _secretKeyController,
+                      keyboardType: TextInputType.visiblePassword,
+                      obscureText: _obscureSecret,
+                      onChanged: (value) {
+                        setState(() {});
+                      },
+                      enabled: !_loading,
+                      autofillHints: const [AutofillHints.password],
+                      textInputAction: TextInputAction.next,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Secret key is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: 16),
+                    Autocomplete<String>(
+                      focusNode: _regionFocusNode,
+                      textEditingController: _regionController,
+                      onSelected: (String selection) {
+                        setState(() {});
+                      },
+                      fieldViewBuilder: (context, controller, focusNode, onSubmit) {
+                        focusNode.addListener(() {
+                          if (focusNode.hasFocus && controller.text.isEmpty) {
+                            controller.value = controller.value.copyWith();
+                          }
+                        });
+                        return TextFormField(
+                          decoration: InputDecoration(
+                            prefixIcon: Icon(Icons.public),
+                            labelText: 'Region',
+                            hintText: 'e.g. us-east-1',
+                            helperText:
+                                'AWS region where your S3 bucket is located',
+                            errorText:
+                                controller.text.isNotEmpty &&
+                                    !awsRegions.values.any(
+                                      (regionMap) => regionMap.containsKey(
+                                        controller.text,
+                                      ),
+                                    )
+                                ? 'This seems to be a non-standard region. Make sure it\'s correct.'
+                                : null,
+                          ),
+                          focusNode: focusNode,
+                          controller: controller,
+                          onChanged: (value) {
+                            setState(() {});
+                          },
+                          enabled: !_loading,
+                          autofillHints: const [
+                            'region',
+                            's3 region',
+                            's3_region',
+                            'aws region',
+                            'aws_region',
+                          ],
+                          textInputAction: TextInputAction.next,
+                          onEditingComplete: onSubmit,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Region is required';
+                            }
+                            return null;
+                          },
+                        );
+                      },
+                      optionsBuilder: (value) {
+                        if (value.text.isEmpty) {
+                          return awsRegions.keys
+                              .map((key) => awsRegions[key]!.keys)
+                              .expand((element) => element);
+                        }
+                        return awsRegions.keys
+                            .map(
+                              (key) =>
+                                  key.toLowerCase().contains(
+                                    value.text.toLowerCase(),
+                                  )
+                                  ? awsRegions[key]!.keys
+                                  : awsRegions[key]!.keys.where(
+                                      (region) =>
+                                          region.toLowerCase().contains(
+                                            value.text.toLowerCase(),
+                                          ) ||
+                                          awsRegions[key]![region]!
+                                              .toLowerCase()
+                                              .contains(
+                                                value.text.toLowerCase(),
+                                              ),
+                                    ),
+                            )
+                            .expand((element) => element);
+                      },
+                      optionsViewBuilder: (context, onSelected, options) =>
+                          Container(
+                            decoration: BoxDecoration(
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 5.0,
+                                  offset: Offset(1, 1),
+                                ),
+                              ],
+                            ),
+                            child: Material(
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                padding: EdgeInsets.all(8.0),
+                                itemCount: options.length,
+                                itemBuilder: (context, index) {
+                                  final option = options.elementAt(index);
+                                  return ListTile(
+                                    subtitle: Text(option),
+                                    title: Text(
+                                      '(${awsRegions.keys.firstWhere((key) => awsRegions[key]!.containsKey(option))}) ${awsRegions.values.firstWhere((regionMap) => regionMap.containsKey(option), orElse: () => {}).entries.firstWhere((entry) => entry.key == option, orElse: () => MapEntry('', '')).value}',
+                                    ),
+                                    dense: true,
+                                    visualDensity: VisualDensity.compact,
+                                    onTap: () => onSelected(option),
+                                    selected: _regionController.text == option,
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                    ),
+                    SizedBox(height: 8),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.storage),
+                        labelText: 'Bucket Name',
+                        helperText:
+                            'Name of the S3 bucket to use. The bucket must exist',
+                      ),
+                      focusNode: _bucketFocusNode,
+                      controller: _bucketController,
+                      onChanged: (value) {
+                        setState(() {});
+                      },
+                      enabled: !_loading,
+                      autofillHints: const [
+                        'bucket',
+                        's3 bucket',
+                        's3bucket',
+                        'bucket name',
+                        'bucketname',
+                        's3 bucket name',
+                        's3bucketname',
+                        's3_bucket_name',
+                        's3_bucket',
+                        'bucket_name',
+                      ],
+                      textInputAction: TextInputAction.next,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Bucket name is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: 16),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.folder),
+                        labelText: 'Prefix (optional)',
+                        hintText: 'e.g. myfolder',
+                        helperText:
+                            'Folder prefix within the bucket will be used as root',
+                      ),
+                      focusNode: _prefixFocusNode,
+                      controller: _prefixController,
+                      onChanged: (value) {
+                        setState(() {});
+                      },
+                      enabled: !_loading,
+                      autofillHints: const ['prefix', 's3 prefix', 's3_prefix'],
+                      textInputAction: TextInputAction.next,
+                    ),
+                    SizedBox(height: 8),
+                    TextFormField(
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.link),
+                        labelText: 'Host (optional)',
+                        hintText: _regionController.text.isNotEmpty
+                            ? 's3.${_regionController.text}.amazonaws.com'
+                            : 'Default for AWS S3: s3.{region-name}.amazonaws.com',
+                        helperText: 'Custom S3-compatible domain name',
+                      ),
+                      focusNode: _hostFocusNode,
+                      controller: _hostController,
+                      keyboardType: TextInputType.url,
+                      onChanged: (value) {
+                        setState(() {});
+                      },
+                      enabled: !_loading,
+                      autofillHints: const [
+                        'host',
+                        's3 host',
+                        's3_host',
+                        'endpoint',
+                        's3 endpoint',
+                        's3_endpoint',
+                      ],
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _saveConfig()?.call(),
+                    ),
+                    SizedBox(height: 16),
+                    ListTile(
+                      leading: const Icon(Icons.drive_folder_upload_rounded),
+                      title: const Text('Backup From'),
+                      subtitle: Text(
+                        _localDir == null ? 'Not set' : _localDir!,
+                      ),
+                      onTap: () async {
+                        final String? directoryPath = await getDirectoryPath();
+                        if (directoryPath != null) {
+                          setState(() {
+                            _localDir = directoryPath;
+                          });
+                        }
+                      },
+                      trailing: _localDir == null
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear_rounded),
+                              onPressed: () {
+                                setState(() {
+                                  _localDir = null;
+                                });
+                              },
+                            ),
+                    ),
+                    if ((_profile != null || _localDir != null) &&
+                        p.isAbsolute(_localDir ?? _profile!.name)) ...[
+                      const SizedBox(height: 8),
+                      ListTile(
+                        leading: const Icon(Icons.sync_rounded),
+                        title: const Text('Backup Mode'),
+                      ),
+                      RadioGroup(
+                        groupValue: _backupMode,
+                        onChanged: (s) {
+                          setState(() {
+                            _backupMode = s ?? BackupMode.sync;
+                          });
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            RadioListTile(
+                              value: BackupMode.upload,
+                              title: Text(BackupMode.upload.name),
+                              subtitle: Text(BackupMode.upload.description),
+                              dense: true,
+                            ),
+                            RadioListTile(
+                              value: BackupMode.sync,
+                              title: Text(BackupMode.sync.name),
+                              subtitle: Text(BackupMode.sync.description),
+                              dense: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ],
                 ),
               ),
-              SizedBox(height: 8),
-              TextField(
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.storage),
-                  labelText: 'Bucket Name',
-                  helperText:
-                      'Name of the S3 bucket to use. The bucket must exist',
-                ),
-                focusNode: _bucketFocusNode,
-                controller: _bucketController,
-                onChanged: (value) {
-                  setState(() {});
-                },
-                enabled: !_loading,
-                autofillHints: const [
-                  'bucket',
-                  's3 bucket',
-                  's3bucket',
-                  'bucket name',
-                  'bucketname',
-                  's3 bucket name',
-                  's3bucketname',
-                  's3_bucket_name',
-                  's3_bucket',
-                  'bucket_name',
-                ],
-                textInputAction: TextInputAction.next,
-              ),
-              SizedBox(height: 16),
-              TextField(
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.folder),
-                  labelText: 'Prefix (optional)',
-                  hintText: 'e.g. myfolder',
-                  helperText:
-                      'Folder prefix within the bucket will be used as root',
-                ),
-                focusNode: _prefixFocusNode,
-                controller: _prefixController,
-                onChanged: (value) {
-                  setState(() {});
-                },
-                enabled: !_loading,
-                autofillHints: const ['prefix', 's3 prefix', 's3_prefix'],
-                textInputAction: TextInputAction.next,
-              ),
-              SizedBox(height: 8),
-              TextField(
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.link),
-                  labelText: 'Host (optional)',
-                  hintText: _regionController.text.isNotEmpty
-                      ? 's3.${_regionController.text}.amazonaws.com'
-                      : 'Default for AWS S3: s3.{region-name}.amazonaws.com',
-                  helperText: 'Custom S3-compatible domain name',
-                ),
-                focusNode: _hostFocusNode,
-                controller: _hostController,
-                keyboardType: TextInputType.url,
-                onChanged: (value) {
-                  setState(() {});
-                },
-                onSubmitted: (value) {
-                  _saveConfig()?.call();
-                },
-                enabled: !_loading,
-                autofillHints: const [
-                  'host',
-                  's3 host',
-                  's3_host',
-                  'endpoint',
-                  's3 endpoint',
-                  's3_endpoint',
-                ],
-                textInputAction: TextInputAction.done,
-              ),
-              SizedBox(height: 16),
-              if (_bucketController.text.isNotEmpty)
+              if (_bucketController.text.isNotEmpty) ...[
+                SizedBox(height: 32),
                 ListTile(
                   dense: true,
                   visualDensity: VisualDensity.compact,
@@ -468,25 +659,227 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                     ],
                   ),
                 ),
-              if (_permissionPolicy != null)
+              ],
+              if (_permissionPolicy != null) ...[
                 ListTile(
                   dense: true,
                   visualDensity: VisualDensity.compact,
                   title: Text(
-                    'Minimum IAM Permissions Policy for the app to function properly:',
+                    "Minimum IAM Permissions Policy for the app to function properly:",
                   ),
-                  subtitle: Text('\n$_permissionPolicy'),
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: _permissionPolicy!));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Policy copied to clipboard')),
-                    );
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          Clipboard.setData(
+                            ClipboardData(text: _permissionPolicy!),
+                          );
+                          SharePlus.instance.share(
+                            ShareParams(
+                              title: 'S3 Permissions Policy',
+                              text: _permissionPolicy!,
+                              subject:
+                                  'S3 Permissions Policy for FileS3 Profile "${_profileNameController.text}"',
+                            ),
+                          );
+                        },
+                        icon: Icon(Icons.share),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          Clipboard.setData(
+                            ClipboardData(text: _permissionPolicy!),
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Policy copied to clipboard'),
+                            ),
+                          );
+                        },
+                        icon: Icon(Icons.copy),
+                      ),
+                    ],
+                  ),
+                ),
+                ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  subtitle: SelectableText(_permissionPolicy ?? ''),
+                ),
+              ],
+              if (_profile != null) ...[
+                SizedBox(height: 32),
+                ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  title: Text('Export:'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          Clipboard.setData(
+                            ClipboardData(text: jsonEncode(_exportData)),
+                          );
+                          SharePlus.instance.share(
+                            ShareParams(
+                              title: 'S3 Profile Export',
+                              text: jsonEncode(_exportData),
+                              subject:
+                                  'S3 Profile "${_profileNameController.text}" Export Data',
+                              files: [
+                                XFile.fromData(
+                                  Uint8List.fromList(
+                                    jsonEncode(_exportData).codeUnits,
+                                  ),
+                                  mimeType: 'application/json',
+                                  name:
+                                      'FileS3_Profile_${_profileNameController.text}_Export.json',
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        icon: Icon(Icons.share),
+                      ),
+                      IconButton(
+                        onPressed: () async {
+                          Clipboard.setData(
+                            ClipboardData(text: jsonEncode(_exportData)),
+                          );
+                          FileSaveLocation? saveLocation;
+                          try {
+                            saveLocation = await getSaveLocation(
+                              suggestedName:
+                                  'FileS3_Profile_${_profileNameController.text}_Export.json',
+                              canCreateDirectories: true,
+                            );
+                          } catch (e) {
+                            saveLocation = await saveAsDialog(
+                              context,
+                              suggestedName:
+                                  'FileS3_Profile_${_profileNameController.text}_Export.json',
+                            );
+                          }
+                          if (saveLocation != null) {
+                            final file = XFile.fromData(
+                              Uint8List.fromList(
+                                jsonEncode(_exportData).codeUnits,
+                              ),
+                              mimeType: 'application/json',
+                              name:
+                                  'FileS3_Profile_${_profileNameController.text}_Export.json',
+                            );
+                            await file.saveTo(saveLocation.path);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Profile exported to ${saveLocation.path}',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        icon: Icon(Icons.output),
+                      ),
+                    ],
+                  ),
+                ),
+                CheckboxListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  title: Text('Include Keys'),
+                  subtitle: Text(
+                    'Caution: AWS keys will be exported. Keep it secure.',
+                  ),
+                  value: _includeKeys,
+                  onChanged: (value) {
+                    _includeKeys = value ?? false;
+                    setState(() {});
                   },
                 ),
+                CheckboxListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  title: Text('Include Backup Configuration'),
+                  value: _includeBackupConfig,
+                  onChanged: (value) {
+                    _includeBackupConfig = value ?? false;
+                    setState(() {});
+                  },
+                ),
+              ] else ...[
+                SizedBox(height: 32),
+                ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  title: Text('Import:'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () async {
+                          final XFile? file = await openFile(
+                            confirmButtonText: 'Import',
+                            acceptedTypeGroups: [
+                              XTypeGroup(
+                                label: 'Files3 Profile',
+                                extensions: ['files3profile', 'json', 'txt'],
+                                mimeTypes: [
+                                  'text/plain',
+                                  'application/json',
+                                  'application/octet-stream',
+                                ],
+                              ),
+                            ],
+                          );
+                          if (file != null) {
+                            try {
+                              final content = await file.readAsString();
+                              final data = jsonDecode(content);
+                              _profileNameController.text =
+                                  data['profile'] ??
+                                  _profileNameController.text;
+                              _accessKeyController.text =
+                                  data['accessKey'] ??
+                                  _accessKeyController.text;
+                              _secretKeyController.text =
+                                  data['secretKey'] ??
+                                  _secretKeyController.text;
+                              _regionController.text =
+                                  data['region'] ?? _regionController.text;
+                              _bucketController.text =
+                                  data['bucket'] ?? _bucketController.text;
+                              _prefixController.text =
+                                  data['prefix'] ?? _prefixController.text;
+                              _hostController.text =
+                                  data['host'] ?? _hostController.text;
+                              _localDir = data['localDir'] ?? _localDir;
+                              _backupMode = BackupMode.fromValue(
+                                data['backupMode'] ?? _backupMode.value,
+                              );
+                              setState(() {});
+                            } catch (e) {
+                              showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to import profile: $e'),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        icon: Icon(Icons.input),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (widget.profile != null &&
                   Main.remoteFiles.any(
                     (file) => file.key == widget.profile!.deletionRegistrar.key,
-                  ))
+                  )) ...[
+                SizedBox(height: 32),
                 ListTile(
                   dense: true,
                   visualDensity: VisualDensity.compact,
@@ -580,6 +973,53 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                     ),
                   ),
                 ),
+              ],
+              if (_profile != null) ...[
+                SizedBox(height: 32),
+                ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  title: Text('Remove Profile'),
+                  subtitle: Text(
+                    'This will remove the profile and its configuration. The files in the bucket and local device will not be deleted.',
+                  ),
+                  leading: Icon(Icons.delete_forever_rounded),
+                  onTap: () async {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text('Remove Profile?'),
+                        content: Text(
+                          'Are you sure you want to remove this profile? This action cannot be undone. The files in the bucket and local device will not be deleted.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              IniManager.config!.removeOption(
+                                'directories',
+                                '${_profileNameController.text}/',
+                              );
+                              IniManager.cleanDirectories(
+                                keepKey: '${_profileNameController.text}/',
+                              );
+                              IniManager.save();
+                              Navigator.of(context).pop();
+                              setState(() {
+                                _loading = true;
+                              });
+                            },
+                            child: Text('Remove'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),

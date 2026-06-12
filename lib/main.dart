@@ -198,29 +198,6 @@ class _HomeState extends State<Home> {
   );
   final ValueNotifier<String?> _openedFile = ValueNotifier<String?>(null);
 
-  void _setBackupMode(String key, BackupMode? mode) {
-    if (!(IniManager.config?.sections().contains('modes') ?? true)) {
-      IniManager.config?.addSection('modes');
-    }
-    if (mode == null) {
-      IniManager.config?.removeOption('modes', key);
-    } else {
-      IniManager.config?.set('modes', key, mode.value.toString());
-      if (mode == BackupMode.sync && p.split(key).length == 1) {
-        final toremove = <String>[];
-        for (var dir in IniManager.config?.options('modes')?.toList() ?? []) {
-          if (p.isWithin(key, dir) && dir != key) {
-            toremove.add(dir);
-          }
-        }
-        for (var dir in toremove) {
-          IniManager.config?.removeOption('modes', dir);
-        }
-      }
-    }
-    IniManager.save();
-  }
-
   Future<void> _createDirectory(String dir) async {
     loading.value = true;
     try {
@@ -330,7 +307,7 @@ class _HomeState extends State<Home> {
     if (p.isDir(key)) {
       if (Directory(Main.pathFromKey(key) ?? key).existsSync()) {
         if (Main.backupModeFromKey(key) != BackupMode.upload) {
-          _setBackupMode(
+          setBackupMode(
             key,
             Main.backupModeFromKey(p.s3(p.dirname(key))) == BackupMode.upload
                 ? null
@@ -342,7 +319,7 @@ class _HomeState extends State<Home> {
     } else {
       if (File(Main.pathFromKey(key) ?? key).existsSync()) {
         if (Main.backupModeFromKey(key) != BackupMode.upload) {
-          _setBackupMode(
+          setBackupMode(
             key,
             Main.backupModeFromKey(p.s3(p.dirname(key))) == BackupMode.upload
                 ? null
@@ -558,7 +535,7 @@ class _HomeState extends State<Home> {
       if (Main.backupModeFromKey(file.key) != BackupMode.sync &&
           (localPath ?? Main.pathFromKey(file.key)) ==
               Main.pathFromKey(file.key)) {
-        _setBackupMode(
+        setBackupMode(
           file.key,
           Main.backupModeFromKey(p.s3(p.dirname(file.key))) == BackupMode.sync
               ? null
@@ -572,7 +549,7 @@ class _HomeState extends State<Home> {
   void _downloadDirectory(RemoteFile dir, {String? localPath}) {
     if (Main.backupModeFromKey(dir.key) != BackupMode.sync &&
         (localPath ?? Main.pathFromKey(dir.key)) == Main.pathFromKey(dir.key)) {
-      _setBackupMode(
+      setBackupMode(
         dir.key,
         Main.backupModeFromKey(p.s3(p.dirname(dir.key))) == BackupMode.sync
             ? null
@@ -867,7 +844,6 @@ class _HomeState extends State<Home> {
   Widget build(BuildContext context) {
     return MyBrowser(
       title: Text('FileS3'),
-      setBackupMode: _setBackupMode,
       downloadFile: _downloadFile,
       downloadDirectory: _downloadDirectory,
       saveFile: _saveFile,

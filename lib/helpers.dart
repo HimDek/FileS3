@@ -3,10 +3,11 @@ import 'dart:convert';
 import 'package:ini/ini.dart';
 import 'package:crypto/crypto.dart';
 import 'package:uri_content/uri_content.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:file_magic_number/file_magic_number.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
@@ -347,6 +348,101 @@ List<FileProps> sort(
     }
   });
   return sortedItems;
+}
+
+Future<FileSaveLocation?> saveAsDialog(
+  BuildContext context, {
+  String suggestedName = '',
+}) async {
+  final TextEditingController nameController = TextEditingController(
+    text: suggestedName,
+  );
+  final String? fileName = await showDialog<String?>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Save As...'),
+      content: TextField(
+        controller: nameController,
+        decoration: const InputDecoration(labelText: 'File Name'),
+        onSubmitted: (value) {
+          Navigator.of(context).pop(value.trim());
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(null);
+          },
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(nameController.text.trim());
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
+  if (fileName == null || fileName.isEmpty) {
+    return null;
+  }
+  final String? directory = await getDirectoryPath(canCreateDirectories: true);
+  if (directory != null) {
+    final String path = p.join(directory, fileName);
+    if (File(path).existsSync()) {
+      final bool overwrite =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('File Already Exists'),
+              content: Text(
+                'A file named "$fileName" already exists. Overwrite?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Overwrite'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+
+      if (overwrite != true) {
+        return null;
+      }
+    }
+    return FileSaveLocation(path);
+  }
+  return null;
+}
+
+void setBackupMode(String key, BackupMode? mode) {
+  if (!(IniManager.config?.sections().contains('modes') ?? true)) {
+    IniManager.config?.addSection('modes');
+  }
+  if (mode == null) {
+    IniManager.config?.removeOption('modes', key);
+  } else {
+    IniManager.config?.set('modes', key, mode.value.toString());
+    if (mode == BackupMode.sync && p.split(key).length == 1) {
+      final toremove = <String>[];
+      for (var dir in IniManager.config?.options('modes')?.toList() ?? []) {
+        if (p.isWithin(key, dir) && dir != key) {
+          toremove.add(dir);
+        }
+      }
+      for (var dir in toremove) {
+        IniManager.config?.removeOption('modes', dir);
+      }
+    }
+  }
+  IniManager.save();
 }
 
 void renameOrCopyAndDelete(File file, String newPath) {

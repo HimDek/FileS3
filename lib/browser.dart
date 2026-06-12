@@ -86,7 +86,6 @@ class MyBrowser extends Browser {
     super.subtitle,
     super.initialDir,
     super.onInit,
-    required super.setBackupMode,
     required super.downloadFile,
     required super.downloadDirectory,
     required super.saveFile,
@@ -413,7 +412,6 @@ class Browser extends StatefulWidget {
   final RemoteFile initialDir;
   final Widget? floatingActionButton;
   final Widget? bottomNavigationBar;
-  final void Function(String, BackupMode?)? setBackupMode;
   final Function(RemoteFile)? downloadFile;
   final Function(RemoteFile)? downloadDirectory;
   final Function(RemoteFile, String)? saveFile;
@@ -439,7 +437,6 @@ class Browser extends StatefulWidget {
     this.onInit,
     this.floatingActionButton,
     this.bottomNavigationBar,
-    this.setBackupMode,
     this.downloadFile,
     this.downloadDirectory,
     this.saveFile,
@@ -949,7 +946,6 @@ class BrowserState extends State<Browser> {
                 _count,
                 _dirSize,
                 _dirModified,
-                widget.setBackupMode!,
                 () {
                   rebuild.trigger();
                 },

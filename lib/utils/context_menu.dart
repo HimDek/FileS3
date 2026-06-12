@@ -709,11 +709,20 @@ class FileContextOption {
     action: handler.saveFile == null
         ? null
         : () async {
-            final String Function()? handle = handler.saveAs(
-              (await getSaveLocation(
+            FileSaveLocation? saveLocation;
+            try {
+              saveLocation = await getSaveLocation(
                 suggestedName: p.basename(handler.file.key),
                 canCreateDirectories: true,
-              ))?.path,
+              );
+            } catch (e) {
+              saveLocation = await saveAsDialog(
+                context,
+                suggestedName: p.basename(handler.file.key),
+              );
+            }
+            final String Function()? handle = handler.saveAs(
+              saveLocation?.path,
             );
             if (handle != null) {
               showSnackBar(SnackBar(content: Text(handle())));
@@ -2493,7 +2502,6 @@ Widget buildDirectoryContextMenu(
   (int, int) Function(RemoteFile, {bool recursive}) countContent,
   int Function(RemoteFile) dirSize,
   String Function(RemoteFile) dirModified,
-  Function(String, BackupMode) setBackupMode,
   void Function()? onInvoked,
 ) {
   DirectoryContextActionHandler handler = DirectoryContextActionHandler(
@@ -2604,6 +2612,7 @@ Widget buildDirectoryContextMenu(
                   groupValue: Main.backupModeFromKey(file.key),
                   onChanged: (s) {
                     setBackupMode(file.key, s!);
+                    Main.listDirectories();
                     Navigator.of(context).pop();
                   },
                   child: Column(
