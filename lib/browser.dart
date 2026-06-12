@@ -34,7 +34,7 @@ class PathPickerState extends BrowserState {
   @override
   Widget floatingActionButton(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([loading, _controlsVisible]),
+      listenable: Listenable.merge([loading, _controlsVisible, _driveDir]),
       builder: (context, _) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -304,12 +304,7 @@ class MyBrowserState extends BrowserState {
   @override
   Widget bottomNavigationBar(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([
-        loading,
-        _navIndex,
-        _controlsVisible,
-        Job.jobs,
-      ]),
+      listenable: Listenable.merge([_navIndex, _controlsVisible, Job.jobs]),
       builder: (context, _) => AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         height: _controlsVisible.value ? kBottomNavigationBarHeight + 24 : 0,
@@ -533,7 +528,6 @@ class BrowserState extends State<Browser> {
     if (_driveDir.value.key == '') {
       _fileCount.value = 0;
     }
-    setState(() {});
   }
 
   void _setGalleryFiles(List<GalleryProps> files) {
@@ -603,7 +597,7 @@ class BrowserState extends State<Browser> {
     );
   }
 
-  Function()? _changeDirectory(RemoteFile dir) => () {
+  void _changeDirectory(RemoteFile dir) {
     final oldDir = _driveDir.value;
     _navIndex.value = 0;
     _controlsVisible.value = true;
@@ -629,7 +623,7 @@ class BrowserState extends State<Browser> {
     if (_searching.value) {
       _search();
     }
-  };
+  }
 
   void _applyListOptions() {
     _currentProps.value = sort(
@@ -748,7 +742,7 @@ class BrowserState extends State<Browser> {
     IniManager.config?.set(
       'list_options',
       _globalListOptions.value || _navIndex.value != 0
-          ? 'navindex_$_navIndex.value'
+          ? 'navindex_${_navIndex.value}'
           : _driveDir.value.key,
       options.toJson(),
     );
@@ -1179,7 +1173,7 @@ class BrowserState extends State<Browser> {
     _driveDir.value = widget.initialDir;
     super.initState();
     widget.onInit?.call();
-    _changeDirectory(widget.initialDir)?.call();
+    _changeDirectory(widget.initialDir);
 
     _scrollController.addListener(() {
       final direction = _scrollController.position.userScrollDirection;
@@ -1280,20 +1274,14 @@ class BrowserState extends State<Browser> {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: Listenable.merge([
-        loading,
         _navIndex,
         _driveDir,
         _searching,
-        _searchResults,
-        _currentProps,
         _selection,
         _selectionAction,
         _controlsVisible,
-        _listOptions,
-        _globalListOptions,
-        Job.jobs,
       ]),
-      builder: (context, _) => PopScope(
+      builder: (context, child) => PopScope(
         canPop:
             _navIndex.value == 0 &&
             _driveDir.value.key.isEmpty &&
@@ -1323,17 +1311,30 @@ class BrowserState extends State<Browser> {
           }
           if (_driveDir.value.key.isNotEmpty) {
             final newKey = p.s3(p.dirname(_driveDir.value.key));
-            _changeDirectory(
-              RemoteFile(key: newKey, size: 0, etag: ''),
-            )?.call();
+            _changeDirectory(RemoteFile(key: newKey, size: 0, etag: ''));
             return;
           }
         },
-        child: Scaffold(
-          body: CustomScrollView(
-            controller: _scrollController,
-            slivers: [
-              SliverAppBar(
+        child: child!,
+      ),
+      child: Scaffold(
+        body: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            ListenableBuilder(
+              listenable: Listenable.merge([
+                loading,
+                _navIndex,
+                _driveDir,
+                _searching,
+                _searchResults,
+                _selection,
+                _selectionAction,
+                _dirCount,
+                _fileCount,
+                Job.jobs,
+              ]),
+              builder: (context, child) => SliverAppBar(
                 floating: _selection.value.isEmpty,
                 snap: _selection.value.isEmpty,
                 pinned: true,
@@ -1391,20 +1392,13 @@ class BrowserState extends State<Browser> {
                                       context,
                                     ).textTheme.bodySmall,
                                   )
-                                : ListenableBuilder(
-                                    listenable: Listenable.merge([
-                                      _dirCount,
-                                      _fileCount,
-                                    ]),
-                                    builder: (context, _) => Text(
-                                      _dirCount.value > 0 ||
-                                              _fileCount.value > 0
-                                          ? "${_dirCount.value > 0 ? '${_dirCount.value} Folders ' : ''}${_fileCount.value > 0 ? '${_fileCount.value} Files' : ''}"
-                                          : "Empty",
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    ),
+                                : Text(
+                                    _dirCount.value > 0 || _fileCount.value > 0
+                                        ? "${_dirCount.value > 0 ? '${_dirCount.value} Folders ' : ''}${_fileCount.value > 0 ? '${_fileCount.value} Files' : ''}"
+                                        : "Empty",
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   )
                           : SizedBox.shrink(),
                   ],
@@ -1631,13 +1625,14 @@ class BrowserState extends State<Browser> {
                                           children:
                                               <Widget>[
                                                     GestureDetector(
-                                                      onTap: _changeDirectory(
-                                                        RemoteFile(
-                                                          key: '',
-                                                          size: 0,
-                                                          etag: '',
-                                                        ),
-                                                      ),
+                                                      onTap: () =>
+                                                          _changeDirectory(
+                                                            RemoteFile(
+                                                              key: '',
+                                                              size: 0,
+                                                              etag: '',
+                                                            ),
+                                                          ),
                                                       child: Text(
                                                         'FileS3',
                                                         style: Theme.of(
@@ -1692,7 +1687,7 @@ class BrowserState extends State<Browser> {
                                                                             newPath,
                                                                           ),
                                                                     ),
-                                                              )?.call();
+                                                              );
                                                             },
                                                             child: Text(
                                                               dir,
@@ -1798,36 +1793,37 @@ class BrowserState extends State<Browser> {
                       )
                     : null,
               ),
-              ListFiles(
-                files: _currentProps.value,
-                galleryFiles: _galleryFiles,
-                setGalleryFiles: _setGalleryFiles,
-                keysOffsetMap: _keysOffsetMap,
-                sortMode: _listOptions.value.sortMode,
-                gridView: _listOptions.value.viewMode == ViewMode.grid,
-                group: _listOptions.value.group,
-                relativeto: _driveDir.value,
-                selection: _selection.value,
-                selectionAction: _selectionAction.value,
-                showGallery: _pushGallery,
-                onUpdate: () {
-                  setState(() {});
-                },
-                changeDirectory: _changeDirectory,
-                getSelectAction: widget.onPick == null
-                    ? _getSelectAction
-                    : (RemoteFile file) => () {},
-                showContextMenu: widget.onPick == null
-                    ? (file) async {
-                        await Main.stopWatchers();
-                        await _showContextMenu(file);
-                      }
-                    : null,
-                count: _count,
-                dirSize: _dirSize,
-                dirModified: _dirModified,
-              ),
-              SliverToBoxAdapter(
+            ),
+            ListFiles(
+              files: _currentProps,
+              galleryFiles: _galleryFiles,
+              setGalleryFiles: _setGalleryFiles,
+              keysOffsetMap: _keysOffsetMap,
+              listOptions: _listOptions,
+              relativeto: _driveDir,
+              selection: _selection,
+              selectionAction: _selectionAction,
+              showGallery: _pushGallery,
+              onUpdate: () {
+                setState(() {});
+              },
+              changeDirectory: _changeDirectory,
+              getSelectAction: widget.onPick == null
+                  ? _getSelectAction
+                  : (RemoteFile file) => () {},
+              showContextMenu: widget.onPick == null
+                  ? (file) async {
+                      await Main.stopWatchers();
+                      await _showContextMenu(file);
+                    }
+                  : null,
+              count: _count,
+              dirSize: _dirSize,
+              dirModified: _dirModified,
+            ),
+            ListenableBuilder(
+              listenable: _driveDir,
+              builder: (context, child) => SliverToBoxAdapter(
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onLongPress:
@@ -1837,14 +1833,15 @@ class BrowserState extends State<Browser> {
                           await _showContextMenu(_driveDir.value);
                         }
                       : null,
-                  child: SizedBox(height: 256, width: double.infinity),
+                  child: child,
                 ),
               ),
-            ],
-          ),
-          floatingActionButton: floatingActionButton(context),
-          bottomNavigationBar: bottomNavigationBar(context),
+              child: SizedBox(height: 256, width: double.infinity),
+            ),
+          ],
         ),
+        floatingActionButton: floatingActionButton(context),
+        bottomNavigationBar: bottomNavigationBar(context),
       ),
     );
   }

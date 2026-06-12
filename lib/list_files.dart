@@ -109,19 +109,17 @@ class FileRow extends GroupRow {
 }
 
 class ListFiles extends StatefulWidget {
-  final List<FileProps> files;
+  final ValueNotifier<List<FileProps>> files;
   final List<GalleryProps> galleryFiles;
   final Function(List<GalleryProps>)? setGalleryFiles;
   final Map<String, double> keysOffsetMap;
-  final SortMode sortMode;
-  final bool gridView;
-  final bool group;
-  final RemoteFile relativeto;
-  final Set<RemoteFile> selection;
-  final SelectionAction selectionAction;
+  final ValueNotifier<ListOptions> listOptions;
+  final ValueNotifier<RemoteFile> relativeto;
+  final ValueNotifier<Set<RemoteFile>> selection;
+  final ValueNotifier<SelectionAction> selectionAction;
   final void Function(int)? showGallery;
   final Function() onUpdate;
-  final Function()? Function(RemoteFile) changeDirectory;
+  final Function(RemoteFile) changeDirectory;
   final void Function()? Function(RemoteFile) getSelectAction;
   final Function(RemoteFile)? showContextMenu;
   final (int, int) Function(RemoteFile, {bool recursive}) count;
@@ -136,12 +134,10 @@ class ListFiles extends StatefulWidget {
     this.galleryFiles = const [],
     this.setGalleryFiles,
     required this.keysOffsetMap,
-    required this.sortMode,
-    this.gridView = false,
-    this.group = false,
+    required this.listOptions,
     required this.relativeto,
-    this.selection = const {},
-    this.selectionAction = SelectionAction.none,
+    required this.selection,
+    required this.selectionAction,
     this.showGallery,
     required this.onUpdate,
     required this.changeDirectory,
@@ -158,17 +154,26 @@ class ListFiles extends StatefulWidget {
 
 class ListFilesState extends State<ListFiles> {
   final Map<String, bool> _fileDownloadedCache = {};
-  List<MapEntry<String, List<FileProps>>> _groups = [];
+  final ValueNotifier<List<MapEntry<String, List<FileProps>>>> _groups =
+      ValueNotifier<List<MapEntry<String, List<FileProps>>>>(
+        <MapEntry<String, List<FileProps>>>[],
+      );
 
-  Map<String, List<FileProps>> getGroups() {
+  void makeGroups() {
     Map<String, List<FileProps>> grouped = {};
-    SortMode? groupBy = widget.group ? widget.sortMode : null;
-    for (var file in widget.files) {
+    SortMode? groupBy = widget.listOptions.value.group
+        ? widget.listOptions.value.sortMode
+        : null;
+    for (var file in widget.files.value) {
       String key;
       switch (groupBy) {
         case SortMode.nameAsc || SortMode.nameDesc:
-          String fileKey = p.isWithin(widget.relativeto.key, file.key)
-              ? p.s3(p.asDir(p.relative(file.key, from: widget.relativeto.key)))
+          String fileKey = p.isWithin(widget.relativeto.value.key, file.key)
+              ? p.s3(
+                  p.asDir(
+                    p.relative(file.key, from: widget.relativeto.value.key),
+                  ),
+                )
               : file.key;
           key = fileKey.isNotEmpty ? fileKey[0].toUpperCase() : '#';
           if (!RegExp(r'^[A-Z0-9]$').hasMatch(key)) {
@@ -227,7 +232,7 @@ class ListFilesState extends State<ListFiles> {
         grouped[key] = [file];
       }
     }
-    return grouped;
+    _groups.value = grouped.entries.toList();
   }
 
   Widget preview(FileProps item) {
@@ -242,364 +247,433 @@ class ListFilesState extends State<ListFiles> {
 
   Widget listItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
-        ? JobView(job: item.job!, relativeTo: widget.relativeto)
+        ? ListenableBuilder(
+            listenable: widget.relativeto,
+            builder: (ccontext, _) =>
+                JobView(job: item.job!, relativeTo: widget.relativeto.value),
+          )
         : p.isDir(item.key)
-        ? ListTile(
-            dense: MediaQuery.of(context).size.width < 600 ? true : false,
-            visualDensity: MediaQuery.of(context).size.width < 600
-                ? VisualDensity.compact
-                : VisualDensity.standard,
-            selected: widget.selection.any(
-              (selected) =>
-                  selected.key == item.key ||
-                  p.isWithin(selected.key, item.key),
+        ? ListenableBuilder(
+            listenable: Listenable.merge([
+              widget.selection,
+              widget.relativeto,
+              widget.selectionAction,
+            ]),
+            builder: (ccontext, _) => ListTile(
+              dense: MediaQuery.of(context).size.width < 600 ? true : false,
+              visualDensity: MediaQuery.of(context).size.width < 600
+                  ? VisualDensity.compact
+                  : VisualDensity.standard,
+              selected: widget.selection.value.any(
+                (selected) =>
+                    selected.key == item.key ||
+                    p.isWithin(selected.key, item.key),
+              ),
+              selectedTileColor: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.1),
+              selectedColor: Theme.of(context).colorScheme.primary,
+              leading: SizedBox(
+                height: 32,
+                width: 32,
+                child: Icon(
+                  p.split(item.key).length > 1
+                      ? Icons.folder
+                      : Icons.cloud_circle_rounded,
+                ),
+              ),
+              title: Text(
+                p.isWithin(widget.relativeto.value.key, item.key)
+                    ? p.s3(
+                        p.asDir(
+                          p.relative(
+                            item.key,
+                            from: widget.relativeto.value.key,
+                          ),
+                        ),
+                      )
+                    : item.key,
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        Text(widget.dirModified(item.file!)),
+                        SizedBox(width: 8),
+                        Text(bytesToReadable(widget.dirSize(item.file!))),
+                        SizedBox(width: 8),
+                        Text(() {
+                          final count = widget.count(
+                            item.file!,
+                            recursive: true,
+                          );
+                          if (count.$1 == 0) {
+                            return '${count.$2} files';
+                          }
+                          if (count.$2 == 0) {
+                            return '${count.$1} subfolders';
+                          }
+                          return '${count.$2} files in ${count.$1} subfolders';
+                        }()),
+                      ],
+                    ),
+                  ),
+                  if (p.s3(p.dirname(item.file!.key)).isEmpty)
+                    Row(
+                      children: [
+                        Text('${Main.backupModeFromKey(item.file!.key).name}:'),
+                        SizedBox(width: 4),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Text(
+                            Main.pathFromKey(item.file!.key) ?? 'Not set',
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              onTap: widget.selection.value.isNotEmpty
+                  ? widget.getSelectAction(item.file!)
+                  : () => widget.changeDirectory(item.file!),
+              onLongPress: widget.getSelectAction(item.file!),
+              trailing: widget.selection.value.isNotEmpty
+                  ? widget.selection.value.any(
+                          (selected) => selected.key == item.key,
+                        )
+                        ? Icon(Icons.check_circle)
+                        : widget.selection.value.any(
+                            (selected) => p.isWithin(selected.key, item.key),
+                          )
+                        ? Icon(Icons.check_circle_outline)
+                        : widget.selectionAction.value == SelectionAction.none
+                        ? Icon(Icons.circle_outlined)
+                        : null
+                  : widget.showContextMenu != null
+                  ? IconButton(
+                      onPressed: () async {
+                        widget.showContextMenu!(item.file!);
+                      },
+                      icon: Icon(Icons.more_vert),
+                    )
+                  : null,
             ),
-            selectedTileColor: Theme.of(
-              context,
-            ).colorScheme.primary.withValues(alpha: 0.1),
-            selectedColor: Theme.of(context).colorScheme.primary,
-            leading: SizedBox(
-              height: 32,
-              width: 32,
+          )
+        : ListenableBuilder(
+            listenable: Listenable.merge([
+              widget.selection,
+              widget.relativeto,
+              widget.selectionAction,
+            ]),
+            builder: (ccontext, _) => ListTile(
+              dense: MediaQuery.of(context).size.width < 600 ? true : false,
+              visualDensity: MediaQuery.of(context).size.width < 600
+                  ? VisualDensity.compact
+                  : VisualDensity.standard,
+              selected: widget.selection.value.any(
+                (selected) =>
+                    selected.key == item.key ||
+                    p.isWithin(selected.key, item.key),
+              ),
+              selectedTileColor: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.1),
+              selectedColor: Theme.of(context).colorScheme.primary,
+              leading: Hero(
+                tag: item.key,
+                child: SizedBox(height: 32, width: 32, child: preview(item)),
+              ),
+              title: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Text(
+                  p.isWithin(widget.relativeto.value.key, item.key)
+                      ? p.s3(
+                          p.relative(
+                            item.key,
+                            from: widget.relativeto.value.key,
+                          ),
+                        )
+                      : item.file!.key,
+                ),
+              ),
+              subtitle: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    Text(timeToReadable(item.file!.lastModified!)),
+                    SizedBox(width: 8),
+                    Text(bytesToReadable(item.size)),
+                    SizedBox(width: 8),
+                    FutureBuilder<void>(
+                      future: () async {
+                        _fileDownloadedCache[item.key] = await File(
+                          Main.pathFromKey(item.key) ?? item.key,
+                        ).exists();
+                      }(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                                ConnectionState.waiting &&
+                            _fileDownloadedCache[item.key] == null) {
+                          return Icon(Icons.hourglass_empty, size: 16);
+                        }
+                        if (_fileDownloadedCache[item.key] == true) {
+                          return Icon(Icons.download_done, size: 16);
+                        } else {
+                          return Icon(
+                            Icons.cloud_download,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 16,
+                          );
+                        }
+                      },
+                    ),
+                    SizedBox(width: 8),
+                    Text(p.extension(item.key)),
+                  ],
+                ),
+              ),
+              trailing: widget.selection.value.isNotEmpty
+                  ? widget.selection.value.any(
+                          (selected) => selected.key == item.key,
+                        )
+                        ? Icon(Icons.check_circle)
+                        : widget.selection.value.any(
+                            (selected) => p.isWithin(selected.key, item.key),
+                          )
+                        ? Icon(Icons.check_circle_outline)
+                        : widget.selectionAction.value == SelectionAction.none
+                        ? Icon(Icons.circle_outlined)
+                        : null
+                  : widget.showContextMenu != null
+                  ? IconButton(
+                      onPressed: () async {
+                        widget.showContextMenu!(item.file!);
+                      },
+                      icon: Icon(Icons.more_vert),
+                    )
+                  : null,
+              onTap: widget.selection.value.isNotEmpty
+                  ? widget.getSelectAction(item.file!)
+                  : widget.showGallery != null
+                  ? () => widget.showGallery!(
+                      widget.galleryFiles.indexWhere(
+                        (g) => g.file.key == item.key,
+                      ),
+                    )
+                  : null,
+              onLongPress: widget.getSelectAction(item.file!),
+            ),
+          );
+  }
+
+  Widget gridItemBuilder(BuildContext context, FileProps item) {
+    return item.job != null
+        ? ListenableBuilder(
+            listenable: widget.relativeto,
+            builder: (ccontext, _) => JobView(
+              job: item.job!,
+              relativeTo: widget.relativeto.value,
+              grid: true,
+            ),
+          )
+        : p.isDir(item.key)
+        ? ListenableBuilder(
+            listenable: Listenable.merge([
+              widget.selection,
+              widget.relativeto,
+              widget.selectionAction,
+            ]),
+            builder: (ccontext, _) => MyGridTile(
+              selected: widget.selection.value.any(
+                (selected) =>
+                    selected.key == item.key ||
+                    p.isWithin(selected.key, item.key),
+              ),
+              footer: Column(
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Text(
+                      p.isWithin(widget.relativeto.value.key, item.key)
+                          ? p.s3(
+                              p.asDir(
+                                p.relative(
+                                  item.key,
+                                  from: widget.relativeto.value.key,
+                                ),
+                              ),
+                            )
+                          : item.key,
+                    ),
+                  ),
+                ],
+              ),
+              onTap: () => widget.changeDirectory(item.file!),
+              onLongPress: widget.getSelectAction(item.file!),
+              topRightBadge: widget.selection.value.isNotEmpty
+                  ? widget.selectionAction.value == SelectionAction.none
+                        ? IconButton(
+                            icon: Icon(
+                              widget.selection.value.isEmpty ||
+                                      widget.selection.value.any((selected) {
+                                        return selected.key == item.key;
+                                      })
+                                  ? Icons.check_circle
+                                  : Icons.circle_outlined,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            onPressed: widget.getSelectAction(item.file!),
+                          )
+                        : widget.selection.value.any(
+                            (selected) => selected.key == item.key,
+                          )
+                        ? IconButton(
+                            icon: Icon(Icons.check_circle),
+                            onPressed: null,
+                            color: Theme.of(context).colorScheme.primary,
+                            disabledColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                          )
+                        : widget.selection.value.any(
+                            (selected) => p.isWithin(selected.key, item.key),
+                          )
+                        ? IconButton(
+                            icon: Icon(Icons.check_circle_outline),
+                            onPressed: null,
+                            color: Theme.of(context).colorScheme.primary,
+                            disabledColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                          )
+                        : null
+                  : widget.showContextMenu != null
+                  ? IconButton(
+                      onPressed: () async {
+                        widget.showContextMenu!(item.file!);
+                      },
+                      icon: Icon(Icons.more_vert),
+                    )
+                  : null,
               child: Icon(
                 p.split(item.key).length > 1
                     ? Icons.folder
                     : Icons.cloud_circle_rounded,
               ),
             ),
-            title: Text(
-              p.isWithin(widget.relativeto.key, item.key)
-                  ? p.s3(
-                      p.asDir(
-                        p.relative(item.key, from: widget.relativeto.key),
-                      ),
-                    )
-                  : item.key,
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      Text(widget.dirModified(item.file!)),
-                      SizedBox(width: 8),
-                      Text(bytesToReadable(widget.dirSize(item.file!))),
-                      SizedBox(width: 8),
-                      Text(() {
-                        final count = widget.count(item.file!, recursive: true);
-                        if (count.$1 == 0) {
-                          return '${count.$2} files';
-                        }
-                        if (count.$2 == 0) {
-                          return '${count.$1} subfolders';
-                        }
-                        return '${count.$2} files in ${count.$1} subfolders';
-                      }()),
-                    ],
-                  ),
-                ),
-                if (p.s3(p.dirname(item.file!.key)).isEmpty)
-                  Row(
-                    children: [
-                      Text('${Main.backupModeFromKey(item.file!.key).name}:'),
-                      SizedBox(width: 4),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Text(
-                          Main.pathFromKey(item.file!.key) ?? 'Not set',
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-            onTap: widget.selection.isNotEmpty
-                ? widget.getSelectAction(item.file!)
-                : widget.changeDirectory(item.file!),
-            onLongPress: widget.getSelectAction(item.file!),
-            trailing: widget.selection.isNotEmpty
-                ? widget.selection.any((selected) => selected.key == item.key)
-                      ? Icon(Icons.check_circle)
-                      : widget.selection.any(
-                          (selected) => p.isWithin(selected.key, item.key),
-                        )
-                      ? Icon(Icons.check_circle_outline)
-                      : widget.selectionAction == SelectionAction.none
-                      ? Icon(Icons.circle_outlined)
-                      : null
-                : widget.showContextMenu != null
-                ? IconButton(
-                    onPressed: () async {
-                      widget.showContextMenu!(item.file!);
-                    },
-                    icon: Icon(Icons.more_vert),
-                  )
-                : null,
           )
-        : ListTile(
-            dense: MediaQuery.of(context).size.width < 600 ? true : false,
-            visualDensity: MediaQuery.of(context).size.width < 600
-                ? VisualDensity.compact
-                : VisualDensity.standard,
-            selected: widget.selection.any(
-              (selected) =>
-                  selected.key == item.key ||
-                  p.isWithin(selected.key, item.key),
-            ),
-            selectedTileColor: Theme.of(
-              context,
-            ).colorScheme.primary.withValues(alpha: 0.1),
-            selectedColor: Theme.of(context).colorScheme.primary,
-            leading: Hero(
-              tag: item.key,
-              child: SizedBox(height: 32, width: 32, child: preview(item)),
-            ),
-            title: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Text(
-                p.isWithin(widget.relativeto.key, item.key)
-                    ? p.s3(p.relative(item.key, from: widget.relativeto.key))
-                    : item.file!.key,
+        : ListenableBuilder(
+            listenable: Listenable.merge([
+              widget.selection,
+              widget.relativeto,
+              widget.selectionAction,
+            ]),
+            builder: (ccontext, _) => MyGridTile(
+              selected: widget.selection.value.any(
+                (selected) =>
+                    selected.key == item.key ||
+                    p.isWithin(selected.key, item.key),
               ),
-            ),
-            subtitle: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
+              footer: Column(
                 children: [
-                  Text(timeToReadable(item.file!.lastModified!)),
-                  SizedBox(width: 8),
-                  Text(bytesToReadable(item.size)),
-                  SizedBox(width: 8),
-                  FutureBuilder<void>(
-                    future: () async {
-                      _fileDownloadedCache[item.key] = await File(
-                        Main.pathFromKey(item.key) ?? item.key,
-                      ).exists();
-                    }(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting &&
-                          _fileDownloadedCache[item.key] == null) {
-                        return Icon(Icons.hourglass_empty, size: 16);
-                      }
-                      if (_fileDownloadedCache[item.key] == true) {
-                        return Icon(Icons.download_done, size: 16);
-                      } else {
-                        return Icon(
-                          Icons.cloud_download,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 16,
-                        );
-                      }
-                    },
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Text(
+                      p.isWithin(widget.relativeto.value.key, item.key)
+                          ? p.s3(
+                              p.relative(
+                                item.key,
+                                from: widget.relativeto.value.key,
+                              ),
+                            )
+                          : item.file!.key,
+                    ),
                   ),
-                  SizedBox(width: 8),
-                  Text(p.extension(item.key)),
                 ],
               ),
-            ),
-            trailing: widget.selection.isNotEmpty
-                ? widget.selection.any((selected) => selected.key == item.key)
-                      ? Icon(Icons.check_circle)
-                      : widget.selection.any(
-                          (selected) => p.isWithin(selected.key, item.key),
-                        )
-                      ? Icon(Icons.check_circle_outline)
-                      : widget.selectionAction == SelectionAction.none
-                      ? Icon(Icons.circle_outlined)
-                      : null
-                : widget.showContextMenu != null
-                ? IconButton(
-                    onPressed: () async {
-                      widget.showContextMenu!(item.file!);
-                    },
-                    icon: Icon(Icons.more_vert),
-                  )
-                : null,
-            onTap: widget.selection.isNotEmpty
-                ? widget.getSelectAction(item.file!)
-                : widget.showGallery != null
-                ? () => widget.showGallery!(
-                    widget.galleryFiles.indexWhere(
-                      (g) => g.file.key == item.key,
-                    ),
-                  )
-                : null,
-            onLongPress: widget.getSelectAction(item.file!),
-          );
-  }
-
-  Widget gridItemBuilder(BuildContext context, FileProps item) {
-    return item.job != null
-        ? JobView(job: item.job!, relativeTo: widget.relativeto, grid: true)
-        : p.isDir(item.key)
-        ? MyGridTile(
-            selected: widget.selection.any(
-              (selected) =>
-                  selected.key == item.key ||
-                  p.isWithin(selected.key, item.key),
-            ),
-            footer: Column(
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Text(
-                    p.isWithin(widget.relativeto.key, item.key)
-                        ? p.s3(
-                            p.asDir(
-                              p.relative(item.key, from: widget.relativeto.key),
-                            ),
-                          )
-                        : item.key,
-                  ),
+              topLeftBadge: Padding(
+                padding: EdgeInsets.all(16),
+                child: FutureBuilder<void>(
+                  future: () async {
+                    _fileDownloadedCache[item.key] = await File(
+                      Main.pathFromKey(item.key) ?? item.key,
+                    ).exists();
+                  }(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        _fileDownloadedCache[item.key] == null) {
+                      return Icon(Icons.hourglass_empty, size: 16);
+                    }
+                    if (_fileDownloadedCache[item.key] == true) {
+                      return Icon(Icons.download_done, size: 16);
+                    } else {
+                      return Icon(
+                        Icons.cloud_download,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 16,
+                      );
+                    }
+                  },
                 ),
-              ],
-            ),
-            onTap: widget.changeDirectory(item.file!),
-            onLongPress: widget.getSelectAction(item.file!),
-            topRightBadge: widget.selection.isNotEmpty
-                ? widget.selectionAction == SelectionAction.none
-                      ? IconButton(
-                          icon: Icon(
-                            widget.selection.isEmpty ||
-                                    widget.selection.any((selected) {
-                                      return selected.key == item.key;
-                                    })
-                                ? Icons.check_circle
-                                : Icons.circle_outlined,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          onPressed: widget.getSelectAction(item.file!),
-                        )
-                      : widget.selection.any(
-                          (selected) => selected.key == item.key,
-                        )
-                      ? IconButton(
-                          icon: Icon(Icons.check_circle),
-                          onPressed: null,
-                          color: Theme.of(context).colorScheme.primary,
-                          disabledColor: Theme.of(context).colorScheme.primary,
-                        )
-                      : widget.selection.any(
-                          (selected) => p.isWithin(selected.key, item.key),
-                        )
-                      ? IconButton(
-                          icon: Icon(Icons.check_circle_outline),
-                          onPressed: null,
-                          color: Theme.of(context).colorScheme.primary,
-                          disabledColor: Theme.of(context).colorScheme.primary,
-                        )
-                      : null
-                : widget.showContextMenu != null
-                ? IconButton(
-                    onPressed: () async {
-                      widget.showContextMenu!(item.file!);
-                    },
-                    icon: Icon(Icons.more_vert),
-                  )
-                : null,
-            child: Icon(
-              p.split(item.key).length > 1
-                  ? Icons.folder
-                  : Icons.cloud_circle_rounded,
-            ),
-          )
-        : MyGridTile(
-            selected: widget.selection.any(
-              (selected) =>
-                  selected.key == item.key ||
-                  p.isWithin(selected.key, item.key),
-            ),
-            footer: Column(
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Text(
-                    p.isWithin(widget.relativeto.key, item.key)
-                        ? p.s3(
-                            p.relative(item.key, from: widget.relativeto.key),
-                          )
-                        : item.file!.key,
-                  ),
-                ),
-              ],
-            ),
-            topLeftBadge: Padding(
-              padding: EdgeInsets.all(16),
-              child: FutureBuilder<void>(
-                future: () async {
-                  _fileDownloadedCache[item.key] = await File(
-                    Main.pathFromKey(item.key) ?? item.key,
-                  ).exists();
-                }(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      _fileDownloadedCache[item.key] == null) {
-                    return Icon(Icons.hourglass_empty, size: 16);
-                  }
-                  if (_fileDownloadedCache[item.key] == true) {
-                    return Icon(Icons.download_done, size: 16);
-                  } else {
-                    return Icon(
-                      Icons.cloud_download,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 16,
-                    );
-                  }
-                },
               ),
-            ),
-            topRightBadge: widget.selection.isNotEmpty
-                ? widget.selectionAction == SelectionAction.none
-                      ? IconButton(
-                          icon: Icon(
-                            widget.selection.isEmpty ||
-                                    widget.selection.any((selected) {
-                                      return selected.key == item.key;
-                                    })
-                                ? Icons.check_circle
-                                : Icons.circle_outlined,
+              topRightBadge: widget.selection.value.isNotEmpty
+                  ? widget.selectionAction.value == SelectionAction.none
+                        ? IconButton(
+                            icon: Icon(
+                              widget.selection.value.isEmpty ||
+                                      widget.selection.value.any((selected) {
+                                        return selected.key == item.key;
+                                      })
+                                  ? Icons.check_circle
+                                  : Icons.circle_outlined,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            onPressed: widget.getSelectAction(item.file!),
+                          )
+                        : widget.selection.value.any(
+                            (selected) => selected.key == item.key,
+                          )
+                        ? IconButton(
+                            icon: Icon(Icons.check_circle),
+                            onPressed: null,
                             color: Theme.of(context).colorScheme.primary,
-                          ),
-                          onPressed: widget.getSelectAction(item.file!),
-                        )
-                      : widget.selection.any(
-                          (selected) => selected.key == item.key,
-                        )
-                      ? IconButton(
-                          icon: Icon(Icons.check_circle),
-                          onPressed: null,
-                          color: Theme.of(context).colorScheme.primary,
-                          disabledColor: Theme.of(context).colorScheme.primary,
-                        )
-                      : widget.selection.any(
-                          (selected) => p.isWithin(selected.key, item.key),
-                        )
-                      ? IconButton(
-                          icon: Icon(Icons.check_circle_outline),
-                          onPressed: null,
-                          color: Theme.of(context).colorScheme.primary,
-                          disabledColor: Theme.of(context).colorScheme.primary,
-                        )
-                      : null
-                : widget.showContextMenu != null
-                ? IconButton(
-                    onPressed: () async {
-                      widget.showContextMenu!(item.file!);
-                    },
-                    icon: Icon(Icons.more_vert),
-                  )
-                : null,
-            onTap: widget.showGallery != null
-                ? () => widget.showGallery!(
-                    widget.galleryFiles.indexWhere(
-                      (g) => g.file.key == item.key,
-                    ),
-                  )
-                : null,
-            onLongPress: widget.getSelectAction(item.file!),
-            child: Hero(tag: item.key, child: preview(item)),
+                            disabledColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                          )
+                        : widget.selection.value.any(
+                            (selected) => p.isWithin(selected.key, item.key),
+                          )
+                        ? IconButton(
+                            icon: Icon(Icons.check_circle_outline),
+                            onPressed: null,
+                            color: Theme.of(context).colorScheme.primary,
+                            disabledColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                          )
+                        : null
+                  : widget.showContextMenu != null
+                  ? IconButton(
+                      onPressed: () async {
+                        widget.showContextMenu!(item.file!);
+                      },
+                      icon: Icon(Icons.more_vert),
+                    )
+                  : null,
+              onTap: widget.showGallery != null
+                  ? () => widget.showGallery!(
+                      widget.galleryFiles.indexWhere(
+                        (g) => g.file.key == item.key,
+                      ),
+                    )
+                  : null,
+              onLongPress: widget.getSelectAction(item.file!),
+              child: Hero(tag: item.key, child: preview(item)),
+            ),
           );
   }
 
@@ -613,9 +687,9 @@ class ListFilesState extends State<ListFiles> {
 
     double offset = 0;
 
-    for (final group in _groups) {
+    for (final group in _groups.value) {
       // Header height (if enabled)
-      if (widget.group) {
+      if (widget.listOptions.value.group) {
         final style = Theme.of(context).textTheme.titleMedium!;
         final painter = TextPainter(
           text: TextSpan(text: group.key, style: style),
@@ -626,7 +700,7 @@ class ListFilesState extends State<ListFiles> {
       }
 
       // Grid items
-      if (!widget.gridView) {
+      if (widget.listOptions.value.viewMode != ViewMode.grid) {
         // List view
         for (final file in group.value) {
           final listTileHeight = MediaQuery.of(context).size.width < 600
@@ -651,11 +725,12 @@ class ListFilesState extends State<ListFiles> {
   }
 
   @override
-  void didUpdateWidget(covariant ListFiles oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.files != widget.files) {
+  void initState() {
+    super.initState();
+
+    Listenable.merge([widget.files, widget.relativeto]).addListener(() {
       widget.setGalleryFiles?.call(
-        widget.files
+        widget.files.value
             .where((f) {
               return !p.isDir(f.key);
             })
@@ -668,8 +743,8 @@ class ListFilesState extends State<ListFiles> {
                       size: f.size,
                       etag: f.job!.md5.toString(),
                     ),
-                title: p.isWithin(widget.relativeto.key, f.key)
-                    ? p.s3(p.relative(f.key, from: widget.relativeto.key))
+                title: p.isWithin(widget.relativeto.value.key, f.key)
+                    ? p.s3(p.relative(f.key, from: widget.relativeto.value.key))
                     : f.key,
                 url: f.url!,
                 path: Main.pathFromKey(f.key) ?? f.key,
@@ -678,81 +753,72 @@ class ListFilesState extends State<ListFiles> {
             )
             .toList(),
       );
-      _groups = getGroups().entries.toList();
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    });
+
+    Listenable.merge([
+      widget.files,
+      widget.listOptions,
+      widget.relativeto,
+    ]).addListener(() {
+      makeGroups();
+    });
+
+    Listenable.merge([_groups, widget.listOptions]).addListener(() {
       buildKeysOffsetMap(context);
     });
   }
 
   @override
-  void initState() {
-    super.initState();
-    _groups = getGroups().entries.toList();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      buildKeysOffsetMap(context);
-    });
-  }
-
-  @override
-  void setState(VoidCallback fn) {
-    _groups = getGroups().entries.toList();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      buildKeysOffsetMap(context);
-    });
-    super.setState(fn);
+  void dispose() {
+    super.dispose();
+    _groups.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MultiSliver(children: buildSlivers(context));
-  }
-
-  List<Widget> buildSlivers(BuildContext context) {
-    final slivers = <Widget>[];
-
-    for (final group in _groups) {
-      if (widget.group) {
-        slivers.add(
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                group.key,
-                style: Theme.of(context).textTheme.titleMedium,
+    return ListenableBuilder(
+      listenable: Listenable.merge([_groups, widget.listOptions]),
+      builder: (ccontext, _) => MultiSliver(
+        children: [
+          for (final group in _groups.value) ...[
+            if (widget.listOptions.value.group)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    group.key,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
               ),
-            ),
-          ),
-        );
-      }
-
-      if (widget.gridView) {
-        slivers.add(
-          SliverGrid.builder(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: MediaQuery.of(context).size.width < 600 ? 4 : 6,
-              childAspectRatio: 3 / 4,
-            ),
-            itemCount: group.value.length,
-            itemBuilder: (context, i) {
-              final file = group.value[i];
-              return gridItemBuilder(context, file);
-            },
-          ),
-        );
-      } else {
-        slivers.add(
-          SliverList.builder(
-            itemCount: group.value.length,
-            itemBuilder: (context, i) {
-              final file = group.value[i];
-              return listItemBuilder(context, file);
-            },
-          ),
-        );
-      }
-    }
-
-    return slivers;
+            if (widget.listOptions.value.viewMode == ViewMode.grid)
+              SliverGrid.builder(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: MediaQuery.of(context).size.width < 600
+                      ? 4
+                      : 6,
+                  childAspectRatio: 3 / 4,
+                ),
+                itemCount: group.value.length,
+                itemBuilder: (context, i) {
+                  final file = group.value[i];
+                  return gridItemBuilder(context, file);
+                },
+              )
+            else
+              SliverList.builder(
+                itemCount: group.value.length,
+                itemBuilder: (context, i) {
+                  final file = group.value[i];
+                  return listItemBuilder(context, file);
+                },
+              ),
+          ],
+        ],
+      ),
+    );
   }
 }
