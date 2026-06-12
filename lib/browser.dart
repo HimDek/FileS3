@@ -312,7 +312,12 @@ class MyBrowserState extends BrowserState {
   @override
   Widget bottomNavigationBar(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_navIndex, _controlsVisible, Job.jobs]),
+      listenable: Listenable.merge([
+        _navIndex,
+        _controlsVisible,
+        Job.jobs,
+        Job.onProgressUpdate,
+      ]),
       builder: (context, _) => AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         height: _controlsVisible.value ? kBottomNavigationBarHeight + 24 : 0,
@@ -1363,6 +1368,7 @@ class BrowserState extends State<Browser> {
                   loading,
                   _navIndex,
                   _driveDir,
+                  _thumbVisibility,
                   _searching,
                   _searchResults,
                   _selection,
@@ -1762,9 +1768,10 @@ class BrowserState extends State<Browser> {
                                           ),
                                         ),
                                       if (Main.pathFromKey(
-                                            _driveDir.value.key,
-                                          ) !=
-                                          null)
+                                                _driveDir.value.key,
+                                              ) !=
+                                              null &&
+                                          !_thumbVisibility.value)
                                         Row(
                                           children: [
                                             Text(

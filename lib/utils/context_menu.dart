@@ -43,7 +43,8 @@ class FileContextActionHandler extends ContextActionHandler {
   }
 
   bool downloaded() {
-    return File(Main.pathFromKey(file.key) ?? file.key).existsSync();
+    return !p.isDir(file.key) &&
+        File(Main.pathFromKey(file.key) ?? file.key).existsSync();
   }
 
   bool active() {
@@ -179,7 +180,9 @@ class FilesContextActionHandler extends ContextActionHandler {
   List<RemoteFile> downloadedFiles() {
     return files
         .where(
-          (file) => File(Main.pathFromKey(file.key) ?? file.key).existsSync(),
+          (f) =>
+              !p.isDir(f.key) &&
+              File(Main.pathFromKey(f.key) ?? f.key).existsSync(),
         )
         .toList();
   }
@@ -187,9 +190,10 @@ class FilesContextActionHandler extends ContextActionHandler {
   List<RemoteFile> activeFiles() {
     return files
         .where(
-          (file) => Job.jobs.value.any(
+          (f) => Job.jobs.value.any(
             (job) =>
-                job.localFile.path == Main.pathFromKey(file.key) &&
+                !p.isDir(f.key) &&
+                job.localFile.path == Main.pathFromKey(f.key) &&
                 ![
                   JobStatus.completed,
                   JobStatus.failed,
@@ -328,6 +332,40 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     required this.deleteDirectories,
   });
 
+  List<RemoteFile> get files => Main.remoteFiles
+      .where((f) => p.isWithin(file.key, f.key) && !p.isDir(f.key))
+      .toList();
+
+  bool rootExists() {
+    return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
+  }
+
+  bool localExists() {
+    return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync();
+  }
+
+  List<RemoteFile> downloadedFiles() {
+    return files
+        .where((f) => File(Main.pathFromKey(f.key) ?? f.key).existsSync())
+        .toList();
+  }
+
+  List<RemoteFile> activeFiles() {
+    return files
+        .where(
+          (f) => Job.jobs.value.any(
+            (job) =>
+                !p.isDir(f.key) &&
+                job.localFile.path == Main.pathFromKey(f.key) &&
+                ![
+                  JobStatus.completed,
+                  JobStatus.failed,
+                ].contains(job.status.value),
+          ),
+        )
+        .toList();
+  }
+
   List<RemoteFile> removableFiles() {
     return Main.remoteFiles
         .where(
@@ -340,14 +378,6 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         .toList();
   }
 
-  bool localExists() {
-    return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync();
-  }
-
-  bool rootExists() {
-    return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
-  }
-
   void Function()? open() {
     return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? () {
@@ -358,7 +388,15 @@ class DirectoryContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return !rootExists() || downloadDirectory == null
+    return !rootExists() ||
+            downloadedFiles().length == files.length ||
+            downloadedFiles()
+                    .map((f) => f.key)
+                    .toSet()
+                    .union(activeFiles().map((f) => f.key).toSet())
+                    .length ==
+                files.length ||
+            downloadDirectory == null
         ? null
         : () {
             downloadDirectory!(file);
@@ -448,6 +486,14 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     required this.deleteDirectories,
   });
 
+  List<RemoteFile> get files => Main.remoteFiles
+      .where(
+        (f) =>
+            directories.any((dir) => p.isWithin(dir.key, f.key)) &&
+            !p.isDir(f.key),
+      )
+      .toList();
+
   List<bool> rootExists() {
     return directories
         .map((dir) => p.isAbsolute(Main.pathFromKey(dir.key) ?? dir.key))
@@ -458,6 +504,28 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     return directories
         .where(
           (dir) => Directory(Main.pathFromKey(dir.key) ?? dir.key).existsSync(),
+        )
+        .toList();
+  }
+
+  List<RemoteFile> downloadedFiles() {
+    return files
+        .where((f) => File(Main.pathFromKey(f.key) ?? f.key).existsSync())
+        .toList();
+  }
+
+  List<RemoteFile> activeFiles() {
+    return files
+        .where(
+          (f) => Job.jobs.value.any(
+            (job) =>
+                !p.isDir(f.key) &&
+                job.localFile.path == Main.pathFromKey(f.key) &&
+                ![
+                  JobStatus.completed,
+                  JobStatus.failed,
+                ].contains(job.status.value),
+          ),
         )
         .toList();
   }
@@ -476,7 +544,32 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return rootExists().every((exists) => !exists) || downloadDirectory == null
+    return rootExists().every((exists) => !exists) ||
+            downloadedFiles().length ==
+                Main.remoteFiles
+                    .where(
+                      (f) =>
+                          directories.any(
+                            (dir) => p.isWithin(dir.key, f.key),
+                          ) &&
+                          !p.isDir(f.key),
+                    )
+                    .length ||
+            downloadedFiles()
+                    .map((f) => f.key)
+                    .toSet()
+                    .union(activeFiles().map((f) => f.key).toSet())
+                    .length ==
+                Main.remoteFiles
+                    .where(
+                      (f) =>
+                          directories.any(
+                            (dir) => p.isWithin(dir.key, f.key),
+                          ) &&
+                          !p.isDir(f.key),
+                    )
+                    .length ||
+            downloadDirectory == null
         ? null
         : () {
             directories
@@ -1278,13 +1371,37 @@ class DirectoryContextOption {
   static DirectoryContextOption download(
     DirectoryContextActionHandler handler,
   ) => DirectoryContextOption(
-    title: handler.download() == null ? 'Cannot Download' : 'Download',
-    subtitle: handler.download() == null
-        ? 'Set backup folder to enable downloads'
-        : 'Only missing files with backup folder set will be downloaded',
-    icon: handler.download() == null
-        ? Icons.file_download_off_rounded
-        : Icons.file_download_rounded,
+    title: handler.download() != null
+        ? 'Download'
+        : handler.downloadedFiles().length == handler.files.length
+        ? 'Downloaded'
+        : handler
+                  .downloadedFiles()
+                  .map((f) => f.key)
+                  .toSet()
+                  .union(handler.activeFiles().map((f) => f.key).toSet())
+                  .length ==
+              handler.files.length
+        ? 'Active Jobs'
+        : 'Cannot Download',
+    subtitle: handler.download() != null
+        ? "Only missing files with backup folder set will be downloaded"
+        : handler.downloadedFiles().length == handler.files.length
+        ? null
+        : 'Set backup folder to enable downloads',
+    icon: handler.download() != null
+        ? Icons.file_download_rounded
+        : handler.downloadedFiles().length == handler.files.length
+        ? Icons.file_download_done_rounded
+        : handler
+                  .downloadedFiles()
+                  .map((f) => f.key)
+                  .toSet()
+                  .union(handler.activeFiles().map((f) => f.key).toSet())
+                  .length ==
+              handler.files.length
+        ? Icons.file_download_rounded
+        : Icons.file_download_off_rounded,
     action: handler.download(),
   );
 
@@ -1547,13 +1664,37 @@ class DirectoriesContextOption {
   static DirectoriesContextOption downloadAll(
     DirectoriesContextActionHandler handler,
   ) => DirectoriesContextOption(
-    title: handler.download() == null ? 'Cannot Download' : 'Download',
-    subtitle: handler.download() == null
-        ? 'Set backup folder to enable downloads'
-        : 'Only missing files with backup folder set will be downloaded',
-    icon: handler.download() == null
-        ? Icons.file_download_off_rounded
-        : Icons.file_download_rounded,
+    title: handler.download() != null
+        ? 'Download'
+        : handler.downloadedFiles().length == handler.files.length
+        ? 'Downloaded'
+        : handler
+                  .downloadedFiles()
+                  .map((f) => f.key)
+                  .toSet()
+                  .union(handler.activeFiles().map((f) => f.key).toSet())
+                  .length ==
+              handler.files.length
+        ? 'Active Jobs'
+        : 'Cannot Download',
+    subtitle: handler.download() != null
+        ? "Only missing files with backup folder set will be downloaded"
+        : handler.downloadedFiles().length == handler.files.length
+        ? null
+        : 'Set backup folder to enable downloads',
+    icon: handler.download() != null
+        ? Icons.file_download_rounded
+        : handler.downloadedFiles().length == handler.files.length
+        ? Icons.file_download_done_rounded
+        : handler
+                  .downloadedFiles()
+                  .map((f) => f.key)
+                  .toSet()
+                  .union(handler.activeFiles().map((f) => f.key).toSet())
+                  .length ==
+              handler.files.length
+        ? Icons.file_download_rounded
+        : Icons.file_download_off_rounded,
     action: handler.download,
   );
 
