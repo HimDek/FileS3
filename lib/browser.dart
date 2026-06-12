@@ -1768,10 +1768,9 @@ class BrowserState extends State<Browser> {
                                           ),
                                         ),
                                       if (Main.pathFromKey(
-                                                _driveDir.value.key,
-                                              ) !=
-                                              null &&
-                                          !_thumbVisibility.value)
+                                            _driveDir.value.key,
+                                          ) !=
+                                          null)
                                         Row(
                                           children: [
                                             Text(
