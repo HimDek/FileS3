@@ -43,7 +43,8 @@ class S3TransferTask {
     final HttpClient httpClient = HttpClient();
 
     try {
-      if (profile?.fileManager == null || !(profile?.accessible ?? false)) {
+      if (profile?.fileManager == null ||
+          !(profile?.accessible.value ?? false)) {
         throw Exception('Profile is not accessible');
       }
 

@@ -10,7 +10,7 @@ import 'package:files3/globals.dart';
 class Profile {
   String name;
 
-  bool accessible = true;
+  ValueNotifier<bool> accessible = ValueNotifier<bool>(true);
   http.Client httpClient = http.Client();
 
   late S3Config cfg;
@@ -20,7 +20,7 @@ class Profile {
   Profile({required this.name, required this.cfg}) {
     fileManager = S3FileManager.create(this, httpClient, cfg);
     if (fileManager == null) {
-      accessible = false;
+      accessible.value = false;
     }
     deletionRegistrar = DeletionRegistrar(profile: this);
   }
@@ -29,7 +29,7 @@ class Profile {
     cfg = newCfg;
     fileManager = S3FileManager.create(this, httpClient, cfg);
     if (fileManager == null) {
-      accessible = false;
+      accessible.value = false;
     }
   }
 
@@ -41,9 +41,9 @@ class Profile {
       );
       Main.remoteFilesAddAll(fetchedRemoteFiles);
       await ConfigManager.saveRemoteFiles(Main.remoteFiles);
-      accessible = true;
+      accessible.value = true;
     } catch (e) {
-      accessible = false;
+      accessible.value = false;
       if (kDebugMode) {
         debugPrint("Error refreshing remote files: $e");
       }
@@ -54,7 +54,7 @@ class Profile {
     loading.value = true;
 
     if (fileManager == null) {
-      accessible = false;
+      accessible.value = false;
       loading.value = false;
       return;
     }

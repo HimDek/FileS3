@@ -832,21 +832,27 @@ class _HomeState extends State<Home> {
       }
     });
 
-    _intentSub = receive_intent.ReceiveIntent.receivedIntentStream.listen(
-      (intent) {
-        _handleIntent(intent);
-      },
-      onError: (err) {
-        showSnackBar(SnackBar(content: Text('Error receiving intent: $err')));
-        receive_intent.ReceiveIntent.setResult(500);
-      },
-    );
+    try {
+      _intentSub = receive_intent.ReceiveIntent.receivedIntentStream.listen(
+        (intent) {
+          _handleIntent(intent);
+        },
+        onError: (err) {
+          showSnackBar(SnackBar(content: Text('Error receiving intent: $err')));
+          receive_intent.ReceiveIntent.setResult(500);
+        },
+      );
 
-    receive_intent.ReceiveIntent.getInitialIntent().then((intent) {
-      if (intent != null) {
-        _handleIntent(intent);
+      receive_intent.ReceiveIntent.getInitialIntent().then((intent) {
+        if (intent != null) {
+          _handleIntent(intent);
+        }
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error setting up intent listener: $e');
       }
-    });
+    }
   }
 
   @override

@@ -433,7 +433,7 @@ abstract class Job {
   bool startable() {
     return status.value != JobStatus.running &&
         status.value != JobStatus.completed &&
-        (profile?.accessible ?? false);
+        (profile?.accessible.value ?? false);
   }
 
   Future<void> start() async {
