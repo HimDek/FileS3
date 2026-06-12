@@ -108,7 +108,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
       }
 
       return await resultDesc.instantiateCodec();
-    } else if (cachePath != null && !thumbnail && !cacheExists) {
+    } else if (cachePath != null && !thumbnail && !cacheExists && !pathExists) {
       _writeOriginal(bytes);
     }
 
