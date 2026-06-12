@@ -596,12 +596,14 @@ abstract class Job {
     } finally {
       scheduled = false;
     }
+    onProgressUpdate.trigger();
   }
 
   static void stopall() {
     for (var job in jobs.value) {
       job.stop();
     }
+    onProgressUpdate.trigger();
   }
 
   static void clearCompleted() {

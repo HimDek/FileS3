@@ -1333,6 +1333,7 @@ class BrowserState extends State<Browser> {
                 _dirCount,
                 _fileCount,
                 Job.jobs,
+                Job.onProgressUpdate,
               ]),
               builder: (context, child) => SliverAppBar(
                 floating: _selection.value.isEmpty,
