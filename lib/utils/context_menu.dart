@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'package:files3/globals.dart';
-import 'package:files3/settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
@@ -9,8 +7,10 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
-import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
+import 'package:files3/globals.dart';
+import 'package:files3/helpers.dart';
+import 'package:files3/settings.dart';
 
 abstract class ContextActionHandler {
   ContextActionHandler();

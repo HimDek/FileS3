@@ -3,16 +3,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:collection/collection.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:files3/utils/s3_transfer_task.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/sync_analyzer.dart';
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
-import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
+import 'package:files3/helpers.dart';
 
 abstract class Main {
   static final Set<Profile> _profiles = <Profile>{};

@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:files3/globals.dart';
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
+import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 

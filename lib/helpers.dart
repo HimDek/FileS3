@@ -1,17 +1,17 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:file_magic_number/file_magic_number.dart';
-import 'package:files3/globals.dart';
 import 'package:ini/ini.dart';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:uri_content/uri_content.dart';
+import 'package:file_magic_number/file_magic_number.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
+import 'package:files3/globals.dart';
 import 'package:files3/models.dart';
 
 Future<File> uriToFile(

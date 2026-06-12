@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
-import 'package:files3/media_view.dart';
-import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
+import 'package:files3/helpers.dart';
 import 'package:files3/job_view.dart';
+import 'package:files3/media_view.dart';
 
 class MyGridTile extends StatelessWidget {
   final Widget child;
@@ -153,9 +153,7 @@ class ListFiles extends StatefulWidget {
 class ListFilesState extends State<ListFiles> {
   final Map<String, bool> _fileDownloadedCache = {};
   final ValueNotifier<List<MapEntry<String, List<FileProps>>>> _groups =
-      ValueNotifier<List<MapEntry<String, List<FileProps>>>>(
-        <MapEntry<String, List<FileProps>>>[],
-      );
+      ValueNotifier([]);
 
   void makeGroups() {
     Map<String, List<FileProps>> grouped = {};

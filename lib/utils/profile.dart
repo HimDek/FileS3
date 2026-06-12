@@ -3,9 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
-import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
+import 'package:files3/helpers.dart';
 
 class Profile {
   String name;

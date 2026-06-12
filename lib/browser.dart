@@ -1,20 +1,20 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:async';
-import 'package:file_selector/file_selector.dart';
-import 'package:files3/media_view.dart';
-import 'package:files3/utils/context_menu.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
-import 'package:files3/globals.dart';
-import 'package:files3/helpers.dart';
-import 'package:files3/models.dart';
-import 'package:files3/utils/job.dart';
-import 'package:files3/list_files.dart';
-import 'package:files3/utils/profile.dart';
+import 'package:flutter/rendering.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:files3/utils/path_utils.dart' as p;
+import 'package:files3/utils/context_menu.dart';
+import 'package:files3/utils/profile.dart';
+import 'package:files3/utils/job.dart';
+import 'package:files3/globals.dart';
+import 'package:files3/models.dart';
+import 'package:files3/helpers.dart';
 import 'package:files3/settings.dart';
-import 'package:open_file/open_file.dart';
+import 'package:files3/media_view.dart';
+import 'package:files3/list_files.dart';
 
 class PathPicker extends Browser {
   const PathPicker({
@@ -1286,12 +1286,24 @@ class BrowserState extends State<Browser> {
 
   @override
   void dispose() {
-    _scrollController.dispose();
     _searchController.dispose();
+    _scrollController.dispose();
+    _navIndex.dispose();
+    _dirCount.dispose();
+    _fileCount.dispose();
     _searching.dispose();
     _controlsVisible.dispose();
     _globalListOptions.dispose();
+    _thumbVisibility.dispose();
+    _profile.dispose();
+    _driveDir.dispose();
     _listOptions.dispose();
+    _selectionAction.dispose();
+    _selection.dispose();
+    _searchResults.dispose();
+    _currentItems.dispose();
+    _currentProps.dispose();
+    _scrollbarTimer?.cancel();
     _inaccessibleTimer?.cancel();
     super.dispose();
   }
@@ -1795,10 +1807,15 @@ class BrowserState extends State<Browser> {
                                                     ).textTheme.labelSmall,
                                                   ),
                                                   onTap: () {
-                                                    OpenFile.open(
-                                                      Main.pathFromKey(
-                                                        _driveDir.value.key,
-                                                      )!,
+                                                    launchUrl(
+                                                      Uri.file(
+                                                        Main.pathFromKey(
+                                                              _driveDir
+                                                                  .value
+                                                                  .key,
+                                                            ) ??
+                                                            _driveDir.value.key,
+                                                      ),
                                                     );
                                                   },
                                                 ),
