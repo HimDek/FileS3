@@ -2569,18 +2569,7 @@ Widget buildDirectoryContextMenu(
                   onTap: () async {
                     final String? directoryPath = await getDirectoryPath();
                     if (directoryPath != null) {
-                      if (!IniManager.config!.sections().contains(
-                        'directories',
-                      )) {
-                        IniManager.config!.addSection('directories');
-                      }
-                      IniManager.config!.set(
-                        'directories',
-                        file.key,
-                        directoryPath,
-                      );
-                      IniManager.cleanDirectories(keepKey: file.key);
-                      IniManager.save();
+                      setLocalDir(file.key, directoryPath);
                       Main.listDirectories();
                       globalNavigator!.pop();
                     }
@@ -2590,12 +2579,7 @@ Widget buildDirectoryContextMenu(
                       : IconButton(
                           icon: const Icon(Icons.clear_rounded),
                           onPressed: () {
-                            IniManager.config!.removeOption(
-                              'directories',
-                              file.key,
-                            );
-                            IniManager.cleanDirectories(keepKey: file.key);
-                            IniManager.save();
+                            setLocalDir(file.key, null);
                             Main.listDirectories();
                             globalNavigator!.pop();
                           },

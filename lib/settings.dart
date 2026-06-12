@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -111,10 +110,12 @@ class S3ConfigPageState extends State<S3ConfigPage> {
       _bucketController.text = _s3Config?.bucket ?? '';
       _prefixController.text = _s3Config?.prefix ?? '';
       _hostController.text = _s3Config?.host ?? '';
-      _localDir = _profile == null ? null : Main.pathFromKey(_profile!.name);
+      _localDir = _profile == null
+          ? null
+          : Main.pathFromKey('${_profile!.name}/');
       _backupMode = _profile == null
           ? BackupMode.sync
-          : Main.backupModeFromKey(_profile!.name);
+          : Main.backupModeFromKey('${_profile!.name}/');
       _loading = false;
     });
   }
@@ -139,32 +140,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
             ),
           );
           setBackupMode('${_profileNameController.text}/', _backupMode);
-          if (!IniManager.config!.sections().contains('directories')) {
-            IniManager.config!.addSection('directories');
-          }
-          if (_localDir != null &&
-              !p.isAbsolute(_localDir!) &&
-              File(_localDir!).existsSync()) {
-            IniManager.config!.set(
-              'directories',
-              '${_profileNameController.text}/',
-              _localDir!,
-            );
-            IniManager.cleanDirectories(
-              keepKey: '${_profileNameController.text}/',
-            );
-            IniManager.save();
-          } else if (_localDir == null) {
-            IniManager.config!.removeOption(
-              'directories',
-              '${_profileNameController.text}/',
-            );
-            IniManager.cleanDirectories(
-              keepKey: '${_profileNameController.text}/',
-            );
-            IniManager.save();
-          }
-          Main.listDirectories();
+          setLocalDir('${_profileNameController.text}/', _localDir);
           showSnackBar(SnackBar(content: Text('Configuration saved')));
           await Main.refreshProfiles();
           await _readConfig();
@@ -232,9 +208,9 @@ class S3ConfigPageState extends State<S3ConfigPage> {
           _exportData['host'] = _profile!.cfg.host;
           if (_includeBackupConfig) {
             _exportData['backupMode'] = Main.backupModeFromKey(
-              _profile!.name,
+              '${_profile!.name}/',
             ).value;
-            _exportData['localDir'] = Main.pathFromKey(_profile!.name);
+            _exportData['localDir'] = Main.pathFromKey('${_profile!.name}/');
           }
         }
       });
@@ -999,14 +975,10 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                           ),
                           TextButton(
                             onPressed: () {
-                              IniManager.config!.removeOption(
-                                'directories',
+                              setLocalDir(
                                 '${_profileNameController.text}/',
+                                null,
                               );
-                              IniManager.cleanDirectories(
-                                keepKey: '${_profileNameController.text}/',
-                              );
-                              IniManager.save();
                               Navigator.of(context).pop();
                               setState(() {
                                 _loading = true;

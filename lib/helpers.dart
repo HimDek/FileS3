@@ -445,6 +445,19 @@ void setBackupMode(String key, BackupMode? mode) {
   IniManager.save();
 }
 
+void setLocalDir(String key, String? path) {
+  if (!IniManager.config!.sections().contains('directories')) {
+    IniManager.config!.addSection('directories');
+  }
+  if (path == null) {
+    IniManager.config?.removeOption('directories', key);
+  } else {
+    IniManager.config?.set('directories', key, path);
+  }
+  IniManager.cleanDirectories(keepKey: key);
+  IniManager.save();
+}
+
 void renameOrCopyAndDelete(File file, String newPath) {
   try {
     file.renameSync(newPath);
@@ -637,6 +650,13 @@ abstract class ConfigManager {
     IniManager.config!.set("profiles", name, profileStr);
     await _storage.write(key: 'aws_access_key_$name', value: config.accessKey);
     await _storage.write(key: 'aws_secret_key_$name', value: config.secretKey);
+    IniManager.save();
+  }
+
+  static Future<void> deleteS3Config(String name) async {
+    IniManager.config!.removeOption("profiles", name);
+    await _storage.delete(key: 'aws_access_key_$name');
+    await _storage.delete(key: 'aws_secret_key_$name');
     IniManager.save();
   }
 
