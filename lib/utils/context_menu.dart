@@ -2220,27 +2220,7 @@ Widget buildFileContextMenu(
         <Widget>[
               ListTile(
                 visualDensity: VisualDensity.comfortable,
-                leading: Icon(
-                  (mediaType ?? '').startsWith('image/')
-                      ? Icons.image
-                      : (mediaType ?? '').startsWith('video/')
-                      ? Icons.videocam
-                      : (mediaType ?? '').startsWith('audio/')
-                      ? Icons.audiotrack
-                      : (mediaType ?? '').startsWith('text/')
-                      ? Icons.description
-                      : (mediaType ?? '').startsWith('font/')
-                      ? Icons.font_download
-                      : (mediaType ?? '').startsWith('message/')
-                      ? Icons.message
-                      : (mediaType ?? '').startsWith('model/')
-                      ? Icons.model_training
-                      : (mediaType ?? '').startsWith('application/')
-                      ? (mediaType ?? '').toLowerCase() == 'application/pdf'
-                            ? Icons.picture_as_pdf
-                            : Icons.apps
-                      : Icons.insert_drive_file,
-                ),
+                leading: Icon(mediaTypeIcon(mediaType)),
                 title: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(item.key),

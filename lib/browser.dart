@@ -1854,9 +1854,6 @@ class BrowserState extends State<Browser> {
                 selection: _selection,
                 selectionAction: _selectionAction,
                 showGallery: _pushGallery,
-                onUpdate: () {
-                  setState(() {});
-                },
                 changeDirectory: _changeDirectory,
                 getSelectAction: widget.onPick == null
                     ? _getSelectAction

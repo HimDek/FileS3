@@ -10,6 +10,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
   final String? path;
   final String? cachePath;
   final String? thumbPath;
+  final bool thumbnail;
   final int? maxWidth;
   final int? maxHeight;
   final String? cacheKey;
@@ -19,6 +20,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
     this.path,
     this.cachePath,
     this.thumbPath,
+    this.thumbnail = false,
     this.maxWidth,
     this.maxHeight,
     this.cacheKey,
@@ -31,7 +33,6 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
     return SynchronousFuture(this);
   }
 
-  @override
   @override
   ImageStreamCompleter loadImage(
     HybridImageProvider key,
@@ -51,21 +52,20 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
   }
 
   Future<ui.Codec> _loadAsync() async {
-    if (path != null && await File(path!).exists()) {
-      return _decodeFile(path!);
+    Uint8List bytes;
+    if (thumbnail && thumbPath != null && await File(thumbPath!).exists()) {
+      bytes = await File(thumbPath!).readAsBytes();
+    } else if (path != null && await File(path!).exists()) {
+      bytes = await File(path!).readAsBytes();
+    } else if (cachePath != null && await File(cachePath!).exists()) {
+      bytes = await File(cachePath!).readAsBytes();
+    } else if (thumbPath != null && await File(thumbPath!).exists()) {
+      bytes = await File(thumbPath!).readAsBytes();
+    } else if (url != null) {
+      bytes = await _download();
+    } else {
+      throw StateError("No image source");
     }
-
-    if (thumbPath != null && await File(thumbPath!).exists()) {
-      return _decodeFile(thumbPath!);
-    }
-
-    if (cachePath != null && await File(cachePath!).exists()) {
-      return _decodeFile(cachePath!);
-    }
-
-    if (url == null) throw StateError("No image source");
-
-    final bytes = await _download();
 
     final ui.ImmutableBuffer buffer = await ui.ImmutableBuffer.fromUint8List(
       bytes,
@@ -75,12 +75,15 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
       buffer,
     );
 
-    final bool needsResize = maxWidth != null || maxHeight != null;
+    final bool needsResize =
+        (maxWidth != null || maxHeight != null) &&
+        (descriptor.width > (maxWidth ?? descriptor.width) ||
+            descriptor.height > (maxHeight ?? descriptor.height));
 
     if (needsResize) {
       final ui.Codec codec = await descriptor.instantiateCodec(
-        targetWidth: maxWidth,
-        targetHeight: maxHeight,
+        targetWidth: descriptor.width < descriptor.height ? maxWidth : null,
+        targetHeight: descriptor.height < descriptor.width ? maxHeight : null,
       );
 
       final ui.FrameInfo frame = await codec.getNextFrame();
@@ -97,7 +100,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
       );
 
       return await thumbDesc.instantiateCodec();
-    } else if (cachePath != null) {
+    } else if (cachePath != null && !thumbnail && !File(path!).existsSync()) {
       await _writeOriginal(bytes);
     }
 
@@ -111,13 +114,6 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
       options: Options(responseType: ResponseType.bytes),
     );
     return Uint8List.fromList(response.data!);
-  }
-
-  Future<ui.Codec> _decodeFile(String path) async {
-    final bytes = await File(path).readAsBytes();
-    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-    final descriptor = await ui.ImageDescriptor.encoded(buffer);
-    return await descriptor.instantiateCodec();
   }
 
   Future<void> _writeThumbnail(ui.Image image) async {

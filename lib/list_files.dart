@@ -118,7 +118,6 @@ class ListFiles extends StatefulWidget {
   final ValueNotifier<Set<RemoteFile>> selection;
   final ValueNotifier<SelectionAction> selectionAction;
   final void Function(int)? showGallery;
-  final Function() onUpdate;
   final Function(RemoteFile) changeDirectory;
   final void Function()? Function(RemoteFile) getSelectAction;
   final Function(RemoteFile)? showContextMenu;
@@ -139,7 +138,6 @@ class ListFiles extends StatefulWidget {
     required this.selection,
     required this.selectionAction,
     this.showGallery,
-    required this.onUpdate,
     required this.changeDirectory,
     this.getSelectAction = setSelectActionDefault,
     this.showContextMenu,

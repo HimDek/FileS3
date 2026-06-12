@@ -795,27 +795,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
 
   final PhotoViewController _photoViewController = PhotoViewController();
 
-  Widget fallback(_, String mediaType) => Icon(
-    mediaType.startsWith('image/')
-        ? Icons.image
-        : mediaType.startsWith('video/')
-        ? Icons.videocam
-        : mediaType.startsWith('audio/')
-        ? Icons.audiotrack
-        : mediaType.startsWith('text/')
-        ? Icons.description
-        : mediaType.startsWith('font/')
-        ? Icons.font_download
-        : mediaType.startsWith('message/')
-        ? Icons.message
-        : mediaType.startsWith('model/')
-        ? Icons.model_training
-        : mediaType.startsWith('application/')
-        ? mediaType.toLowerCase() == 'application/pdf'
-              ? Icons.picture_as_pdf
-              : Icons.apps
-        : Icons.insert_drive_file,
-  );
+  Widget fallback(_, String mediaType) => Icon(mediaTypeIcon(mediaType));
 
   Future<void> updateMediaType() async {
     if (mounted) {
@@ -1257,27 +1237,7 @@ class MediaPreview extends StatefulWidget {
 }
 
 class MediaPreviewState extends State<MediaPreview> {
-  Widget fallback(String mediaType) => Icon(
-    mediaType.startsWith('image/')
-        ? Icons.image
-        : mediaType.startsWith('video/')
-        ? Icons.videocam
-        : mediaType.startsWith('audio/')
-        ? Icons.audiotrack
-        : mediaType.startsWith('text/')
-        ? Icons.description
-        : mediaType.startsWith('font/')
-        ? Icons.font_download
-        : mediaType.startsWith('message/')
-        ? Icons.message
-        : mediaType.startsWith('model/')
-        ? Icons.model_training
-        : mediaType.startsWith('application/')
-        ? mediaType.toLowerCase() == 'application/pdf'
-              ? Icons.picture_as_pdf
-              : Icons.apps
-        : Icons.insert_drive_file,
-  );
+  Widget fallback(String mediaType) => Icon(mediaTypeIcon(mediaType));
 
   void setImageProvider() {
     thumbnailCache[widget.item.key] ??= HybridImageProvider(
@@ -1287,6 +1247,7 @@ class MediaPreviewState extends State<MediaPreview> {
       thumbPath: Main.cachePathFromKey(
         widget.item.key,
       ).replaceFirst(RegExp(r'(\.[^./\\]+)$'), '_thumb'),
+      thumbnail: true,
       maxWidth: widget.width?.toInt(),
       maxHeight: widget.height?.toInt(),
       cacheKey: widget.item.key,
@@ -1328,10 +1289,10 @@ class ExternalFileView extends StatefulWidget {
   const ExternalFileView({super.key, required this.path, this.upload});
 
   @override
-  State<ExternalFileView> createState() => _ExternalFileViewState();
+  State<ExternalFileView> createState() => ExternalFileViewState();
 }
 
-class _ExternalFileViewState extends State<ExternalFileView> {
+class ExternalFileViewState extends State<ExternalFileView> {
   static const double _defaultBottomSheetSize = 0.13;
   static const double _maxBottomSheetSize = 0.5;
 
@@ -1552,30 +1513,7 @@ class _ExternalFileViewState extends State<ExternalFileView> {
                           children: [
                             ListTile(
                               visualDensity: VisualDensity.comfortable,
-                              leading: Icon(
-                                (_mediaType ?? '').startsWith('image/')
-                                    ? Icons.image
-                                    : (_mediaType ?? '').startsWith('video/')
-                                    ? Icons.videocam
-                                    : (_mediaType ?? '').startsWith('audio/')
-                                    ? Icons.audiotrack
-                                    : (_mediaType ?? '').startsWith('text/')
-                                    ? Icons.description
-                                    : (_mediaType ?? '').startsWith('font/')
-                                    ? Icons.font_download
-                                    : (_mediaType ?? '').startsWith('message/')
-                                    ? Icons.message
-                                    : (_mediaType ?? '').startsWith('model/')
-                                    ? Icons.model_training
-                                    : (_mediaType ?? '').startsWith(
-                                        'application/',
-                                      )
-                                    ? (_mediaType ?? '').toLowerCase() ==
-                                              'application/pdf'
-                                          ? Icons.picture_as_pdf
-                                          : Icons.apps
-                                    : Icons.insert_drive_file,
-                              ),
+                              leading: Icon(mediaTypeIcon(_mediaType)),
                               title: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 child: Text(widget.path),

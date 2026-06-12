@@ -266,6 +266,28 @@ String? getMediaType(String name) {
   return null;
 }
 
+IconData mediaTypeIcon(String? name) {
+  return (name ?? '').startsWith('image/')
+      ? Icons.image
+      : (name ?? '').startsWith('video/')
+      ? Icons.videocam
+      : (name ?? '').startsWith('audio/')
+      ? Icons.audiotrack
+      : (name ?? '').startsWith('text/')
+      ? Icons.description
+      : (name ?? '').startsWith('font/')
+      ? Icons.font_download
+      : (name ?? '').startsWith('message/')
+      ? Icons.message
+      : (name ?? '').startsWith('model/')
+      ? Icons.model_training
+      : (name ?? '').startsWith('application/')
+      ? (name ?? '').toLowerCase() == 'application/pdf'
+            ? Icons.picture_as_pdf
+            : Icons.apps
+      : Icons.insert_drive_file;
+}
+
 List<FileProps> sort(
   Iterable<FileProps> items,
   SortMode sortMode,
