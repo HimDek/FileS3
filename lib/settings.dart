@@ -974,15 +974,21 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                             child: Text('Cancel'),
                           ),
                           TextButton(
-                            onPressed: () {
+                            onPressed: () async {
+                              Navigator.of(context).pop();
+                              Navigator.of(context).pop();
+                              await ConfigManager.deleteS3Config(
+                                _profileNameController.text,
+                              );
+                              setBackupMode(
+                                '${_profileNameController.text}/',
+                                null,
+                              );
                               setLocalDir(
                                 '${_profileNameController.text}/',
                                 null,
                               );
-                              Navigator.of(context).pop();
-                              setState(() {
-                                _loading = true;
-                              });
+                              Main.refreshProfiles();
                             },
                             child: Text('Remove'),
                           ),

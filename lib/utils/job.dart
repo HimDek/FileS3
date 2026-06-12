@@ -221,7 +221,19 @@ abstract class Main {
 
   static Future<void> refreshProfiles() async {
     loading.value = true;
-    for (final entry in (await ConfigManager.loadS3Config()).entries) {
+    final entries = (await ConfigManager.loadS3Config()).entries;
+    for (final profile in _profiles.toList()) {
+      if (entries.map((e) => e.key).contains(profile.name) == false) {
+        _profiles.remove(profile);
+        Future.delayed(
+          Duration(seconds: 1),
+          () => remoteFilesRemoveWhere(
+            (file) => p.split(file.key).firstOrNull == profile.name,
+          ),
+        );
+      }
+    }
+    for (final entry in entries) {
       if (_profiles.any((profile) => profile.name == entry.key)) {
         _profiles
             .firstWhere((profile) => profile.name == entry.key)
