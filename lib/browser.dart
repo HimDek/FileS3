@@ -877,7 +877,7 @@ class BrowserState extends State<Browser> {
         };
 
   Widget _buildContextMenu(BuildContext context, RemoteFile? file) {
-    final CustomTrigger rebuild = CustomTrigger();
+    final ManualNotifier rebuild = ManualNotifier();
     return ListenableBuilder(
       listenable: Listenable.merge([loading, rebuild, Job.onProgressUpdate]),
       builder: (context, _) => SingleChildScrollView(
@@ -918,7 +918,7 @@ class BrowserState extends State<Browser> {
                   _selection.value = {};
                 },
                 () {
-                  rebuild.trigger();
+                  rebuild.notifyListeners();
                 },
               )
             : p.isDir(file.key)
@@ -947,7 +947,7 @@ class BrowserState extends State<Browser> {
                 _dirSize,
                 _dirModified,
                 () {
-                  rebuild.trigger();
+                  rebuild.notifyListeners();
                 },
               )
             : buildFileContextMenu(
@@ -972,7 +972,7 @@ class BrowserState extends State<Browser> {
                     : (List<String> keys) async =>
                           await widget.deleteFiles?.call(keys, refresh: true),
                 () {
-                  rebuild.trigger();
+                  rebuild.notifyListeners();
                 },
               ),
       ),

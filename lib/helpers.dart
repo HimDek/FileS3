@@ -134,6 +134,76 @@ Future<String?> Function(BuildContext, String) renameDialog =
       },
     );
 
+Future<FileSaveLocation?> Function(BuildContext, {String suggestedName})
+saveAsDialog = (BuildContext context, {String suggestedName = ''}) async {
+  final TextEditingController nameController = TextEditingController(
+    text: suggestedName,
+  );
+  final String? fileName = await showDialog<String?>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Save As...'),
+      content: TextField(
+        controller: nameController,
+        decoration: const InputDecoration(labelText: 'File Name'),
+        onSubmitted: (value) {
+          Navigator.of(context).pop(value.trim());
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(null);
+          },
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(nameController.text.trim());
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
+  if (fileName == null || fileName.isEmpty) {
+    return null;
+  }
+  final String? directory = await getDirectoryPath(canCreateDirectories: true);
+  if (directory != null) {
+    final String path = p.join(directory, fileName);
+    if (File(path).existsSync()) {
+      final bool overwrite =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('File Already Exists'),
+              content: Text(
+                'A file named "$fileName" already exists. Overwrite?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Overwrite'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+
+      if (overwrite != true) {
+        return null;
+      }
+    }
+    return FileSaveLocation(path);
+  }
+  return null;
+};
+
 String bytesToReadable(int bytes) {
   const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
   int i = 0;
@@ -350,78 +420,6 @@ List<FileProps> sort(
   return sortedItems;
 }
 
-Future<FileSaveLocation?> saveAsDialog(
-  BuildContext context, {
-  String suggestedName = '',
-}) async {
-  final TextEditingController nameController = TextEditingController(
-    text: suggestedName,
-  );
-  final String? fileName = await showDialog<String?>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Save As...'),
-      content: TextField(
-        controller: nameController,
-        decoration: const InputDecoration(labelText: 'File Name'),
-        onSubmitted: (value) {
-          Navigator.of(context).pop(value.trim());
-        },
-      ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop(null);
-          },
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop(nameController.text.trim());
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    ),
-  );
-  if (fileName == null || fileName.isEmpty) {
-    return null;
-  }
-  final String? directory = await getDirectoryPath(canCreateDirectories: true);
-  if (directory != null) {
-    final String path = p.join(directory, fileName);
-    if (File(path).existsSync()) {
-      final bool overwrite =
-          await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('File Already Exists'),
-              content: Text(
-                'A file named "$fileName" already exists. Overwrite?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Overwrite'),
-                ),
-              ],
-            ),
-          ) ??
-          false;
-
-      if (overwrite != true) {
-        return null;
-      }
-    }
-    return FileSaveLocation(path);
-  }
-  return null;
-}
-
 void renameOrCopyAndDelete(File file, String newPath) {
   try {
     file.renameSync(newPath);
@@ -431,53 +429,10 @@ void renameOrCopyAndDelete(File file, String newPath) {
   }
 }
 
-class ThemeController extends ChangeNotifier {
-  ThemeMode _theme = ThemeMode.system;
-
-  ThemeMode get theme => _theme;
-
-  ThemeMode get themeMode {
-    switch (_theme) {
-      case ThemeMode.light:
-        return ThemeMode.light;
-      case ThemeMode.dark:
-        return ThemeMode.dark;
-      case ThemeMode.system:
-        return ThemeMode.system;
-    }
-  }
-
-  void update(ThemeMode theme) {
-    _theme = theme;
-    notifyListeners();
-  }
-}
-
-class UltraDarkController extends ChangeNotifier {
-  bool _ultraDark = false;
-
-  bool get ultraDark => _ultraDark;
-
-  void update(bool ultraDark) {
-    _ultraDark = ultraDark;
-    notifyListeners();
-  }
-}
-
-class CustomTrigger extends ChangeNotifier {
-  void trigger() {
-    notifyListeners();
-  }
-}
-
-class BoolNotifier extends ChangeNotifier {
-  bool _value = false;
-
-  bool get value => _value;
-
-  void set(bool newValue) {
-    _value = newValue;
-    notifyListeners();
+class ManualNotifier extends ChangeNotifier {
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
   }
 }
 

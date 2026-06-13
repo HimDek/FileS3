@@ -145,10 +145,10 @@ class MainApp extends StatelessWidget {
   ThemeData getDarkTheme(ColorScheme? darkScheme) => ThemeData(
     colorScheme:
         darkScheme?.copyWith(
-          surface: ultraDarkController.ultraDark
+          surface: ultraDarkController.value
               ? Colors.black
               : darkScheme.surface,
-          surfaceDim: ultraDarkController.ultraDark
+          surfaceDim: ultraDarkController.value
               ? Colors.black
               : darkScheme.surfaceDim,
         ) ??
@@ -169,10 +169,10 @@ class MainApp extends StatelessWidget {
           builder: (lightScheme, darkScheme) {
             return MaterialApp(
               title: 'FileS3',
-              theme: themeController.themeMode == ThemeMode.dark
+              theme: themeController.value == ThemeMode.dark
                   ? getDarkTheme(darkScheme)
                   : getLightTheme(lightScheme),
-              darkTheme: themeController.themeMode == ThemeMode.light
+              darkTheme: themeController.value == ThemeMode.light
                   ? getLightTheme(lightScheme)
                   : getDarkTheme(darkScheme),
               home: Home(key: globalKey),
@@ -694,8 +694,8 @@ class _HomeState extends State<Home> {
     await Main.init();
 
     final uiConfig = ConfigManager.loadUiConfig();
-    themeController.update(uiConfig.colorMode);
-    ultraDarkController.update(uiConfig.ultraDark);
+    themeController.value = uiConfig.colorMode;
+    ultraDarkController.value = uiConfig.ultraDark;
 
     loading.value = false;
   }

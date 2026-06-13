@@ -1055,7 +1055,7 @@ class UiSettingsPageState extends State<UiSettingsPage> {
                   );
                 });
                 await _saveConfig();
-                themeController.update(value);
+                themeController.value = value;
               }
             },
             child: Column(
@@ -1088,7 +1088,7 @@ class UiSettingsPageState extends State<UiSettingsPage> {
                   );
                 });
                 await _saveConfig();
-                ultraDarkController.update(value);
+                ultraDarkController.value = value;
               },
             ),
         ],

@@ -18,7 +18,7 @@ abstract class Main {
   static final Set<Profile> _profiles = <Profile>{};
   static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
   static List<RemoteFile> _remoteFiles = <RemoteFile>[];
-  static CustomTrigger onRemoteFilesChanged = CustomTrigger();
+  static ManualNotifier onRemoteFilesChanged = ManualNotifier();
   static String _cacheDir = '';
   static String _downloadCacheDir = '';
   static String _documentsDir = '';
@@ -33,30 +33,30 @@ abstract class Main {
   static void remoteFilesSet(List<RemoteFile> files) {
     _remoteFiles = files;
     _ensureDirectoryObjects();
-    onRemoteFilesChanged.trigger();
+    onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesAdd(RemoteFile file) {
     _remoteFiles.add(file);
     _ensureDirectoryObjects();
-    onRemoteFilesChanged.trigger();
+    onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesAddAll(List<RemoteFile> files) {
     _remoteFiles.addAll(files);
     _ensureDirectoryObjects();
-    onRemoteFilesChanged.trigger();
+    onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesRemoveWhere(bool Function(RemoteFile element) test) {
     _remoteFiles.removeWhere(test);
     _ensureDirectoryObjects();
-    onRemoteFilesChanged.trigger();
+    onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesClear() {
     _remoteFiles.clear();
-    onRemoteFilesChanged.trigger();
+    onRemoteFilesChanged.notifyListeners();
   }
 
   static String get cacheDir => _cacheDir;
@@ -414,7 +414,7 @@ abstract class Job {
   static final ValueNotifier<List<Job>> jobs = ValueNotifier<List<Job>>(
     <Job>[],
   );
-  static final CustomTrigger onProgressUpdate = CustomTrigger();
+  static final ManualNotifier onProgressUpdate = ManualNotifier();
 
   final ValueNotifier<JobStatus> status = ValueNotifier<JobStatus>(
     JobStatus.initialized,
@@ -536,7 +536,7 @@ abstract class Job {
       statusMsg.value = "Error: ${e.toString()}";
       onStatus?.call(this, null);
     }
-    onProgressUpdate.trigger();
+    onProgressUpdate.notifyListeners();
     startall();
   }
 
@@ -550,7 +550,7 @@ abstract class Job {
       task?.cancel.call();
       status.value = JobStatus.stopped;
       onStatus?.call(this, null);
-      onProgressUpdate.trigger();
+      onProgressUpdate.notifyListeners();
     }
   }
 
@@ -619,14 +619,14 @@ abstract class Job {
     } finally {
       scheduled = false;
     }
-    onProgressUpdate.trigger();
+    onProgressUpdate.notifyListeners();
   }
 
   static void stopall() {
     for (var job in jobs.value) {
       job.stop();
     }
-    onProgressUpdate.trigger();
+    onProgressUpdate.notifyListeners();
   }
 
   static void clearCompleted() {

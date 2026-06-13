@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:uri_content/uri_content.dart';
 import 'package:flutter/material.dart';
-import 'package:files3/helpers.dart';
 
 GlobalKey globalKey = GlobalKey();
 BuildContext? get globalContext => globalKey.currentContext;
@@ -12,8 +11,10 @@ NavigatorState? get globalNavigator =>
 ThemeData? get globalTheme =>
     globalContext == null ? null : Theme.of(globalContext!);
 
-final themeController = ThemeController();
-final ultraDarkController = UltraDarkController();
+ValueNotifier<ThemeMode> themeController = ValueNotifier<ThemeMode>(
+  ThemeMode.system,
+);
+ValueNotifier<bool> ultraDarkController = ValueNotifier<bool>(false);
 
 HttpClient httpClient = HttpClient();
 UriContent uriContent = UriContent(httpClient: httpClient);
