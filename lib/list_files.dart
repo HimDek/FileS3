@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:files3/utils/path_utils.dart' as p;
@@ -112,11 +113,11 @@ class ListFiles extends StatefulWidget {
   final ValueNotifier<List<FileProps>> files;
   final List<GalleryProps> galleryFiles;
   final Function(List<GalleryProps>)? setGalleryFiles;
-  final Map<String, double> keysOffsetMap;
   final ValueNotifier<ListOptions> listOptions;
   final ValueNotifier<RemoteFile> relativeto;
   final ValueNotifier<Set<RemoteFile>> selection;
   final ValueNotifier<SelectionAction> selectionAction;
+  final ValueNotifier<Map<String, double>> keysOffsetMap;
   final void Function(int)? showGallery;
   final Function(RemoteFile) changeDirectory;
   final void Function()? Function(RemoteFile) getSelectAction;
@@ -132,11 +133,11 @@ class ListFiles extends StatefulWidget {
     required this.files,
     this.galleryFiles = const [],
     this.setGalleryFiles,
-    required this.keysOffsetMap,
     required this.listOptions,
     required this.relativeto,
     required this.selection,
     required this.selectionAction,
+    required this.keysOffsetMap,
     this.showGallery,
     required this.changeDirectory,
     this.getSelectAction = setSelectActionDefault,
@@ -154,6 +155,12 @@ class ListFilesState extends State<ListFiles> {
   final Map<String, bool> _fileDownloadedCache = {};
   final ValueNotifier<List<MapEntry<String, List<FileProps>>>> _groups =
       ValueNotifier([]);
+
+  String? groupFromKey(String key) {
+    return _groups.value
+        .firstWhereOrNull((group) => group.value.any((file) => file.key == key))
+        ?.key;
+  }
 
   void makeGroups() {
     Map<String, List<FileProps>> grouped = {};
@@ -674,7 +681,7 @@ class ListFilesState extends State<ListFiles> {
   }
 
   void buildKeysOffsetMap(BuildContext context) {
-    widget.keysOffsetMap.clear();
+    widget.keysOffsetMap.value.clear();
 
     final width = MediaQuery.of(context).size.width;
     final columns = width < 600 ? 4 : 6;
@@ -702,7 +709,7 @@ class ListFilesState extends State<ListFiles> {
           final listTileHeight = MediaQuery.of(context).size.width < 600
               ? 56.0
               : 72.0; // approximate heights for dense and standard ListTiles
-          widget.keysOffsetMap[file.key] = offset;
+          widget.keysOffsetMap.value[file.key] = offset;
           offset += listTileHeight;
         }
         continue;
@@ -711,7 +718,7 @@ class ListFilesState extends State<ListFiles> {
       for (int i = 0; i < group.value.length; i++) {
         final file = group.value[i];
         final row = i ~/ columns;
-        widget.keysOffsetMap[file.key] = offset + row * tileHeight;
+        widget.keysOffsetMap.value[file.key] = offset + row * tileHeight;
       }
 
       // Skip past this group’s grid

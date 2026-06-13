@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:async';
+import 'package:collection/collection.dart';
+import 'package:files3/scrollbar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:fuzzywuzzy/fuzzywuzzy.dart';
@@ -461,8 +463,8 @@ class Browser extends StatefulWidget {
 class BrowserState extends State<Browser> {
   final List<RemoteFile> _allSelectableItems = <RemoteFile>[];
   final List<GalleryProps> _galleryFiles = <GalleryProps>[];
-  final Map<String, double> _keysOffsetMap = <String, double>{};
 
+  final GlobalKey<ListFilesState> _listKey = GlobalKey();
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
@@ -487,6 +489,7 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<List<Object>> _searchResults = ValueNotifier([]);
   final ValueNotifier<List> _currentItems = ValueNotifier<List>([]);
   final ValueNotifier<List<FileProps>> _currentProps = ValueNotifier([]);
+  final ValueNotifier<Map<String, double>> _keysOffsetMap = ValueNotifier({});
 
   Timer? _scrollbarTimer;
   Timer? _inaccessibleTimer;
@@ -591,7 +594,7 @@ class BrowserState extends State<Browser> {
         pageBuilder: (context, animation, secondaryAnimation) => Gallery(
           files: _galleryFiles,
           initialIndex: index,
-          keysOffsetMap: _keysOffsetMap,
+          keysOffsetMap: _keysOffsetMap.value,
           scrollController: _scrollController,
           buildContextMenu: _buildContextMenu,
         ),
@@ -601,7 +604,7 @@ class BrowserState extends State<Browser> {
   }
 
   void _scrollToFile(RemoteFile file) {
-    final offset = _keysOffsetMap[file.key];
+    final offset = _keysOffsetMap.value[file.key];
     if (offset == null) return;
 
     _scrollController.jumpTo(
@@ -1401,10 +1404,62 @@ class BrowserState extends State<Browser> {
       child: Scaffold(
         body: ListenableBuilder(
           listenable: _thumbVisibility,
-          builder: (context, child) => Scrollbar(
+          builder: (context, child) => CustomThumbScrollbar(
             controller: _scrollController,
             thumbVisibility: _thumbVisibility.value,
-            interactive: true,
+            thumb: Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            maxThumbLength: 48,
+            popup: ListenableBuilder(
+              listenable: Listenable.merge([
+                _currentProps,
+                _keysOffsetMap,
+                _scrollController,
+              ]),
+              builder: (context, child) {
+                final file = _currentProps.value.firstWhereOrNull(
+                  (file) =>
+                      file.key ==
+                      _keysOffsetMap.value.keys.reduce(
+                        (a, b) =>
+                            (_keysOffsetMap.value[a]! -
+                                        _scrollController.offset)
+                                    .abs() <
+                                (_keysOffsetMap.value[b]! -
+                                        _scrollController.offset)
+                                    .abs()
+                            ? a
+                            : b,
+                      ),
+                );
+                if (file == null) {
+                  return SizedBox.shrink();
+                }
+                return Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      _listKey.currentState?.groupFromKey(file.key) ??
+                          p.basename(file.key),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                );
+              },
+            ),
             child: child!,
           ),
           child: CustomScrollView(
@@ -1909,6 +1964,7 @@ class BrowserState extends State<Browser> {
                 ),
               ),
               ListFiles(
+                key: _listKey,
                 files: _currentProps,
                 galleryFiles: _galleryFiles,
                 setGalleryFiles: _setGalleryFiles,
