@@ -30,6 +30,12 @@ abstract class Main {
 
   static List<RemoteFile> get remoteFiles => UnmodifiableListView(_remoteFiles);
 
+  static void remoteFilesSet(List<RemoteFile> files) {
+    _remoteFiles = files;
+    _ensureDirectoryObjects();
+    onRemoteFilesChanged.trigger();
+  }
+
   static void remoteFilesAdd(RemoteFile file) {
     _remoteFiles.add(file);
     _ensureDirectoryObjects();
@@ -45,6 +51,11 @@ abstract class Main {
   static void remoteFilesRemoveWhere(bool Function(RemoteFile element) test) {
     _remoteFiles.removeWhere(test);
     _ensureDirectoryObjects();
+    onRemoteFilesChanged.trigger();
+  }
+
+  static void remoteFilesClear() {
+    _remoteFiles.clear();
     onRemoteFilesChanged.trigger();
   }
 
@@ -225,12 +236,10 @@ abstract class Main {
     for (final profile in _profiles.toList()) {
       if (entries.map((e) => e.key).contains(profile.name) == false) {
         _profiles.remove(profile);
-        Future.delayed(
-          Duration(seconds: 1),
-          () => remoteFilesRemoveWhere(
-            (file) => p.split(file.key).firstOrNull == profile.name,
-          ),
+        remoteFilesRemoveWhere(
+          (file) => p.split(file.key).firstOrNull == profile.name,
         );
+        await ConfigManager.saveRemoteFiles(Main.remoteFiles);
       }
     }
     for (final entry in entries) {
@@ -248,13 +257,15 @@ abstract class Main {
   static Future<void> listDirectories({bool background = false}) async {
     loading.value = true;
     if (!background) {
-      _remoteFiles = (await ConfigManager.loadRemoteFiles())
-          .where(
-            (file) => _profiles.any(
-              (profile) => profile.name == p.split(file.key).firstOrNull,
-            ),
-          )
-          .toList();
+      remoteFilesSet(
+        (await ConfigManager.loadRemoteFiles())
+            .where(
+              (file) => _profiles.any(
+                (profile) => profile.name == p.split(file.key).firstOrNull,
+              ),
+            )
+            .toList(),
+      );
     }
 
     for (final profile in _profiles) {

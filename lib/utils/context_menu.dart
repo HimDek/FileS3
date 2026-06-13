@@ -2569,7 +2569,7 @@ Widget buildDirectoryContextMenu(
                   onTap: () async {
                     final String? directoryPath = await getDirectoryPath();
                     if (directoryPath != null) {
-                      setLocalDir(file.key, directoryPath);
+                      ConfigManager.setLocalDir(file.key, directoryPath);
                       Main.listDirectories();
                       globalNavigator!.pop();
                     }
@@ -2579,7 +2579,7 @@ Widget buildDirectoryContextMenu(
                       : IconButton(
                           icon: const Icon(Icons.clear_rounded),
                           onPressed: () {
-                            setLocalDir(file.key, null);
+                            ConfigManager.setLocalDir(file.key, null);
                             Main.listDirectories();
                             globalNavigator!.pop();
                           },
@@ -2595,7 +2595,7 @@ Widget buildDirectoryContextMenu(
                 RadioGroup(
                   groupValue: Main.backupModeFromKey(file.key),
                   onChanged: (s) {
-                    setBackupMode(file.key, s!);
+                    ConfigManager.setBackupMode(file.key, s!);
                     Main.listDirectories();
                     Navigator.of(context).pop();
                   },

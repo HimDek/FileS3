@@ -422,42 +422,6 @@ Future<FileSaveLocation?> saveAsDialog(
   return null;
 }
 
-void setBackupMode(String key, BackupMode? mode) {
-  if (!(IniManager.config?.sections().contains('modes') ?? true)) {
-    IniManager.config?.addSection('modes');
-  }
-  if (mode == null) {
-    IniManager.config?.removeOption('modes', key);
-  } else {
-    IniManager.config?.set('modes', key, mode.value.toString());
-    if (mode == BackupMode.sync && p.split(key).length == 1) {
-      final toremove = <String>[];
-      for (var dir in IniManager.config?.options('modes')?.toList() ?? []) {
-        if (p.isWithin(key, dir) && dir != key) {
-          toremove.add(dir);
-        }
-      }
-      for (var dir in toremove) {
-        IniManager.config?.removeOption('modes', dir);
-      }
-    }
-  }
-  IniManager.save();
-}
-
-void setLocalDir(String key, String? path) {
-  if (!IniManager.config!.sections().contains('directories')) {
-    IniManager.config!.addSection('directories');
-  }
-  if (path == null) {
-    IniManager.config?.removeOption('directories', key);
-  } else {
-    IniManager.config?.set('directories', key, path);
-  }
-  IniManager.cleanDirectories(keepKey: key);
-  IniManager.save();
-}
-
 void renameOrCopyAndDelete(File file, String newPath) {
   try {
     file.renameSync(newPath);
@@ -657,6 +621,42 @@ abstract class ConfigManager {
     IniManager.config!.removeOption("profiles", name);
     await _storage.delete(key: 'aws_access_key_$name');
     await _storage.delete(key: 'aws_secret_key_$name');
+    IniManager.save();
+  }
+
+  static void setBackupMode(String key, BackupMode? mode) {
+    if (!(IniManager.config?.sections().contains('modes') ?? true)) {
+      IniManager.config?.addSection('modes');
+    }
+    if (mode == null) {
+      IniManager.config?.removeOption('modes', key);
+    } else {
+      IniManager.config?.set('modes', key, mode.value.toString());
+      if (mode == BackupMode.sync && p.split(key).length == 1) {
+        final toremove = <String>[];
+        for (var dir in IniManager.config?.options('modes')?.toList() ?? []) {
+          if (p.isWithin(key, dir) && dir != key) {
+            toremove.add(dir);
+          }
+        }
+        for (var dir in toremove) {
+          IniManager.config?.removeOption('modes', dir);
+        }
+      }
+    }
+    IniManager.save();
+  }
+
+  static void setLocalDir(String key, String? path) {
+    if (!IniManager.config!.sections().contains('directories')) {
+      IniManager.config!.addSection('directories');
+    }
+    if (path == null) {
+      IniManager.config?.removeOption('directories', key);
+    } else {
+      IniManager.config?.set('directories', key, path);
+    }
+    IniManager.cleanDirectories(keepKey: key);
     IniManager.save();
   }
 

@@ -44,6 +44,12 @@ class Profile {
       accessible.value = true;
     } catch (e) {
       accessible.value = false;
+      if (p.equals(name, dir) &&
+          !Main.remoteFiles.any(
+            (file) => p.isWithin(dir, file.key) || p.equals(file.key, dir),
+          )) {
+        Main.remoteFilesAdd(RemoteFile(key: "$name/", etag: "", size: 0));
+      }
       if (kDebugMode) {
         debugPrint("Error refreshing remote files: $e");
       }

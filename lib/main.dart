@@ -307,7 +307,7 @@ class _HomeState extends State<Home> {
     if (p.isDir(key)) {
       if (Directory(Main.pathFromKey(key) ?? key).existsSync()) {
         if (Main.backupModeFromKey(key) != BackupMode.upload) {
-          setBackupMode(
+          ConfigManager.setBackupMode(
             key,
             Main.backupModeFromKey(p.s3(p.dirname(key))) == BackupMode.upload
                 ? null
@@ -319,7 +319,7 @@ class _HomeState extends State<Home> {
     } else {
       if (File(Main.pathFromKey(key) ?? key).existsSync()) {
         if (Main.backupModeFromKey(key) != BackupMode.upload) {
-          setBackupMode(
+          ConfigManager.setBackupMode(
             key,
             Main.backupModeFromKey(p.s3(p.dirname(key))) == BackupMode.upload
                 ? null
@@ -535,7 +535,7 @@ class _HomeState extends State<Home> {
       if (Main.backupModeFromKey(file.key) != BackupMode.sync &&
           (localPath ?? Main.pathFromKey(file.key)) ==
               Main.pathFromKey(file.key)) {
-        setBackupMode(
+        ConfigManager.setBackupMode(
           file.key,
           Main.backupModeFromKey(p.s3(p.dirname(file.key))) == BackupMode.sync
               ? null
@@ -549,7 +549,7 @@ class _HomeState extends State<Home> {
   void _downloadDirectory(RemoteFile dir, {String? localPath}) {
     if (Main.backupModeFromKey(dir.key) != BackupMode.sync &&
         (localPath ?? Main.pathFromKey(dir.key)) == Main.pathFromKey(dir.key)) {
-      setBackupMode(
+      ConfigManager.setBackupMode(
         dir.key,
         Main.backupModeFromKey(p.s3(p.dirname(dir.key))) == BackupMode.sync
             ? null

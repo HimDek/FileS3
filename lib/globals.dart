@@ -47,7 +47,7 @@ const Map<String, Map<String, String>> awsRegions =
         'us-west-1': 'N. California',
         'us-west-2': 'Oregon',
       },
-      'Africa:': {'af-south-1': 'Cape Town'},
+      'Africa': {'af-south-1': 'Cape Town'},
       'Asia Pacific': {
         'ap-east-1': 'Hong Kong',
         'ap-east-2': 'Taipei',
@@ -64,8 +64,8 @@ const Map<String, Map<String, String>> awsRegions =
         'ap-southeast-6': 'Kuala Lumpur',
         'ap-southeast-7': 'Ho Chi Minh City',
       },
-      'Canada:': {'ca-central-1': 'Central', 'ca-west-1': 'Calgary'},
-      'Europe:': {
+      'Canada': {'ca-central-1': 'Central', 'ca-west-1': 'Calgary'},
+      'Europe': {
         'eu-central-1': 'Frankfurt',
         'eu-central-2': 'Zurich',
         'eu-north-1': 'Stockholm',
@@ -75,10 +75,10 @@ const Map<String, Map<String, String>> awsRegions =
         'eu-west-2': 'London',
         'eu-west-3': 'Paris',
       },
-      'Middle East:': {'me-central-1': 'UAE', 'me-south-1': 'Bahrain'},
+      'Middle East': {'me-central-1': 'UAE', 'me-south-1': 'Bahrain'},
       'Israel': {'il-central-1': 'Tel Aviv'},
-      'South America:': {'sa-east-1': 'São Paulo'},
-      'China:': {
+      'South America': {'sa-east-1': 'São Paulo'},
+      'China': {
         'cn-north-1': 'Beijing',
         'cn-northwest-1': 'Ningxia',
         'cn-south-1': 'Guangzhou',

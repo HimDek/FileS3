@@ -62,3 +62,5 @@ bool Function(String) isAbsolute = p.isAbsolute;
 bool Function(String) isRelative = p.isRelative;
 
 bool Function(String parent, String child) isWithin = p.isWithin;
+
+bool Function(String, String) equals = p.equals;

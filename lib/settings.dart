@@ -139,8 +139,14 @@ class S3ConfigPageState extends State<S3ConfigPage> {
               host: _hostController.text,
             ),
           );
-          setBackupMode('${_profileNameController.text}/', _backupMode);
-          setLocalDir('${_profileNameController.text}/', _localDir);
+          ConfigManager.setBackupMode(
+            '${_profileNameController.text}/',
+            _backupMode,
+          );
+          ConfigManager.setLocalDir(
+            '${_profileNameController.text}/',
+            _localDir,
+          );
           showSnackBar(SnackBar(content: Text('Configuration saved')));
           await Main.refreshProfiles();
           await _readConfig();
@@ -228,7 +234,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
               _s3Config?.region.isNotEmpty == true &&
               _s3Config?.bucket.isNotEmpty == true,
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop && !_loading && _profile != null) {
+        if (didPop && !_loading && _profile != null && result != 1) {
           await _setConfig();
         }
       },
@@ -399,6 +405,8 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                             }
                             return null;
                           },
+                          onFieldSubmitted: (_) =>
+                              _bucketFocusNode.requestFocus(),
                         );
                       },
                       optionsBuilder: (value) {
@@ -976,15 +984,15 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                           TextButton(
                             onPressed: () async {
                               Navigator.of(context).pop();
-                              Navigator.of(context).pop();
+                              Navigator.of(context).pop(1);
                               await ConfigManager.deleteS3Config(
                                 _profileNameController.text,
                               );
-                              setBackupMode(
+                              ConfigManager.setBackupMode(
                                 '${_profileNameController.text}/',
                                 null,
                               );
-                              setLocalDir(
+                              ConfigManager.setLocalDir(
                                 '${_profileNameController.text}/',
                                 null,
                               );
