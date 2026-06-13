@@ -438,10 +438,10 @@ class ManualNotifier extends ChangeNotifier {
 
 abstract class IniManager {
   static late File _file;
-  static Config? config;
+  static ValueNotifier<Config?> config = ValueNotifier<Config?>(null);
 
-  static void init() {
-    _file = File(p.join(Main.documentsDir, 'config.ini'));
+  static void init(String dir) {
+    _file = File(p.join(dir, 'config.ini'));
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
@@ -451,26 +451,26 @@ abstract class IniManager {
     }
 
     final lines = _file.readAsLinesSync();
-    config = Config.fromStrings(lines);
+    config.value = Config.fromStrings(lines);
     cleanDirectories();
   }
 
   static void save() {
-    _file.writeAsStringSync(config.toString());
+    _file.writeAsStringSync(config.value!.toString());
   }
 
   static void cleanDirectories({String? keepKey}) {
-    for (String key in config!.options('directories')?.toList() ?? []) {
-      final dirPath = config!.get('directories', key).toString();
-      for (String k in config!.options('directories')?.toList() ?? []) {
+    for (String key in config.value!.options('directories')?.toList() ?? []) {
+      final dirPath = config.value!.get('directories', key).toString();
+      for (String k in config.value!.options('directories')?.toList() ?? []) {
         if (k != key &&
-            p.canonicalize(config!.get('directories', k).toString()) ==
+            p.canonicalize(config.value!.get('directories', k).toString()) ==
                 p.canonicalize(dirPath)) {
           if (keepKey != k) {
-            config!.removeOption('directories', k);
+            config.value!.removeOption('directories', k);
           }
           if (keepKey != key) {
-            config!.removeOption('directories', key);
+            config.value!.removeOption('directories', key);
           }
         }
       }
@@ -479,26 +479,26 @@ abstract class IniManager {
 }
 
 abstract class ConfigManager {
-  static bool initialized = false;
+  static ValueNotifier<bool> initialized = ValueNotifier<bool>(false);
   static const _storage = FlutterSecureStorage();
 
-  static Future<void> init() async {
-    if (!initialized || IniManager.config == null) {
-      if (IniManager.config == null) {
-        IniManager.init();
+  static Future<void> init(String dir) async {
+    if (!initialized.value || IniManager.config.value == null) {
+      if (IniManager.config.value == null) {
+        IniManager.init(dir);
       }
       await _migrateIfNeeded();
-      initialized = true;
+      initialized.value = true;
     }
   }
 
   static bool _is_1_0() {
-    return IniManager.config!.sections().contains('aws') &&
-        IniManager.config!.sections().contains('s3');
+    return IniManager.config.value!.sections().contains('aws') &&
+        IniManager.config.value!.sections().contains('s3');
   }
 
   static bool _is_1_1() {
-    return IniManager.config!.sections().contains('profiles');
+    return IniManager.config.value!.sections().contains('profiles');
   }
 
   // ignore: non_constant_identifier_names
@@ -506,10 +506,10 @@ abstract class ConfigManager {
     final legacyAccessKey = await _storage.read(key: 'aws_access_key') ?? '';
     final legacySecretKey = await _storage.read(key: 'aws_secret_key') ?? '';
 
-    final legacyRegion = IniManager.config?.get('aws', 'region') ?? '';
-    final legacyBucket = IniManager.config?.get('s3', 'bucket') ?? '';
-    final legacyPrefix = IniManager.config?.get('s3', 'prefix') ?? '';
-    final legacyHost = IniManager.config?.get('s3', 'host') ?? '';
+    final legacyRegion = IniManager.config.value?.get('aws', 'region') ?? '';
+    final legacyBucket = IniManager.config.value?.get('s3', 'bucket') ?? '';
+    final legacyPrefix = IniManager.config.value?.get('s3', 'prefix') ?? '';
+    final legacyHost = IniManager.config.value?.get('s3', 'host') ?? '';
 
     if (legacyAccessKey.isNotEmpty && legacySecretKey.isNotEmpty) {
       final defaultConfig = S3Config(
@@ -523,8 +523,8 @@ abstract class ConfigManager {
       await saveS3Config('default', defaultConfig);
       await _storage.delete(key: 'aws_access_key');
       await _storage.delete(key: 'aws_secret_key');
-      IniManager.config!.removeSection('aws');
-      IniManager.config!.removeSection('s3');
+      IniManager.config.value!.removeSection('aws');
+      IniManager.config.value!.removeSection('s3');
       IniManager.save();
     }
   }
@@ -537,12 +537,14 @@ abstract class ConfigManager {
 
   static Future<Map<String, S3Config>> loadS3Config() async {
     Map<String, S3Config> configs = {};
-    for (String profileName in IniManager.config?.options('profiles') ?? []) {
+    for (String profileName
+        in IniManager.config.value?.options('profiles') ?? []) {
       final accessKey =
           await _storage.read(key: 'aws_access_key_$profileName') ?? '';
       final secretKey =
           await _storage.read(key: 'aws_secret_key_$profileName') ?? '';
-      final config = IniManager.config?.get('profiles', profileName) ?? '';
+      final config =
+          IniManager.config.value?.get('profiles', profileName) ?? '';
       final parts = config.split('|');
       final region = parts.isNotEmpty ? parts[0] : '';
       final bucket = parts.length > 1 ? parts[1] : '';
@@ -561,41 +563,42 @@ abstract class ConfigManager {
   }
 
   static Future<void> saveS3Config(String name, S3Config config) async {
-    if (!IniManager.config!.sections().contains("profiles")) {
-      IniManager.config!.addSection("profiles");
+    if (!IniManager.config.value!.sections().contains("profiles")) {
+      IniManager.config.value!.addSection("profiles");
     }
     final profileStr =
         '${config.region}|${config.bucket}|${config.prefix}|${config.host}';
-    IniManager.config!.set("profiles", name, profileStr);
+    IniManager.config.value!.set("profiles", name, profileStr);
     await _storage.write(key: 'aws_access_key_$name', value: config.accessKey);
     await _storage.write(key: 'aws_secret_key_$name', value: config.secretKey);
     IniManager.save();
   }
 
   static Future<void> deleteS3Config(String name) async {
-    IniManager.config!.removeOption("profiles", name);
+    IniManager.config.value!.removeOption("profiles", name);
     await _storage.delete(key: 'aws_access_key_$name');
     await _storage.delete(key: 'aws_secret_key_$name');
     IniManager.save();
   }
 
   static void setBackupMode(String key, BackupMode? mode) {
-    if (!(IniManager.config?.sections().contains('modes') ?? true)) {
-      IniManager.config?.addSection('modes');
+    if (!(IniManager.config.value?.sections().contains('modes') ?? true)) {
+      IniManager.config.value?.addSection('modes');
     }
     if (mode == null) {
-      IniManager.config?.removeOption('modes', key);
+      IniManager.config.value?.removeOption('modes', key);
     } else {
-      IniManager.config?.set('modes', key, mode.value.toString());
+      IniManager.config.value?.set('modes', key, mode.value.toString());
       if (mode == BackupMode.sync && p.split(key).length == 1) {
         final toremove = <String>[];
-        for (var dir in IniManager.config?.options('modes')?.toList() ?? []) {
+        for (var dir
+            in IniManager.config.value?.options('modes')?.toList() ?? []) {
           if (p.isWithin(key, dir) && dir != key) {
             toremove.add(dir);
           }
         }
         for (var dir in toremove) {
-          IniManager.config?.removeOption('modes', dir);
+          IniManager.config.value?.removeOption('modes', dir);
         }
       }
     }
@@ -603,21 +606,23 @@ abstract class ConfigManager {
   }
 
   static void setLocalDir(String key, String? path) {
-    if (!IniManager.config!.sections().contains('directories')) {
-      IniManager.config!.addSection('directories');
+    if (!IniManager.config.value!.sections().contains('directories')) {
+      IniManager.config.value!.addSection('directories');
     }
     if (path == null) {
-      IniManager.config?.removeOption('directories', key);
+      IniManager.config.value?.removeOption('directories', key);
     } else {
-      IniManager.config?.set('directories', key, path);
+      IniManager.config.value?.set('directories', key, path);
     }
     IniManager.cleanDirectories(keepKey: key);
     IniManager.save();
   }
 
   static UiConfig loadUiConfig() {
-    final colorModeStr = IniManager.config?.get("ui", "color_mode") ?? 'system';
-    final ultraDarkStr = IniManager.config?.get("ui", "ultra_dark") ?? 'false';
+    final colorModeStr =
+        IniManager.config.value?.get("ui", "color_mode") ?? 'system';
+    final ultraDarkStr =
+        IniManager.config.value?.get("ui", "ultra_dark") ?? 'false';
 
     final colorMode = switch (colorModeStr) {
       'light' => ThemeMode.light,
@@ -637,17 +642,22 @@ abstract class ConfigManager {
       ThemeMode.system => 'system',
     };
 
-    if (!IniManager.config!.sections().contains("ui")) {
-      IniManager.config!.addSection("ui");
+    if (!IniManager.config.value!.sections().contains("ui")) {
+      IniManager.config.value!.addSection("ui");
     }
-    IniManager.config!.set("ui", "color_mode", colorModeStr);
-    IniManager.config!.set("ui", "ultra_dark", config.ultraDark.toString());
+    IniManager.config.value!.set("ui", "color_mode", colorModeStr);
+    IniManager.config.value!.set(
+      "ui",
+      "ultra_dark",
+      config.ultraDark.toString(),
+    );
     IniManager.save();
   }
 
   static TransferConfig loadTransferConfig() {
     final maxConcurrentTransfersStr =
-        IniManager.config?.get("transfer", "max_concurrent_transfers") ?? '5';
+        IniManager.config.value?.get("transfer", "max_concurrent_transfers") ??
+        '5';
 
     final maxConcurrentTransfers = int.tryParse(maxConcurrentTransfersStr) ?? 5;
 
@@ -655,10 +665,10 @@ abstract class ConfigManager {
   }
 
   static Future<void> saveTransferConfig(TransferConfig config) async {
-    if (!IniManager.config!.sections().contains("transfer")) {
-      IniManager.config!.addSection("transfer");
+    if (!IniManager.config.value!.sections().contains("transfer")) {
+      IniManager.config.value!.addSection("transfer");
     }
-    IniManager.config!.set(
+    IniManager.config.value!.set(
       "transfer",
       "max_concurrent_transfers",
       config.maxConcurrentTransfers.toString(),

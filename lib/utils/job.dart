@@ -15,19 +15,19 @@ import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 
 abstract class Main {
-  static final Set<Profile> _profiles = <Profile>{};
-  static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
-  static List<RemoteFile> _remoteFiles = <RemoteFile>[];
-  static ManualNotifier onRemoteFilesChanged = ManualNotifier();
+  static String _documentsDir = '';
   static String _cacheDir = '';
   static String _downloadCacheDir = '';
-  static String _documentsDir = '';
+  static List<RemoteFile> _remoteFiles = <RemoteFile>[];
+  static final Set<Profile> _profiles = <Profile>{};
+  static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
+  static final ManualNotifier onRemoteFilesChanged = ManualNotifier();
+  static final ValueNotifier<bool> initialized = ValueNotifier<bool>(false);
   static final List<String> _ignoreKeyRegexps = <String>[
     r'^.*[/\\]deletion-register\.ini$',
   ];
 
   static Set<Profile> get profiles => _profiles;
-
   static List<RemoteFile> get remoteFiles => UnmodifiableListView(_remoteFiles);
 
   static void remoteFilesSet(List<RemoteFile> files) {
@@ -79,7 +79,7 @@ abstract class Main {
   }
 
   static String? pathFromKey(String key) {
-    final localDir = IniManager.config
+    final localDir = IniManager.config.value
         ?.get('directories', p.s3(p.asDir(p.split(key).firstOrNull ?? '')))
         ?.replaceAll('\\', p.separator);
     if (localDir != null) {
@@ -91,8 +91,8 @@ abstract class Main {
   }
 
   static String? keyFromPath(String path) {
-    for (String dir in IniManager.config!.options('directories')!) {
-      final localDir = IniManager.config!
+    for (String dir in IniManager.config.value!.options('directories')!) {
+      final localDir = IniManager.config.value!
           .get('directories', dir)
           ?.replaceAll('\\', p.separator);
       if (localDir != null) {
@@ -127,7 +127,7 @@ abstract class Main {
   }
 
   static BackupMode backupModeFromKey(String key) {
-    String? value = IniManager.config?.get('modes', key);
+    String? value = IniManager.config.value?.get('modes', key);
     if (value == null && p.split(key).length > 1) {
       return backupModeFromKey(p.s3(p.dirname(key)));
     } else {
@@ -389,13 +389,14 @@ abstract class Main {
       final directory = await getApplicationDocumentsDirectory();
       _documentsDir = directory.path;
     }
-    if (!ConfigManager.initialized) {
-      await ConfigManager.init();
+    if (!ConfigManager.initialized.value) {
+      await ConfigManager.init(_documentsDir);
     }
     Job.maxrun = ConfigManager.loadTransferConfig().maxConcurrentTransfers;
     refreshProfiles().then((_) {
       listDirectories(background: background);
     });
+    initialized.value = true;
   }
 }
 

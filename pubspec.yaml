@@ -44,6 +44,7 @@ dependencies:
   aws_s3_api:
   collection:
   photo_view:
+  fuzzywuzzy:
   workmanager:
   uri_content:
   url_launcher:

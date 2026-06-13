@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:fuzzywuzzy/fuzzywuzzy.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:files3/utils/path_utils.dart' as p;
@@ -637,34 +638,60 @@ class BrowserState extends State<Browser> {
   }
 
   void _applyListOptions() {
-    _currentProps.value = sort(
-      _currentItems.value.map((file) {
-        String url =
-            _getLink(
-              file is Job
-                  ? RemoteFile(
-                      key: file.remoteKey,
-                      size: file.bytes,
-                      etag: file.md5.toString(),
-                    )
-                  : file,
-              null,
-            ) ??
-            '';
-        return file is Job
-            ? FileProps(
-                key: file.remoteKey,
-                size: file.bytes,
-                job: file,
-                url: url,
-              )
-            : p.isDir(file.key)
-            ? FileProps(key: file.key, size: file.size, file: file, url: url)
-            : FileProps(key: file.key, size: file.size, file: file, url: url);
-      }),
-      _listOptions.value.sortMode,
-      _listOptions.value.foldersFirst,
-    );
+    _currentProps.value = _currentItems.value.map((file) {
+      String url =
+          _getLink(
+            file is Job
+                ? RemoteFile(
+                    key: file.remoteKey,
+                    size: file.bytes,
+                    etag: file.md5.toString(),
+                  )
+                : file,
+            null,
+          ) ??
+          '';
+      return file is Job
+          ? FileProps(
+              key: file.remoteKey,
+              size: file.bytes,
+              job: file,
+              url: url,
+            )
+          : p.isDir(file.key)
+          ? FileProps(key: file.key, size: file.size, file: file, url: url)
+          : FileProps(key: file.key, size: file.size, file: file, url: url);
+    }).toList();
+    if (!_searching.value) {
+      _currentProps.value = sort(
+        _currentItems.value.map((file) {
+          String url =
+              _getLink(
+                file is Job
+                    ? RemoteFile(
+                        key: file.remoteKey,
+                        size: file.bytes,
+                        etag: file.md5.toString(),
+                      )
+                    : file,
+                null,
+              ) ??
+              '';
+          return file is Job
+              ? FileProps(
+                  key: file.remoteKey,
+                  size: file.bytes,
+                  job: file,
+                  url: url,
+                )
+              : p.isDir(file.key)
+              ? FileProps(key: file.key, size: file.size, file: file, url: url)
+              : FileProps(key: file.key, size: file.size, file: file, url: url);
+        }),
+        _listOptions.value.sortMode,
+        _listOptions.value.foldersFirst,
+      );
+    }
   }
 
   void _setCurrentItems() {
@@ -712,45 +739,40 @@ class BrowserState extends State<Browser> {
 
   Future<void> _search() async {
     loading.value = true;
-    _searchResults.value =
-        [
-          ...Main.remoteFiles.where(
-            (file) =>
-                p.isWithin(p.s3(_driveDir.value.key), p.s3(file.key)) &&
-                !Job.jobs.value.any(
-                  (job) =>
-                      job.remoteKey == file.key &&
-                      job.status.value != JobStatus.completed,
-                ),
-          ),
-          ...Job.jobs.value.where(
-            (job) =>
-                p.isWithin(p.s3(_driveDir.value.key), p.s3(job.remoteKey)) &&
-                job.status.value != JobStatus.completed,
-          ),
-        ].where((item) {
-          if (item is RemoteFile) {
-            return p
-                .s3(p.relative(item.key, from: _driveDir.value.key))
-                .toLowerCase()
-                .contains(_searchController.text.trim().toLowerCase());
-          } else if (item is Job) {
-            return p
-                .s3(p.relative(item.remoteKey, from: _driveDir.value.key))
-                .toLowerCase()
-                .contains(_searchController.text.trim().toLowerCase());
-          }
-          return false;
-        }).toList();
+    _searchResults.value = extractAllSorted(
+      query: _searchController.text.trim().toLowerCase(),
+      choices: [
+        ...Main.remoteFiles.where(
+          (file) =>
+              p.isWithin(p.s3(_driveDir.value.key), p.s3(file.key)) &&
+              !Job.jobs.value.any(
+                (job) =>
+                    job.remoteKey == file.key &&
+                    job.status.value != JobStatus.completed,
+              ),
+        ),
+        ...Job.jobs.value.where(
+          (job) =>
+              p.isWithin(p.s3(_driveDir.value.key), p.s3(job.remoteKey)) &&
+              job.status.value != JobStatus.completed,
+        ),
+      ],
+      cutoff: 40,
+      getter: (item) {
+        String key = item is Job ? item.remoteKey : (item as RemoteFile).key;
+        return p.s3(key).toLowerCase();
+      },
+    ).map((result) => result.choice).toList();
 
     loading.value = false;
   }
 
   void _setListOptions(ListOptions options) {
-    if (!(IniManager.config?.sections().contains('list_options') ?? true)) {
-      IniManager.config?.addSection('list_options');
+    if (!(IniManager.config.value?.sections().contains('list_options') ??
+        true)) {
+      IniManager.config.value?.addSection('list_options');
     }
-    IniManager.config?.set(
+    IniManager.config.value?.set(
       'list_options',
       _globalListOptions.value || _navIndex.value != 0
           ? 'navindex_${_navIndex.value}'
@@ -758,13 +780,36 @@ class BrowserState extends State<Browser> {
       options.toJson(),
     );
     if (_globalListOptions.value &&
-        IniManager.config
+        IniManager.config.value
                 ?.options('list_options')
                 ?.contains(_driveDir.value.key) ==
             true) {
-      IniManager.config?.removeOption('list_options', _driveDir.value.key);
+      IniManager.config.value?.removeOption(
+        'list_options',
+        _driveDir.value.key,
+      );
     }
     IniManager.save();
+  }
+
+  void _fetchListOptions() {
+    if (IniManager.config.value?.get('list_options', _driveDir.value.key) !=
+        null) {
+      _globalListOptions.value = false;
+    } else {
+      _globalListOptions.value = true;
+    }
+    _listOptions.value = _searching.value
+        ? ListOptions()
+        : ListOptions.fromJson(
+            IniManager.config.value?.get(
+                  'list_options',
+                  _globalListOptions.value || _navIndex.value != 0
+                      ? 'navindex_${_navIndex.value}'
+                      : _driveDir.value.key,
+                ) ??
+                ListOptions().toJson(),
+          );
   }
 
   void _cut(RemoteFile? item) {
@@ -1236,32 +1281,22 @@ class BrowserState extends State<Browser> {
       }
     });
 
-    Listenable.merge([_navIndex, _driveDir]).addListener(() {
-      if (IniManager.config?.get('list_options', _driveDir.value.key) != null) {
-        _globalListOptions.value = false;
-      } else {
-        _globalListOptions.value = true;
-      }
-      _listOptions.value = ListOptions.fromJson(
-        IniManager.config?.get(
-              'list_options',
-              _globalListOptions.value || _navIndex.value != 0
-                  ? 'navindex_${_navIndex.value}'
-                  : _driveDir.value.key,
-            ) ??
-            ListOptions().toJson(),
-      );
-    });
+    Listenable.merge([
+      _navIndex,
+      _driveDir,
+      _searching,
+    ]).addListener(_fetchListOptions);
 
-    _currentItems.addListener(() {
-      _updateAllSelectableItems(
+    _currentItems.addListener(
+      () => _updateAllSelectableItems(
         _currentItems.value.whereType<RemoteFile>().toList(),
-      );
-    });
+      ),
+    );
 
-    Listenable.merge([_currentItems, _listOptions]).addListener(() {
-      _applyListOptions();
-    });
+    Listenable.merge([
+      _currentItems,
+      _listOptions,
+    ]).addListener(_applyListOptions);
 
     Listenable.merge([
       _navIndex,
@@ -1271,13 +1306,17 @@ class BrowserState extends State<Browser> {
       Main.onRemoteFilesChanged,
       Job.jobs,
       Job.onProgressUpdate,
-    ]).addListener(() {
-      _setCurrentItems();
-    });
+    ]).addListener(_setCurrentItems);
 
-    Main.onRemoteFilesChanged.addListener(() {
-      _updateCounts();
-    });
+    Main.onRemoteFilesChanged.addListener(_updateCounts);
+
+    if (IniManager.config.value == null) {
+      IniManager.config.addListener(() {
+        if (IniManager.config.value != null) {
+          _fetchListOptions();
+        }
+      });
+    }
   }
 
   @override
@@ -1570,25 +1609,31 @@ class BrowserState extends State<Browser> {
                                 },
                               ),
                           ],
-                          IconButton(
-                            icon: const Icon(Icons.more_vert),
-                            onPressed: () {
-                              showMenu(
-                                context: context,
-                                position: RelativeRect.fromLTRB(1000, 60, 0, 0),
-                                menuPadding: EdgeInsets.zero,
-                                items: [
-                                  PopupMenuItem(
-                                    padding: EdgeInsets.zero,
-                                    enabled: false,
-                                    child: _buildPopupMenu(
-                                      showSettings: widget.onPick == null,
-                                    ),
+                          if (!_searching.value)
+                            IconButton(
+                              icon: const Icon(Icons.more_vert),
+                              onPressed: () {
+                                showMenu(
+                                  context: context,
+                                  position: RelativeRect.fromLTRB(
+                                    1000,
+                                    60,
+                                    0,
+                                    0,
                                   ),
-                                ],
-                              );
-                            },
-                          ),
+                                  menuPadding: EdgeInsets.zero,
+                                  items: [
+                                    PopupMenuItem(
+                                      padding: EdgeInsets.zero,
+                                      enabled: false,
+                                      child: _buildPopupMenu(
+                                        showSettings: widget.onPick == null,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
                         ],
                   bottom: _navIndex.value == 0
                       ? PreferredSize(

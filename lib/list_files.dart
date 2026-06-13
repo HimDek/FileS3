@@ -792,6 +792,7 @@ class ListFilesState extends State<ListFiles> {
               ),
             if (widget.listOptions.value.viewMode == ViewMode.grid)
               SliverGrid.builder(
+                key: ValueKey(widget.relativeto.value.key + group.key),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: MediaQuery.of(context).size.width < 600
                       ? 4
@@ -799,18 +800,27 @@ class ListFilesState extends State<ListFiles> {
                   childAspectRatio: 3 / 4,
                 ),
                 itemCount: group.value.length,
-                itemBuilder: (context, i) {
-                  final file = group.value[i];
-                  return gridItemBuilder(context, file);
-                },
+                itemBuilder: (context, index) =>
+                    gridItemBuilder(context, group.value[index]),
               )
             else
               SliverList.builder(
+                key: ValueKey(widget.relativeto.value.key + group.key),
                 itemCount: group.value.length,
-                itemBuilder: (context, i) {
-                  final file = group.value[i];
-                  return listItemBuilder(context, file);
-                },
+                itemBuilder: (context, index) => TweenAnimationBuilder<double>(
+                  duration: Duration(milliseconds: 300),
+                  tween: Tween(begin: 0, end: 1),
+                  builder: (context, value, child) {
+                    return Opacity(
+                      opacity: value,
+                      child: Transform.translate(
+                        offset: Offset(0, 20 * (1 - value)),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: listItemBuilder(context, group.value[index]),
+                ),
               ),
           ],
         ],
