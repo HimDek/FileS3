@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:async';
-import 'package:files3/pointer_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:fuzzywuzzy/fuzzywuzzy.dart';
@@ -18,6 +17,7 @@ import 'package:files3/helpers.dart';
 import 'package:files3/settings.dart';
 import 'package:files3/media_view.dart';
 import 'package:files3/list_files.dart';
+import 'package:files3/pointer_pill.dart';
 
 class PathPicker extends Browser {
   const PathPicker({
@@ -1417,6 +1417,7 @@ class BrowserState extends State<Browser> {
           listenable: _thumbVisibility,
           builder: (context, child) => CustomThumbScrollbar(
             controller: _scrollController,
+            padding: EdgeInsets.only(top: kToolbarHeight),
             thumbVisibility: _thumbVisibility.value,
             thumb: Container(
               decoration: BoxDecoration(

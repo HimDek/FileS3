@@ -178,7 +178,10 @@ class _CustomThumbScrollbarState extends State<CustomThumbScrollbar> {
                         if (widget.thumbVisibility)
                           RepaintBoundary(
                             child: SizedBox(
-                              width: math.max(widget.thickness, 48),
+                              width: math.max(
+                                widget.thickness,
+                                kMinInteractiveDimension,
+                              ),
                               height:
                                   thumbHeight +
                                   math.max(
