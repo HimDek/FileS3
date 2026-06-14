@@ -711,18 +711,17 @@ class ListFilesState extends State<ListFiles> {
           widget.keysOffsetMap.value[file.key] = offset;
           offset += listTileHeight;
         }
-        continue;
-      }
+      } else {
+        for (int i = 0; i < group.value.length; i++) {
+          final file = group.value[i];
+          final row = i ~/ columns;
+          widget.keysOffsetMap.value[file.key] = offset + row * tileHeight;
+        }
 
-      for (int i = 0; i < group.value.length; i++) {
-        final file = group.value[i];
-        final row = i ~/ columns;
-        widget.keysOffsetMap.value[file.key] = offset + row * tileHeight;
+        // Skip past this group’s grid
+        final rows = (group.value.length + columns - 1) ~/ columns;
+        offset += rows * tileHeight;
       }
-
-      // Skip past this group’s grid
-      final rows = (group.value.length + columns - 1) ~/ columns;
-      offset += rows * tileHeight;
 
       widget.groupOffsetMap[group.key] =
           widget.keysOffsetMap.value[group.value.first.key]!;

@@ -1448,13 +1448,17 @@ class BrowserState extends State<Browser> {
                     color: Theme.of(context).colorScheme.primary,
                     pointerWidth: 28,
                     smoothness: 4,
-                    child: Text(
-                      group,
-                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onPrimary,
+                    child: Container(
+                      constraints: BoxConstraints(minWidth: 24),
+                      child: Text(
+                        group,
+                        style: Theme.of(context).textTheme.displaySmall
+                            ?.copyWith(
+                              color: Theme.of(context).colorScheme.onPrimary,
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 );
