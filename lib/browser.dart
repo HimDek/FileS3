@@ -1,8 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:async';
-import 'package:collection/collection.dart';
-import 'package:files3/scrollbar.dart';
+import 'package:files3/pointer_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:fuzzywuzzy/fuzzywuzzy.dart';
@@ -11,6 +10,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/context_menu.dart';
 import 'package:files3/utils/profile.dart';
+import 'package:files3/scrollbar.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/models.dart';
@@ -463,6 +463,7 @@ class Browser extends StatefulWidget {
 class BrowserState extends State<Browser> {
   final List<RemoteFile> _allSelectableItems = <RemoteFile>[];
   final List<GalleryProps> _galleryFiles = <GalleryProps>[];
+  final Map<String, double> _groupOffsetMap = <String, double>{};
 
   final GlobalKey<ListFilesState> _listKey = GlobalKey();
   final TextEditingController _searchController = TextEditingController();
@@ -493,6 +494,8 @@ class BrowserState extends State<Browser> {
 
   Timer? _scrollbarTimer;
   Timer? _inaccessibleTimer;
+
+  double _lastScrollOffset = 0;
 
   String _dirModified(RemoteFile dir) {
     DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
@@ -1266,7 +1269,17 @@ class BrowserState extends State<Browser> {
     });
 
     _scrollController.addListener(() {
-      final direction = _scrollController.position.userScrollDirection;
+      var direction = ScrollDirection.idle;
+
+      if (_scrollController.hasClients) {
+        final offset = _scrollController.offset;
+        direction = offset > _lastScrollOffset
+            ? ScrollDirection.reverse
+            : offset < _lastScrollOffset
+            ? ScrollDirection.forward
+            : ScrollDirection.idle;
+        _lastScrollOffset = offset;
+      }
 
       if (_scrollController.position.maxScrollExtent > 0) {
         _scrollbarTimer?.cancel();
@@ -1276,10 +1289,9 @@ class BrowserState extends State<Browser> {
         });
       }
 
-      if (direction == ScrollDirection.reverse && _controlsVisible.value) {
+      if (direction == ScrollDirection.reverse) {
         _controlsVisible.value = false;
-      } else if (direction == ScrollDirection.forward &&
-          !_controlsVisible.value) {
+      } else if (direction == ScrollDirection.forward) {
         _controlsVisible.value = true;
       }
     });
@@ -1413,44 +1425,32 @@ class BrowserState extends State<Browser> {
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
-            maxThumbLength: 48,
+            maxThumbLength: 64,
             popup: ListenableBuilder(
-              listenable: Listenable.merge([
-                _currentProps,
-                _keysOffsetMap,
-                _scrollController,
-              ]),
+              listenable: Listenable.merge([_scrollController]),
               builder: (context, child) {
-                final file = _currentProps.value.firstWhereOrNull(
-                  (file) =>
-                      file.key ==
-                      _keysOffsetMap.value.keys.reduce(
-                        (a, b) =>
-                            (_keysOffsetMap.value[a]! -
-                                        _scrollController.offset)
-                                    .abs() <
-                                (_keysOffsetMap.value[b]! -
-                                        _scrollController.offset)
-                                    .abs()
-                            ? a
-                            : b,
-                      ),
+                final group = _groupOffsetMap.keys.reduce(
+                  (a, b) =>
+                      (_groupOffsetMap[a]! -
+                                  _scrollController.offset -
+                                  MediaQuery.sizeOf(context).height / 2)
+                              .abs() <
+                          (_groupOffsetMap[b]! -
+                                  _scrollController.offset -
+                                  MediaQuery.sizeOf(context).height / 2)
+                              .abs()
+                      ? a
+                      : b,
                 );
-                if (file == null) {
-                  return SizedBox.shrink();
-                }
                 return Padding(
                   padding: EdgeInsets.all(8),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                  child: PointerPill(
+                    color: Theme.of(context).colorScheme.primary,
+                    pointerWidth: 28,
+                    smoothness: 4,
                     child: Text(
-                      _listKey.currentState?.groupFromKey(file.key) ??
-                          p.basename(file.key),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      group,
+                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onPrimary,
                       ),
                       maxLines: 1,
@@ -1968,6 +1968,7 @@ class BrowserState extends State<Browser> {
                 files: _currentProps,
                 galleryFiles: _galleryFiles,
                 setGalleryFiles: _setGalleryFiles,
+                groupOffsetMap: _groupOffsetMap,
                 keysOffsetMap: _keysOffsetMap,
                 listOptions: _listOptions,
                 relativeto: _driveDir,

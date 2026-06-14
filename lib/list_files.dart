@@ -112,12 +112,13 @@ class FileRow extends GroupRow {
 class ListFiles extends StatefulWidget {
   final ValueNotifier<List<FileProps>> files;
   final List<GalleryProps> galleryFiles;
-  final Function(List<GalleryProps>)? setGalleryFiles;
+  final void Function(List<GalleryProps>)? setGalleryFiles;
   final ValueNotifier<ListOptions> listOptions;
   final ValueNotifier<RemoteFile> relativeto;
   final ValueNotifier<Set<RemoteFile>> selection;
   final ValueNotifier<SelectionAction> selectionAction;
   final ValueNotifier<Map<String, double>> keysOffsetMap;
+  final Map<String, double> groupOffsetMap;
   final void Function(int)? showGallery;
   final Function(RemoteFile) changeDirectory;
   final void Function()? Function(RemoteFile) getSelectAction;
@@ -133,6 +134,7 @@ class ListFiles extends StatefulWidget {
     required this.files,
     this.galleryFiles = const [],
     this.setGalleryFiles,
+    this.groupOffsetMap = const {},
     required this.listOptions,
     required this.relativeto,
     required this.selection,
@@ -164,9 +166,7 @@ class ListFilesState extends State<ListFiles> {
 
   void makeGroups() {
     Map<String, List<FileProps>> grouped = {};
-    SortMode? groupBy = widget.listOptions.value.group
-        ? widget.listOptions.value.sortMode
-        : null;
+    SortMode? groupBy = widget.listOptions.value.sortMode;
     for (var file in widget.files.value) {
       String key;
       switch (groupBy) {
@@ -226,8 +226,6 @@ class ListFilesState extends State<ListFiles> {
               ? 'Folders'
               : 'No Extension';
           break;
-        default:
-          key = 'All Files';
       }
       if (grouped.containsKey(key)) {
         grouped[key]!.add(file);
@@ -724,6 +722,9 @@ class ListFilesState extends State<ListFiles> {
       // Skip past this group’s grid
       final rows = (group.value.length + columns - 1) ~/ columns;
       offset += rows * tileHeight;
+
+      widget.groupOffsetMap[group.key] =
+          widget.keysOffsetMap.value[group.value.first.key]!;
     }
   }
 
@@ -783,7 +784,15 @@ class ListFilesState extends State<ListFiles> {
       listenable: Listenable.merge([_groups, widget.listOptions]),
       builder: (ccontext, _) => MultiSliver(
         children: [
-          for (final group in _groups.value) ...[
+          for (final group
+              in widget.listOptions.value.group
+                  ? _groups.value
+                  : [
+                      MapEntry(
+                        '',
+                        _groups.value.map((g) => g.value).flattenedToList,
+                      ),
+                    ]) ...[
             if (widget.listOptions.value.group)
               SliverToBoxAdapter(
                 child: Padding(
