@@ -676,6 +676,24 @@ abstract class ConfigManager {
     IniManager.save();
   }
 
+  static List<String> loadPinnedFolders() {
+    return jsonDecode(
+      IniManager.config.value?.get('pinned_folders', 'dummy') ?? "[]",
+    ).cast<String>();
+  }
+
+  static Future<void> savePinnedFolders(List<String> folders) async {
+    if (!IniManager.config.value!.sections().contains("pinned_folders")) {
+      IniManager.config.value!.addSection("pinned_folders");
+    }
+    IniManager.config.value!.set(
+      "pinned_folders",
+      "dummy",
+      jsonEncode(folders),
+    );
+    IniManager.save();
+  }
+
   static Future<void> saveRemoteFiles(List<RemoteFile> files) async {
     final String jsonString = jsonEncode(
       files.map((file) => file.toJson()).toList(),

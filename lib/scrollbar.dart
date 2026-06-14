@@ -86,7 +86,11 @@ class _CustomThumbScrollbarState extends State<CustomThumbScrollbar> {
 
                   final p = widget.controller.position;
 
-                  if (p.maxScrollExtent <= 0) {
+                  try {
+                    if (p.maxScrollExtent <= 0) {
+                      return const SizedBox.shrink();
+                    }
+                  } catch (e) {
                     return const SizedBox.shrink();
                   }
 

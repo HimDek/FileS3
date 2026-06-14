@@ -10,44 +10,7 @@ import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
-
-class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
-
-  @override
-  SettingsPageState createState() => SettingsPageState();
-}
-
-class SettingsPageState extends State<SettingsPage> {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Settings')),
-      body: ListView(
-        children: [
-          ListTile(
-            leading: Icon(Icons.palette),
-            title: Text("Appearance"),
-            subtitle: Text(
-              "Configure UI settings like theme, colors, font size etc.",
-            ),
-            onTap: () async => await Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (context) => UiSettingsPage())),
-          ),
-          ListTile(
-            leading: Icon(Icons.download),
-            title: Text("Transfer"),
-            subtitle: Text("Configure downloads and uploads settings"),
-            onTap: () async => await Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => TransferSettingsPage()),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+import 'package:files3/browser.dart';
 
 class S3ConfigPage extends StatefulWidget {
   final Profile? profile;
@@ -1014,36 +977,45 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   }
 }
 
-class UiSettingsPage extends StatefulWidget {
-  const UiSettingsPage({super.key});
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
 
   @override
-  State<UiSettingsPage> createState() => UiSettingsPageState();
+  State<SettingsPage> createState() => SettingsPageState();
 }
 
-class UiSettingsPageState extends State<UiSettingsPage> {
+class SettingsPageState extends State<SettingsPage> {
   late UiConfig _uiConfig;
+  late TransferConfig _downloadConfig;
+  late int _cacheSize;
 
   @override
   void initState() {
     super.initState();
     _uiConfig = ConfigManager.loadUiConfig();
+    _downloadConfig = ConfigManager.loadTransferConfig();
+    _cacheSize = Job.cacheSize();
   }
 
   Future<void> _saveConfig() async {
     await ConfigManager.saveUiConfig(_uiConfig);
+    Job.maxrun = _downloadConfig.maxConcurrentTransfers;
+    await ConfigManager.saveTransferConfig(_downloadConfig);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Appearance Settings')),
+      appBar: AppBar(title: Text('Settings')),
       body: ListView(
         children: [
           ListTile(
-            title: Text('Color Mode'),
-            subtitle: Text('Select the app color mode'),
+            title: Text('Appearance'),
+            titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
+          ListTile(title: Text('Color Mode')),
           RadioGroup<ThemeMode>(
             groupValue: _uiConfig.colorMode,
             onChanged: (ThemeMode? value) async {
@@ -1075,57 +1047,24 @@ class UiSettingsPageState extends State<UiSettingsPage> {
               ],
             ),
           ),
-          if (_uiConfig.colorMode != ThemeMode.light)
-            SwitchListTile(
-              title: Text('Ultra Dark Mode'),
-              subtitle: Text('Pure black background for dark mode'),
-              value: _uiConfig.ultraDark,
-              onChanged: (value) async {
-                setState(() {
-                  _uiConfig = UiConfig(
-                    colorMode: _uiConfig.colorMode,
-                    ultraDark: value,
-                  );
-                });
-                await _saveConfig();
-                ultraDarkController.value = value;
-              },
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class TransferSettingsPage extends StatefulWidget {
-  const TransferSettingsPage({super.key});
-
-  @override
-  TransferSettingsPageState createState() => TransferSettingsPageState();
-}
-
-class TransferSettingsPageState extends State<TransferSettingsPage> {
-  late TransferConfig _downloadConfig;
-  late int _cacheSize;
-
-  @override
-  void initState() {
-    super.initState();
-    _downloadConfig = ConfigManager.loadTransferConfig();
-    _cacheSize = Job.cacheSize();
-  }
-
-  Future<void> _saveConfig() async {
-    Job.maxrun = _downloadConfig.maxConcurrentTransfers;
-    await ConfigManager.saveTransferConfig(_downloadConfig);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Transfer Settings')),
-      body: ListView(
-        children: [
+          SwitchListTile(
+            title: Text('Ultra Dark Mode'),
+            subtitle: Text('Pure black background for dark mode'),
+            value: _uiConfig.ultraDark,
+            onChanged: _uiConfig.colorMode != ThemeMode.light
+                ? (value) async {
+                    setState(() {
+                      _uiConfig = UiConfig(
+                        colorMode: _uiConfig.colorMode,
+                        ultraDark: value,
+                      );
+                    });
+                    await _saveConfig();
+                    ultraDarkController.value = value;
+                  }
+                : null,
+          ),
+          Divider(),
           ListTile(
             title: Text('Max Concurrent Transfers'),
             subtitle: Text('Set the maximum number of concurrent transfers'),
@@ -1152,15 +1091,13 @@ class TransferSettingsPageState extends State<TransferSettingsPage> {
             ),
           ),
           ListTile(
-            title: Text('Clear Download Cache'),
+            title: Text('Downloads & Thumbnail Cache'),
             subtitle: Text(bytesToReadable(Job.cacheSize())),
             trailing: ElevatedButton(
               onPressed: _cacheSize > 0
                   ? () {
                       Job.clearCache();
-                      showSnackBar(
-                        SnackBar(content: Text('Download cache cleared')),
-                      );
+                      showSnackBar(SnackBar(content: Text('Cache cleared')));
                       setState(() {
                         _cacheSize = Job.cacheSize();
                       });
@@ -1169,7 +1106,87 @@ class TransferSettingsPageState extends State<TransferSettingsPage> {
               child: Text('Clear'),
             ),
           ),
+          ListTile(
+            title: Text('Pinned Folders'),
+            subtitle: Text('Manage pinned folders for quick access'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => PinnedFoldersPage()),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class PinnedFoldersPage extends StatefulWidget {
+  const PinnedFoldersPage({super.key});
+
+  @override
+  State<PinnedFoldersPage> createState() => PinnedFoldersPageState();
+}
+
+class PinnedFoldersPageState extends State<PinnedFoldersPage> {
+  late List<String> _pinnedFolders;
+
+  @override
+  void initState() {
+    super.initState();
+    _pinnedFolders = ConfigManager.loadPinnedFolders();
+  }
+
+  Future<void> _saveConfig() async {
+    await ConfigManager.savePinnedFolders(_pinnedFolders);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Pinned Folders')),
+      body: ReorderableListView(
+        onReorderItem: (oldIndex, newIndex) async {
+          setState(() {
+            if (newIndex > oldIndex) {
+              newIndex -= 1;
+            }
+            final item = _pinnedFolders.removeAt(oldIndex);
+            _pinnedFolders.insert(newIndex, item);
+          });
+          await _saveConfig();
+        },
+        children: [
+          for (final profile in _pinnedFolders)
+            ListTile(
+              key: ValueKey(profile),
+              title: Text(profile),
+              trailing: IconButton(
+                icon: Icon(Icons.close_rounded),
+                onPressed: () async {
+                  setState(() {
+                    _pinnedFolders.remove(profile);
+                  });
+                  await _saveConfig();
+                },
+              ),
+            ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => PathPicker(
+                onPick: (path) async {
+                  setState(() {
+                    _pinnedFolders.add(path.key);
+                  });
+                  await _saveConfig();
+                },
+              ),
+            ),
+          );
+        },
+        child: Icon(Icons.add_rounded),
       ),
     );
   }
