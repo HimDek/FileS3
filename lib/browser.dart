@@ -465,7 +465,6 @@ class BrowserState extends State<Browser> {
   final List<GalleryProps> _galleryFiles = <GalleryProps>[];
   final Map<String, double> _groupOffsetMap = <String, double>{};
 
-  final GlobalKey<ListFilesState> _listKey = GlobalKey();
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
@@ -1451,7 +1450,7 @@ class BrowserState extends State<Browser> {
                     child: Container(
                       constraints: BoxConstraints(minWidth: 24),
                       child: Text(
-                        group,
+                        group.replaceAll('_folder', ''),
                         style: Theme.of(context).textTheme.displaySmall
                             ?.copyWith(
                               color: Theme.of(context).colorScheme.onPrimary,
@@ -1968,7 +1967,6 @@ class BrowserState extends State<Browser> {
                 ),
               ),
               ListFiles(
-                key: _listKey,
                 files: _currentProps,
                 galleryFiles: _galleryFiles,
                 setGalleryFiles: _setGalleryFiles,

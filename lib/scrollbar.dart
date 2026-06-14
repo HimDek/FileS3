@@ -175,69 +175,70 @@ class _CustomThumbScrollbarState extends State<CustomThumbScrollbar> {
                             ],
                           ),
                         ),
-                        RepaintBoundary(
-                          child: SizedBox(
-                            width: math.max(widget.thickness, 48),
-                            height:
-                                thumbHeight +
-                                math.max(
-                                  MediaQuery.paddingOf(context).top,
-                                  MediaQuery.paddingOf(context).bottom,
-                                ),
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
+                        if (widget.thumbVisibility)
+                          RepaintBoundary(
+                            child: SizedBox(
+                              width: math.max(widget.thickness, 48),
+                              height:
+                                  thumbHeight +
+                                  math.max(
+                                    MediaQuery.paddingOf(context).top,
+                                    MediaQuery.paddingOf(context).bottom,
+                                  ),
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
 
-                              onTapDown: (_) => _showPopup(),
+                                onTapDown: (_) => _showPopup(),
 
-                              onTapCancel: _hidePopup,
+                                onTapCancel: _hidePopup,
 
-                              onVerticalDragDown: (_) => _showPopup(),
+                                onVerticalDragDown: (_) => _showPopup(),
 
-                              onVerticalDragStart: (details) {
-                                _grabOffset = details.localPosition.dy;
+                                onVerticalDragStart: (details) {
+                                  _grabOffset = details.localPosition.dy;
 
-                                _showPopup();
-                              },
+                                  _showPopup();
+                                },
 
-                              onVerticalDragCancel: _hidePopup,
+                                onVerticalDragCancel: _hidePopup,
 
-                              onVerticalDragEnd: (_) => _hidePopup(),
+                                onVerticalDragEnd: (_) => _hidePopup(),
 
-                              onVerticalDragUpdate: (details) {
-                                final context = _trackKey.currentContext;
+                                onVerticalDragUpdate: (details) {
+                                  final context = _trackKey.currentContext;
 
-                                if (context == null) {
-                                  return;
-                                }
+                                  if (context == null) {
+                                    return;
+                                  }
 
-                                final box =
-                                    context.findRenderObject() as RenderBox;
+                                  final box =
+                                      context.findRenderObject() as RenderBox;
 
-                                final local = box.globalToLocal(
-                                  details.globalPosition,
-                                );
+                                  final local = box.globalToLocal(
+                                    details.globalPosition,
+                                  );
 
-                                final newTop =
-                                    (local.dy -
-                                            widget.padding.top -
-                                            _grabOffset)
-                                        .clamp(0.0, maxThumbOffset);
+                                  final newTop =
+                                      (local.dy -
+                                              widget.padding.top -
+                                              _grabOffset)
+                                          .clamp(0.0, maxThumbOffset);
 
-                                if (maxThumbOffset <= 0) {
-                                  return;
-                                }
+                                  if (maxThumbOffset <= 0) {
+                                    return;
+                                  }
 
-                                final scrollOffset =
-                                    (newTop /
-                                            maxThumbOffset *
-                                            p.maxScrollExtent)
-                                        .clamp(0.0, p.maxScrollExtent);
+                                  final scrollOffset =
+                                      (newTop /
+                                              maxThumbOffset *
+                                              p.maxScrollExtent)
+                                          .clamp(0.0, p.maxScrollExtent);
 
-                                widget.controller.jumpTo(scrollOffset);
-                              },
+                                  widget.controller.jumpTo(scrollOffset);
+                                },
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   );

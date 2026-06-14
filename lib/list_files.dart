@@ -158,14 +158,8 @@ class ListFilesState extends State<ListFiles> {
   final ValueNotifier<List<MapEntry<String, List<FileProps>>>> _groups =
       ValueNotifier([]);
 
-  String? groupFromKey(String key) {
-    return _groups.value
-        .firstWhereOrNull((group) => group.value.any((file) => file.key == key))
-        ?.key;
-  }
-
   void makeGroups() {
-    Map<String, List<FileProps>> grouped = {};
+    List<MapEntry<String, List<FileProps>>> grouped = [];
     SortMode? groupBy = widget.listOptions.value.sortMode;
     for (var file in widget.files.value) {
       String key;
@@ -227,13 +221,17 @@ class ListFilesState extends State<ListFiles> {
               : 'No Extension';
           break;
       }
-      if (grouped.containsKey(key)) {
-        grouped[key]!.add(file);
+      if (widget.listOptions.value.foldersFirst && p.isDir(file.key)) {
+        key += '_folder';
+      }
+
+      if (grouped.any((e) => e.key == key)) {
+        grouped.firstWhere((e) => e.key == key).value.add(file);
       } else {
-        grouped[key] = [file];
+        grouped.add(MapEntry(key, [file]));
       }
     }
-    _groups.value = grouped.entries.toList();
+    _groups.value = grouped;
   }
 
   Widget preview(FileProps item) {
@@ -801,7 +799,7 @@ class ListFilesState extends State<ListFiles> {
                     vertical: 8,
                   ),
                   child: Text(
-                    group.key,
+                    group.key.replaceAll('_folder', ''),
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),

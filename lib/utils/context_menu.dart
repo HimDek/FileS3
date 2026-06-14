@@ -2544,7 +2544,9 @@ Widget buildDirectoryContextMenu(
                     ],
                   ),
                 ),
-                onTap: Main.profileFromKey(file.key) == null
+                onTap:
+                    Main.profileFromKey(file.key) == null ||
+                        p.split(file.key).length != 1
                     ? null
                     : () {
                         Navigator.of(context).pop();
