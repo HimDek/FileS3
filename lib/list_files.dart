@@ -680,6 +680,7 @@ class ListFilesState extends State<ListFiles> {
 
   void buildKeysOffsetMap(BuildContext context) {
     widget.keysOffsetMap.value.clear();
+    widget.groupOffsetMap.clear();
 
     final width = MediaQuery.of(context).size.width;
     final columns = width < 600 ? 4 : 6;
