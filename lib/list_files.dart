@@ -234,6 +234,56 @@ class ListFilesState extends State<ListFiles> {
     _groups.value = grouped;
   }
 
+  void buildKeysOffsetMap(BuildContext context) {
+    widget.keysOffsetMap.value.clear();
+    widget.groupOffsetMap.clear();
+
+    final width = MediaQuery.of(context).size.width;
+    final columns = width < 600 ? 4 : 6;
+    final tileWidth = width / columns;
+    final tileHeight = tileWidth * (4 / 3); // inverse of 3/4
+
+    double offset = 0;
+
+    for (final group in _groups.value) {
+      // Header height (if enabled)
+      if (widget.listOptions.value.group) {
+        final style = Theme.of(context).textTheme.titleMedium!;
+        final painter = TextPainter(
+          text: TextSpan(text: group.key, style: style),
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        offset += painter.height + 16; // 8px top + 8px bottom padding
+      }
+
+      // Grid items
+      if (widget.listOptions.value.viewMode != ViewMode.grid) {
+        // List view
+        for (final file in group.value) {
+          final listTileHeight = MediaQuery.of(context).size.width < 600
+              ? 56.0
+              : 72.0; // approximate heights for dense and standard ListTiles
+          widget.keysOffsetMap.value[file.key] = offset;
+          offset += listTileHeight;
+        }
+      } else {
+        for (int i = 0; i < group.value.length; i++) {
+          final file = group.value[i];
+          final row = i ~/ columns;
+          widget.keysOffsetMap.value[file.key] = offset + row * tileHeight;
+        }
+
+        // Skip past this group’s grid
+        final rows = (group.value.length + columns - 1) ~/ columns;
+        offset += rows * tileHeight;
+      }
+
+      widget.groupOffsetMap[group.key] =
+          widget.keysOffsetMap.value[group.value.first.key]!;
+    }
+  }
+
   Widget preview(FileProps item) {
     return getMediaType(item.key) != null
         ? SizedBox(
@@ -676,54 +726,41 @@ class ListFilesState extends State<ListFiles> {
           );
   }
 
-  void buildKeysOffsetMap(BuildContext context) {
-    widget.keysOffsetMap.value.clear();
-    widget.groupOffsetMap.clear();
-
-    final width = MediaQuery.of(context).size.width;
-    final columns = width < 600 ? 4 : 6;
-    final tileWidth = width / columns;
-    final tileHeight = tileWidth * (4 / 3); // inverse of 3/4
-
-    double offset = 0;
-
-    for (final group in _groups.value) {
-      // Header height (if enabled)
-      if (widget.listOptions.value.group) {
-        final style = Theme.of(context).textTheme.titleMedium!;
-        final painter = TextPainter(
-          text: TextSpan(text: group.key, style: style),
-          textDirection: TextDirection.ltr,
-        )..layout();
-
-        offset += painter.height + 16; // 8px top + 8px bottom padding
-      }
-
-      // Grid items
-      if (widget.listOptions.value.viewMode != ViewMode.grid) {
-        // List view
-        for (final file in group.value) {
-          final listTileHeight = MediaQuery.of(context).size.width < 600
-              ? 56.0
-              : 72.0; // approximate heights for dense and standard ListTiles
-          widget.keysOffsetMap.value[file.key] = offset;
-          offset += listTileHeight;
-        }
-      } else {
-        for (int i = 0; i < group.value.length; i++) {
-          final file = group.value[i];
-          final row = i ~/ columns;
-          widget.keysOffsetMap.value[file.key] = offset + row * tileHeight;
-        }
-
-        // Skip past this group’s grid
-        final rows = (group.value.length + columns - 1) ~/ columns;
-        offset += rows * tileHeight;
-      }
-
-      widget.groupOffsetMap[group.key] =
-          widget.keysOffsetMap.value[group.value.first.key]!;
-    }
+  MultiSliver _groupContent(MapEntry<String, List<FileProps>> group) {
+    return MultiSliver(
+      children: [
+        if (widget.listOptions.value.viewMode == ViewMode.grid)
+          SliverGrid.builder(
+            key: ValueKey(widget.relativeto.value.key + group.key),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: MediaQuery.of(context).size.width < 600 ? 4 : 6,
+              childAspectRatio: 3 / 4,
+            ),
+            itemCount: group.value.length,
+            itemBuilder: (context, index) =>
+                gridItemBuilder(context, group.value[index]),
+          )
+        else
+          SliverList.builder(
+            key: ValueKey(widget.relativeto.value.key + group.key),
+            itemCount: group.value.length,
+            itemBuilder: (context, index) => TweenAnimationBuilder<double>(
+              duration: Duration(milliseconds: 300),
+              tween: Tween(begin: 0, end: 1),
+              builder: (context, value, child) {
+                return Opacity(
+                  opacity: value,
+                  child: Transform.translate(
+                    offset: Offset(0, 20 * (1 - value)),
+                    child: child,
+                  ),
+                );
+              },
+              child: listItemBuilder(context, group.value[index]),
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -790,53 +827,34 @@ class ListFilesState extends State<ListFiles> {
                         '',
                         _groups.value.map((g) => g.value).flattenedToList,
                       ),
-                    ]) ...[
+                    ])
             if (widget.listOptions.value.group)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
+              SliverMainAxisGroup(
+                slivers: [
+                  SliverPersistentHeader(
+                    floating: false,
+                    pinned: true,
+                    delegate: MyPersistentHeaderDelegate(
+                      height: 34,
+                      child: Container(
+                        color: Theme.of(context).colorScheme.surface,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          group.key.replaceAll('_folder', ''),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                    ),
                   ),
-                  child: Text(
-                    group.key.replaceAll('_folder', ''),
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ),
-            if (widget.listOptions.value.viewMode == ViewMode.grid)
-              SliverGrid.builder(
-                key: ValueKey(widget.relativeto.value.key + group.key),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: MediaQuery.of(context).size.width < 600
-                      ? 4
-                      : 6,
-                  childAspectRatio: 3 / 4,
-                ),
-                itemCount: group.value.length,
-                itemBuilder: (context, index) =>
-                    gridItemBuilder(context, group.value[index]),
+                  _groupContent(group),
+                ],
               )
             else
-              SliverList.builder(
-                key: ValueKey(widget.relativeto.value.key + group.key),
-                itemCount: group.value.length,
-                itemBuilder: (context, index) => TweenAnimationBuilder<double>(
-                  duration: Duration(milliseconds: 300),
-                  tween: Tween(begin: 0, end: 1),
-                  builder: (context, value, child) {
-                    return Opacity(
-                      opacity: value,
-                      child: Transform.translate(
-                        offset: Offset(0, 20 * (1 - value)),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: listItemBuilder(context, group.value[index]),
-                ),
-              ),
-          ],
+              _groupContent(group),
         ],
       ),
     );

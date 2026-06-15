@@ -51,12 +51,15 @@ dependencies:
   video_player:
   chewie_audio:
   sliver_tools:
+  app_settings:
+  m3e_card_list:
   dynamic_color:
   path_provider:  
   file_selector:
   receive_intent:
   cupertino_icons:
   device_info_plus:
+  package_info_plus:
   file_magic_number:
   percent_indicator:
   shared_preferences:

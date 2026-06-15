@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:m3e_card_list/m3e_card_list.dart';
+import 'package:app_settings/app_settings.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
@@ -989,12 +992,27 @@ class SettingsPageState extends State<SettingsPage> {
   late TransferConfig _downloadConfig;
   late int _cacheSize;
 
+  bool _colorModePopupVisible = false;
+  bool _maxTransfersPopupVisible = false;
+  PackageInfo? packageInfo;
+
+  final GlobalKey<PopupMenuButtonState<ThemeMode>> _colorModepopupKey =
+      GlobalKey();
+  final GlobalKey<PopupMenuButtonState<int>> _maxTransfersPopupKey =
+      GlobalKey();
+
+  Future<void> _getPackageInfo() async {
+    packageInfo = await PackageInfo.fromPlatform();
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
     _uiConfig = ConfigManager.loadUiConfig();
     _downloadConfig = ConfigManager.loadTransferConfig();
     _cacheSize = Job.cacheSize();
+    _getPackageInfo();
   }
 
   Future<void> _saveConfig() async {
@@ -1006,112 +1024,266 @@ class SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Settings')),
-      body: ListView(
-        children: [
-          ListTile(
-            title: Text('Appearance'),
-            titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-            ),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            floating: true,
+            snap: true,
+            pinned: false,
+            title: Text('Settings'),
           ),
-          ListTile(title: Text('Color Mode')),
-          RadioGroup<ThemeMode>(
-            groupValue: _uiConfig.colorMode,
-            onChanged: (ThemeMode? value) async {
-              if (value != null) {
-                setState(() {
-                  _uiConfig = UiConfig(
-                    colorMode: value,
-                    ultraDark: _uiConfig.ultraDark,
-                  );
-                });
-                await _saveConfig();
-                themeController.value = value;
-              }
-            },
-            child: Column(
-              children: [
-                RadioListTile<ThemeMode>(
-                  title: Text('System Default'),
-                  value: ThemeMode.system,
-                ),
-                RadioListTile<ThemeMode>(
-                  title: Text('Light Mode'),
-                  value: ThemeMode.light,
-                ),
-                RadioListTile<ThemeMode>(
-                  title: Text('Dark Mode'),
-                  value: ThemeMode.dark,
-                ),
-              ],
-            ),
-          ),
-          SwitchListTile(
-            title: Text('Ultra Dark Mode'),
-            subtitle: Text('Pure black background for dark mode'),
-            value: _uiConfig.ultraDark,
-            onChanged: _uiConfig.colorMode != ThemeMode.light
-                ? (value) async {
-                    setState(() {
-                      _uiConfig = UiConfig(
-                        colorMode: _uiConfig.colorMode,
-                        ultraDark: value,
+          SliverMainAxisGroup(
+            slivers: [
+              // SliverPersistentHeader(
+              //   floating: false,
+              //   pinned: true,
+              //   delegate: MyPersistentHeaderDelegate(
+              //     height: 34,
+              //     child: Container(
+              //       color: Theme.of(context).colorScheme.surface,
+              //       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              //       alignment: Alignment.centerLeft,
+              //       child: Text(
+              //         "Appearance",
+              //         style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              //           color: Theme.of(context).colorScheme.primary,
+              //         ),
+              //       ),
+              //     ),
+              //   ),
+              // ),
+              SliverM3ECardList(
+                itemCount: 2,
+                margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: EdgeInsets.zero,
+                itemBuilder: (context, index) {
+                  switch (index) {
+                    case 0:
+                      return ListTile(
+                        title: Text('Color Mode'),
+                        subtitle: Text(
+                          _uiConfig.colorMode == ThemeMode.system
+                              ? 'System Default'
+                              : _uiConfig.colorMode == ThemeMode.light
+                              ? 'Light Mode'
+                              : 'Dark Mode',
+                        ),
+                        leading: Icon(
+                          _uiConfig.colorMode == ThemeMode.system
+                              ? Icons.contrast_rounded
+                              : _uiConfig.colorMode == ThemeMode.light
+                              ? Icons.light_mode_rounded
+                              : Icons.dark_mode_rounded,
+                        ),
+                        trailing: PopupMenuButton(
+                          key: _colorModepopupKey,
+                          initialValue: _uiConfig.colorMode,
+                          onOpened: () => setState(() {
+                            _colorModePopupVisible = true;
+                          }),
+                          onSelected: (ThemeMode value) async {
+                            setState(() {
+                              _colorModePopupVisible = false;
+                              _uiConfig = UiConfig(
+                                colorMode: value,
+                                ultraDark: _uiConfig.ultraDark,
+                              );
+                            });
+                            await _saveConfig();
+                            themeController.value = _uiConfig.colorMode;
+                          },
+                          onCanceled: () => setState(() {
+                            _colorModePopupVisible = false;
+                          }),
+                          icon: Icon(
+                            _colorModePopupVisible
+                                ? Icons.arrow_drop_up_rounded
+                                : Icons.arrow_drop_down_rounded,
+                          ),
+                          position: PopupMenuPosition.under,
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: ThemeMode.system,
+                              child: Text('System Default'),
+                            ),
+                            PopupMenuItem(
+                              value: ThemeMode.light,
+                              child: Text('Light Mode'),
+                            ),
+                            PopupMenuItem(
+                              value: ThemeMode.dark,
+                              child: Text('Dark Mode'),
+                            ),
+                          ],
+                        ),
+                        onTap: () {
+                          setState(() {
+                            _colorModePopupVisible = !_colorModePopupVisible;
+                          });
+                          if (_colorModePopupVisible) {
+                            _colorModepopupKey.currentState?.showButtonMenu();
+                          }
+                        },
                       );
-                    });
-                    await _saveConfig();
-                    ultraDarkController.value = value;
+                    case 1:
+                      return SwitchListTile(
+                        title: Text('Ultra Dark Mode'),
+                        subtitle: Text('Pure black background for dark mode'),
+                        secondary: Icon(
+                          ultraDarkController.value
+                              ? Icons.brightness_1_outlined
+                              : Icons.brightness_1,
+                        ),
+                        value: _uiConfig.ultraDark,
+                        onChanged: _uiConfig.colorMode != ThemeMode.light
+                            ? (value) async {
+                                setState(() {
+                                  _uiConfig = UiConfig(
+                                    colorMode: _uiConfig.colorMode,
+                                    ultraDark: value,
+                                  );
+                                });
+                                await _saveConfig();
+                                ultraDarkController.value = value;
+                              }
+                            : null,
+                      );
+                    default:
+                      return SizedBox.shrink();
                   }
-                : null,
+                },
+              ),
+            ],
           ),
-          Divider(),
-          ListTile(
-            title: Text('Max Concurrent Transfers'),
-            subtitle: Text('Set the maximum number of concurrent transfers'),
-            trailing: DropdownButton<int>(
-              value: _downloadConfig.maxConcurrentTransfers,
-              items: List.generate(10, (index) => index + 1)
-                  .map(
-                    (value) => DropdownMenuItem<int>(
-                      value: value,
-                      child: Text(value.toString()),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (int? value) async {
-                if (value != null) {
-                  setState(() {
-                    _downloadConfig = TransferConfig(
-                      maxConcurrentTransfers: value,
-                    );
-                  });
-                  await _saveConfig();
-                }
-              },
-            ),
+          SliverMainAxisGroup(
+            slivers: [
+              SliverM3ECardList(
+                itemCount: 3,
+                margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: EdgeInsets.zero,
+                itemBuilder: (context, index) {
+                  switch (index) {
+                    case 0:
+                      return ListTile(
+                        title: Text('Max Concurrent Transfers'),
+                        subtitle: Text(
+                          _downloadConfig.maxConcurrentTransfers.toString(),
+                        ),
+                        leading: Icon(Icons.swap_vertical_circle),
+                        trailing: PopupMenuButton<int>(
+                          key: _maxTransfersPopupKey,
+                          initialValue: _downloadConfig.maxConcurrentTransfers,
+                          position: PopupMenuPosition.under,
+                          itemBuilder: (context) =>
+                              List.generate(10, (index) => index + 1)
+                                  .map(
+                                    (value) => PopupMenuItem<int>(
+                                      value: value,
+                                      child: Text(value.toString()),
+                                    ),
+                                  )
+                                  .toList(),
+                          onOpened: () => setState(() {
+                            _maxTransfersPopupVisible = true;
+                          }),
+                          icon: Icon(
+                            _maxTransfersPopupVisible
+                                ? Icons.arrow_drop_up_rounded
+                                : Icons.arrow_drop_down_rounded,
+                          ),
+                          onSelected: (int? value) async {
+                            if (value != null) {
+                              setState(() {
+                                _maxTransfersPopupVisible = false;
+                                _downloadConfig = TransferConfig(
+                                  maxConcurrentTransfers: value,
+                                );
+                              });
+                              await _saveConfig();
+                            }
+                          },
+                          onCanceled: () => setState(() {
+                            _maxTransfersPopupVisible = false;
+                          }),
+                        ),
+                        onTap: () {
+                          setState(() {
+                            _maxTransfersPopupVisible =
+                                !_maxTransfersPopupVisible;
+                          });
+                          if (_maxTransfersPopupVisible) {
+                            _maxTransfersPopupKey.currentState
+                                ?.showButtonMenu();
+                          }
+                        },
+                      );
+                    case 1:
+                      return ListTile(
+                        title: Text('Downloads & Thumbnail Cache'),
+                        subtitle: Text(bytesToReadable(Job.cacheSize())),
+                        leading: Icon(Icons.history_rounded),
+                        trailing: TextButton(
+                          onPressed: _cacheSize > 0
+                              ? () {
+                                  Job.clearCache();
+                                  showSnackBar(
+                                    SnackBar(content: Text('Cache cleared')),
+                                  );
+                                  setState(() {
+                                    _cacheSize = Job.cacheSize();
+                                  });
+                                }
+                              : null,
+                          child: Text('Clear'),
+                        ),
+                      );
+                    case 2:
+                      return ListTile(
+                        title: Text('Pinned Folders'),
+                        subtitle: Text(
+                          'Manage pinned folders for quick access',
+                        ),
+                        leading: Icon(Icons.push_pin_rounded),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => PinnedFoldersPage(),
+                          ),
+                        ),
+                      );
+                    default:
+                      return SizedBox.shrink();
+                  }
+                },
+              ),
+            ],
           ),
-          ListTile(
-            title: Text('Downloads & Thumbnail Cache'),
-            subtitle: Text(bytesToReadable(Job.cacheSize())),
-            trailing: ElevatedButton(
-              onPressed: _cacheSize > 0
-                  ? () {
-                      Job.clearCache();
-                      showSnackBar(SnackBar(content: Text('Cache cleared')));
-                      setState(() {
-                        _cacheSize = Job.cacheSize();
-                      });
-                    }
-                  : null,
-              child: Text('Clear'),
-            ),
-          ),
-          ListTile(
-            title: Text('Pinned Folders'),
-            subtitle: Text('Manage pinned folders for quick access'),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => PinnedFoldersPage()),
-            ),
+          SliverMainAxisGroup(
+            slivers: [
+              SliverM3ECardList(
+                itemCount: 1,
+                margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: EdgeInsets.zero,
+                itemBuilder: (context, index) {
+                  switch (index) {
+                    case 0:
+                      return ListTile(
+                        leading: Icon(Icons.info_rounded),
+                        title: Text(
+                          '${packageInfo?.appName ?? 'Files3'} Details',
+                        ),
+                        subtitle: Text(
+                          '${packageInfo?.packageName ?? ''} ${packageInfo?.version ?? ''} ${packageInfo?.buildNumber ?? ''}',
+                        ),
+                        onTap: () => AppSettings.openAppSettings(
+                          type: AppSettingsType.settings,
+                        ),
+                      );
+                    default:
+                      return SizedBox.shrink();
+                  }
+                },
+              ),
+            ],
           ),
         ],
       ),
@@ -1127,7 +1299,7 @@ class PinnedFoldersPage extends StatefulWidget {
 }
 
 class PinnedFoldersPageState extends State<PinnedFoldersPage> {
-  late List<String> _pinnedFolders;
+  late List<MapEntry<String, String>> _pinnedFolders;
 
   @override
   void initState() {
@@ -1155,19 +1327,40 @@ class PinnedFoldersPageState extends State<PinnedFoldersPage> {
           await _saveConfig();
         },
         children: [
-          for (final profile in _pinnedFolders)
+          for (MapEntry<String, String> folder in _pinnedFolders)
             ListTile(
-              key: ValueKey(profile),
-              title: Text(profile),
+              key: ValueKey(folder),
+              title: Text(folder.key),
+              subtitle: Text(folder.value),
               trailing: IconButton(
                 icon: Icon(Icons.close_rounded),
                 onPressed: () async {
                   setState(() {
-                    _pinnedFolders.remove(profile);
+                    _pinnedFolders.remove(folder);
                   });
                   await _saveConfig();
                 },
               ),
+              onTap: () async {
+                String newName =
+                    (await renameDialog(
+                      context,
+                      folder.key,
+                      title: 'Rename ${folder.key}',
+                      existingNames: _pinnedFolders.map((e) => e.key).toList(),
+                    )) ??
+                    folder.key;
+                if (newName != folder.key) {
+                  _pinnedFolders[_pinnedFolders.indexWhere(
+                    (element) => element == folder,
+                  )] = MapEntry(
+                    newName,
+                    folder.value,
+                  );
+                  setState(() {});
+                  await _saveConfig();
+                }
+              },
             ),
         ],
       ),
@@ -1178,7 +1371,7 @@ class PinnedFoldersPageState extends State<PinnedFoldersPage> {
               builder: (context) => PathPicker(
                 onPick: (path) async {
                   setState(() {
-                    _pinnedFolders.add(path.key);
+                    _pinnedFolders.add(MapEntry(path.key, path.key));
                   });
                   await _saveConfig();
                 },

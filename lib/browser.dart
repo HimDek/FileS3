@@ -315,123 +315,119 @@ class MyBrowserState extends BrowserState {
   Widget drawer(BuildContext context) {
     return ListenableBuilder(
       listenable: Listenable.merge([_navIndex, Job.jobs, Job.onProgressUpdate]),
-      builder: (context, _) => Drawer(
-        child: ListView(
-          children: [
+      builder: (context, _) => NavigationDrawer(
+        children: [
+          ListTile(
+            title: Text(
+              'Files3',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            onTap: () {
+              _navIndex.value = 0;
+              _controlsVisible.value = true;
+              Navigator.of(context).pop();
+            },
+          ),
+          Divider(),
+          ListTile(
+            title: Text('Active'),
+            leading: Icon(
+              _navIndex.value == 2
+                  ? Icons.swap_vert_circle
+                  : Icons.swap_vert_circle_outlined,
+            ),
+            trailing:
+                Job.jobs.value
+                    .where((job) => job.status.value != JobStatus.completed)
+                    .isNotEmpty
+                ? Text(
+                    Job.jobs.value
+                        .where((job) => job.status.value != JobStatus.completed)
+                        .length
+                        .toString(),
+                  )
+                : null,
+            selected: _navIndex.value == 2,
+            onTap: () {
+              _navIndex.value = 2;
+              _controlsVisible.value = true;
+              Navigator.of(context).pop();
+            },
+          ),
+          ListTile(
+            title: Text('Completed'),
+            leading: Icon(
+              _navIndex.value == 1
+                  ? Icons.check_circle
+                  : Icons.check_circle_outline,
+            ),
+            trailing:
+                Job.jobs.value
+                    .where((job) => job.status.value == JobStatus.completed)
+                    .isNotEmpty
+                ? Text(
+                    Job.jobs.value
+                        .where((job) => job.status.value == JobStatus.completed)
+                        .length
+                        .toString(),
+                  )
+                : null,
+            selected: _navIndex.value == 1,
+            onTap: () {
+              _navIndex.value = 1;
+              _controlsVisible.value = true;
+              Navigator.of(context).pop();
+            },
+          ),
+          Divider(),
+          ListTile(
+            title: Text('Home'),
+            leading: Icon(
+              _navIndex.value == 0 && _driveDir.value.key == ''
+                  ? Icons.home
+                  : Icons.home_outlined,
+            ),
+            selected: _navIndex.value == 0 && _driveDir.value.key == '',
+            onTap: () {
+              _navIndex.value = 0;
+              _controlsVisible.value = true;
+              _driveDir.value = const RemoteFile(key: '', size: 0, etag: '');
+              Navigator.of(context).pop();
+            },
+          ),
+          for (final pinned in ConfigManager.loadPinnedFolders())
             ListTile(
-              title: Text(
-                'Files3',
-                style: Theme.of(context).textTheme.headlineSmall,
+              title: Text(pinned.key),
+              leading: Icon(
+                _navIndex.value == 0 && _driveDir.value.key == pinned.value
+                    ? Icons.folder
+                    : Icons.folder_outlined,
               ),
+              selected:
+                  _navIndex.value == 0 && _driveDir.value.key == pinned.value,
               onTap: () {
                 _navIndex.value = 0;
                 _controlsVisible.value = true;
+                _driveDir.value = Main.remoteFiles.firstWhere(
+                  (file) => file.key == pinned.value,
+                  orElse: () =>
+                      RemoteFile(key: pinned.value, size: 0, etag: ''),
+                );
                 Navigator.of(context).pop();
               },
             ),
-            Divider(),
-            ListTile(
-              title: Text('Active'),
-              leading: Icon(
-                _navIndex.value == 2
-                    ? Icons.swap_vert_circle
-                    : Icons.swap_vert_circle_outlined,
-              ),
-              trailing:
-                  Job.jobs.value
-                      .where((job) => job.status.value != JobStatus.completed)
-                      .isNotEmpty
-                  ? Text(
-                      Job.jobs.value
-                          .where(
-                            (job) => job.status.value != JobStatus.completed,
-                          )
-                          .length
-                          .toString(),
-                    )
-                  : null,
-              selected: _navIndex.value == 2,
-              onTap: () {
-                _navIndex.value = 2;
-                _controlsVisible.value = true;
-                Navigator.of(context).pop();
-              },
-            ),
-            ListTile(
-              title: Text('Completed'),
-              leading: Icon(
-                _navIndex.value == 1
-                    ? Icons.check_circle
-                    : Icons.check_circle_outline,
-              ),
-              trailing:
-                  Job.jobs.value
-                      .where((job) => job.status.value == JobStatus.completed)
-                      .isNotEmpty
-                  ? Text(
-                      Job.jobs.value
-                          .where(
-                            (job) => job.status.value == JobStatus.completed,
-                          )
-                          .length
-                          .toString(),
-                    )
-                  : null,
-              selected: _navIndex.value == 1,
-              onTap: () {
-                _navIndex.value = 1;
-                _controlsVisible.value = true;
-                Navigator.of(context).pop();
-              },
-            ),
-            Divider(),
-            ListTile(
-              title: Text('Home'),
-              leading: Icon(
-                _navIndex.value == 0 && _driveDir.value.key == ''
-                    ? Icons.home
-                    : Icons.home_outlined,
-              ),
-              selected: _navIndex.value == 0 && _driveDir.value.key == '',
-              onTap: () {
-                _navIndex.value = 0;
-                _controlsVisible.value = true;
-                _driveDir.value = const RemoteFile(key: '', size: 0, etag: '');
-                Navigator.of(context).pop();
-              },
-            ),
-            for (final pinned in ConfigManager.loadPinnedFolders())
-              ListTile(
-                title: Text(pinned),
-                leading: Icon(
-                  _navIndex.value == 0 && _driveDir.value.key == pinned
-                      ? Icons.folder
-                      : Icons.folder_outlined,
-                ),
-                selected: _navIndex.value == 0 && _driveDir.value.key == pinned,
-                onTap: () {
-                  _navIndex.value = 0;
-                  _controlsVisible.value = true;
-                  _driveDir.value = Main.remoteFiles.firstWhere(
-                    (file) => file.key == pinned,
-                    orElse: () => RemoteFile(key: pinned, size: 0, etag: ''),
-                  );
-                  Navigator.of(context).pop();
-                },
-              ),
-            Divider(),
-            ListTile(
-              title: Text('Settings'),
-              leading: Icon(Icons.settings),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
-              },
-            ),
-          ],
-        ),
+          Divider(),
+          ListTile(
+            title: Text('Settings'),
+            leading: Icon(Icons.settings),
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
+            },
+          ),
+        ],
       ),
     );
   }

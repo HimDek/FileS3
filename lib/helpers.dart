@@ -109,23 +109,62 @@ Future<int?> Function(BuildContext) expiryDialog = (BuildContext context) =>
       },
     );
 
-Future<String?> Function(BuildContext, String) renameDialog =
-    (BuildContext context, String currentName) => showDialog<String>(
+Future<String?> Function(
+  BuildContext,
+  String, {
+  String title,
+  List<String> existingNames,
+})
+renameDialog =
+    (
+      BuildContext context,
+      String currentName, {
+      String title = 'Rename File',
+      List<String> existingNames = const [],
+    }) => showDialog<String>(
       context: context,
       builder: (_) {
+        final GlobalKey<FormState> formKey = GlobalKey<FormState>();
         TextEditingController controller = TextEditingController(
           text: currentName,
         );
         return StatefulBuilder(
           builder: (c, set) => AlertDialog(
-            title: const Text('Rename File'),
-            content: TextField(
-              controller: controller,
-              decoration: const InputDecoration(labelText: 'New Name'),
+            title: Text(title),
+            content: Form(
+              key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              child: TextFormField(
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: 'New Name',
+                  errorText:
+                      existingNames
+                          .where((name) => name != currentName)
+                          .contains(controller.text.trim())
+                      ? 'Will overwrite existing'
+                      : null,
+                ),
+                onChanged: (value) => set(() {}),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter a name';
+                  }
+                  return null;
+                },
+                onFieldSubmitted: (value) {
+                  if (formKey.currentState!.validate()) {
+                    Navigator.pop(c, controller.text.trim());
+                  }
+                },
+              ),
             ),
             actions: [
               ElevatedButton(
-                onPressed: () => Navigator.pop(c, controller.text.trim()),
+                onPressed: () {
+                  bool valid = formKey.currentState?.validate() ?? false;
+                  if (valid) Navigator.pop(c, controller.text.trim());
+                },
                 child: const Text('OK'),
               ),
             ],
@@ -676,21 +715,41 @@ abstract class ConfigManager {
     IniManager.save();
   }
 
-  static List<String> loadPinnedFolders() {
-    return jsonDecode(
-      IniManager.config.value?.get('pinned_folders', 'dummy') ?? "[]",
-    ).cast<String>();
+  static List<MapEntry<String, String>> loadPinnedFolders() {
+    return IniManager.config.value
+            ?.options("pinned_folders")
+            ?.map((key) {
+              final value = IniManager.config.value!.get("pinned_folders", key);
+              if (value != null) {
+                final jsonValue = jsonDecode(value);
+                if (jsonValue is Map<String, dynamic> &&
+                    jsonValue.containsKey('path') &&
+                    jsonValue['path'] is String) {
+                  return MapEntry(key, jsonValue['path'] as String);
+                }
+              }
+              return null;
+            })
+            .whereType<MapEntry<String, String>>()
+            .toList() ??
+        [];
   }
 
-  static Future<void> savePinnedFolders(List<String> folders) async {
-    if (!IniManager.config.value!.sections().contains("pinned_folders")) {
-      IniManager.config.value!.addSection("pinned_folders");
+  static Future<void> savePinnedFolders(
+    List<MapEntry<String, String>> folders,
+  ) async {
+    if (IniManager.config.value!.sections().contains("pinned_folders")) {
+      IniManager.config.value!.removeSection("pinned_folders");
     }
-    IniManager.config.value!.set(
-      "pinned_folders",
-      "dummy",
-      jsonEncode(folders),
-    );
+    IniManager.config.value!.addSection("pinned_folders");
+    for (int i = 0; i < folders.length; i++) {
+      final entry = folders[i];
+      IniManager.config.value!.set(
+        "pinned_folders",
+        entry.key,
+        jsonEncode({"path": entry.value, "index": i}),
+      );
+    }
     IniManager.save();
   }
 
@@ -826,5 +885,37 @@ class DeletionRegistrar {
     _config!.addSection('register');
     save();
     await pushDeletions();
+  }
+}
+
+class MyPersistentHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double height;
+
+  MyPersistentHeaderDelegate({required this.child, this.height = 32});
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return SizedBox.expand(
+      child: Material(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: child,
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant MyPersistentHeaderDelegate oldDelegate) {
+    return oldDelegate.child != child || oldDelegate.height != height;
   }
 }
