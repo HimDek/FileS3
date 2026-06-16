@@ -23,34 +23,41 @@ abstract class Main {
   static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
   static final ManualNotifier onRemoteFilesChanged = ManualNotifier();
   static final ValueNotifier<bool> initialized = ValueNotifier<bool>(false);
-  static final List<String> _ignoreKeyRegexps = <String>[
-    r'^.*[/\\]deletion-register\.ini$',
+  static final List<RegExp> _ignoreKeyRegexps = <RegExp>[
+    RegExp(r'^.*[/\\]deletion-register\.ini$'),
   ];
 
   static Set<Profile> get profiles => _profiles;
-  static List<RemoteFile> get remoteFiles => UnmodifiableListView(
-    _remoteFiles.where(
-      (file) => _ignoreKeyRegexps.every(
-        (regexp) => !RegExp(regexp).hasMatch(file.key),
-      ),
-    ),
-  );
+  static List<RemoteFile> _filteredRemoteFiles = [];
+
+  static List<RemoteFile> get remoteFiles => _filteredRemoteFiles;
   static List<RemoteFile> get remoteFilesRaw => _remoteFiles;
+
+  static void rebuildRemoteFiles() {
+    _filteredRemoteFiles = List.unmodifiable(
+      _remoteFiles.where(
+        (file) => _ignoreKeyRegexps.every((r) => !r.hasMatch(file.key)),
+      ),
+    );
+  }
 
   static void remoteFilesSet(List<RemoteFile> files) {
     _remoteFiles = files;
+    rebuildRemoteFiles();
     _ensureDirectoryObjects();
     onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesAdd(RemoteFile file) {
     _remoteFiles.add(file);
+    rebuildRemoteFiles();
     _ensureDirectoryObjects();
     onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesAddAll(List<RemoteFile> files) {
     _remoteFiles.addAll(files);
+    rebuildRemoteFiles();
     _ensureDirectoryObjects();
     onRemoteFilesChanged.notifyListeners();
   }
@@ -64,11 +71,13 @@ abstract class Main {
     bool Function(RemoteFile element) test,
   ) {
     _remoteFiles.removeWhere(test);
+    rebuildRemoteFiles();
     _ensureDirectoryObjects();
   }
 
   static void remoteFilesClear() {
     _remoteFiles.clear();
+    rebuildRemoteFiles();
     onRemoteFilesChanged.notifyListeners();
   }
 
@@ -78,7 +87,7 @@ abstract class Main {
 
   static String get documentsDir => _documentsDir;
 
-  static List<String> get ignoreKeyRegexps =>
+  static List<RegExp> get ignoreKeyRegexps =>
       UnmodifiableListView(_ignoreKeyRegexps);
 
   static Profile? profileFromKey(String key) {
@@ -830,7 +839,7 @@ class Watcher {
                 job.remoteKey == key &&
                 job.status.value != JobStatus.completed,
           ) ||
-          Main.ignoreKeyRegexps.any((regexp) => RegExp(regexp).hasMatch(key))) {
+          Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(key))) {
         continue;
       }
       BackupMode mode = Main.backupModeFromKey(
@@ -847,9 +856,7 @@ class Watcher {
                 job.remoteKey == file.key &&
                 job.status.value != JobStatus.completed,
           ) ||
-          Main.ignoreKeyRegexps.any(
-            (regexp) => RegExp(regexp).hasMatch(file.key),
-          )) {
+          Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(file.key))) {
         continue;
       }
       BackupMode mode = Main.backupModeFromKey(file.key);
@@ -864,9 +871,7 @@ class Watcher {
                 job.remoteKey == file.key &&
                 job.status.value != JobStatus.completed,
           ) ||
-          Main.ignoreKeyRegexps.any(
-            (regexp) => RegExp(regexp).hasMatch(file.key),
-          )) {
+          Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(file.key))) {
         continue;
       }
       if (Main.backupModeFromKey(file.key) == BackupMode.sync) {
