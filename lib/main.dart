@@ -170,8 +170,11 @@ class MainApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([uiConfigNotifier]),
-      builder: (_, _) {
+      animation: Listenable.merge([
+        uiConfigNotifier.accentColor,
+        uiConfigNotifier.colorMode,
+      ]),
+      builder: (context, child) {
         return DynamicColorBuilder(
           builder: (lightScheme, darkScheme) {
             return MaterialApp(
@@ -194,11 +197,12 @@ class MainApp extends StatelessWidget {
                     : darkScheme,
               ),
               themeMode: uiConfigNotifier.colorMode.value,
-              home: Home(key: globalKey),
+              home: child,
             );
           },
         );
       },
+      child: Home(key: globalKey),
     );
   }
 }
@@ -844,6 +848,10 @@ class _HomeState extends State<Home> {
       if (kDebugMode) {
         debugPrint('Error setting up intent listener: $e');
       }
+    }
+
+    if (kDebugMode) {
+      debugPrint('App initialized');
     }
   }
 

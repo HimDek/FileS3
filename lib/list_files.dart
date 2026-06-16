@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -116,7 +117,7 @@ class FileRow extends GroupRow {
 class ListFiles extends StatefulWidget {
   final ValueNotifier<List<FileProps>> files;
   final List<GalleryProps> galleryFiles;
-  final void Function(List<GalleryProps>)? setGalleryFiles;
+  final Future<void> Function(List<GalleryProps>)? setGalleryFiles;
   final ValueNotifier<ListOptions> listOptions;
   final ValueNotifier<RemoteFile> relativeto;
   final ValueNotifier<Set<RemoteFile>> selection;
@@ -238,7 +239,7 @@ class ListFilesState extends State<ListFiles> {
     _groups.value = grouped;
   }
 
-  void buildKeysOffsetMap(BuildContext context) {
+  Future<void> buildKeysOffsetMap(BuildContext context) async {
     widget.keysOffsetMap.value.clear();
     widget.groupOffsetMap.clear();
 
@@ -300,17 +301,20 @@ class ListFilesState extends State<ListFiles> {
 
   Widget listItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
-        ? ListenableBuilder(
+        ? MyListenableBuilder(
+            name: 'list_item_job_view',
             listenable: widget.relativeto,
             builder: (ccontext, _) =>
                 JobView(job: item.job!, relativeTo: widget.relativeto.value),
           )
         : p.isDir(item.key)
-        ? ListenableBuilder(
+        ? MyListenableBuilder(
+            name: 'list_item_dir',
             listenable: Listenable.merge([
               widget.selection,
               widget.relativeto,
               widget.selectionAction,
+              uiConfigNotifier,
             ]),
             builder: (ccontext, _) => ListTile(
               dense: MediaQuery.of(context).size.width < 600 ? true : false,
@@ -503,11 +507,13 @@ class ListFilesState extends State<ListFiles> {
                   : null,
             ),
           )
-        : ListenableBuilder(
+        : MyListenableBuilder(
+            name: 'list_item_file',
             listenable: Listenable.merge([
               widget.selection,
               widget.relativeto,
               widget.selectionAction,
+              uiConfigNotifier,
             ]),
             builder: (ccontext, _) => ListTile(
               dense: MediaQuery.of(context).size.width < 600 ? true : false,
@@ -618,7 +624,8 @@ class ListFilesState extends State<ListFiles> {
 
   Widget gridItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
-        ? ListenableBuilder(
+        ? MyListenableBuilder(
+            name: 'grid_item_job_view',
             listenable: widget.relativeto,
             builder: (ccontext, _) => JobView(
               job: item.job!,
@@ -627,11 +634,13 @@ class ListFilesState extends State<ListFiles> {
             ),
           )
         : p.isDir(item.key)
-        ? ListenableBuilder(
+        ? MyListenableBuilder(
+            name: 'grid_item_dir',
             listenable: Listenable.merge([
               widget.selection,
               widget.relativeto,
               widget.selectionAction,
+              uiConfigNotifier,
             ]),
             builder: (ccontext, _) => MyGridTile(
               selected: widget.selection.value.any(
@@ -753,11 +762,13 @@ class ListFilesState extends State<ListFiles> {
               ),
             ),
           )
-        : ListenableBuilder(
+        : MyListenableBuilder(
+            name: 'list_item_file',
             listenable: Listenable.merge([
               widget.selection,
               widget.relativeto,
               widget.selectionAction,
+              uiConfigNotifier,
             ]),
             builder: (ccontext, _) => MyGridTile(
               selected: widget.selection.value.any(
@@ -960,7 +971,8 @@ class ListFilesState extends State<ListFiles> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
+    return MyListenableBuilder(
+      name: 'list_files',
       listenable: Listenable.merge([_groups, widget.listOptions]),
       builder: (ccontext, _) => MultiSliver(
         children: [
@@ -990,7 +1002,8 @@ class ListFilesState extends State<ListFiles> {
                           bottom: 8,
                         ),
                         alignment: Alignment.centerLeft,
-                        child: ListenableBuilder(
+                        child: MyListenableBuilder(
+                          name: 'list_files_persistent_header',
                           listenable: widget.selection,
                           builder: (context, _) => Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,

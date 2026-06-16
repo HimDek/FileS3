@@ -56,9 +56,15 @@ abstract class Main {
   }
 
   static void remoteFilesRemoveWhere(bool Function(RemoteFile element) test) {
+    remoteFilesRemoveWhereNoNotify(test);
+    onRemoteFilesChanged.notifyListeners();
+  }
+
+  static void remoteFilesRemoveWhereNoNotify(
+    bool Function(RemoteFile element) test,
+  ) {
     _remoteFiles.removeWhere(test);
     _ensureDirectoryObjects();
-    onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesClear() {
@@ -263,7 +269,7 @@ abstract class Main {
 
   static Future<void> listDirectories({bool background = false}) async {
     loading.value = true;
-    if (!background) {
+    if (!background && _remoteFiles.isEmpty) {
       remoteFilesSet(
         (await ConfigManager.loadRemoteFiles())
             .where(
@@ -277,6 +283,9 @@ abstract class Main {
 
     for (final profile in _profiles) {
       await profile.listDirectories(background: background);
+    }
+    if (kDebugMode) {
+      debugPrint("Directory listing completed for all profiles");
     }
     loading.value = false;
   }
@@ -404,6 +413,9 @@ abstract class Main {
       listDirectories(background: background);
     });
     initialized.value = true;
+    if (kDebugMode) {
+      debugPrint("Main initialized");
+    }
   }
 }
 

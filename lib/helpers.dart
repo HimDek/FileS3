@@ -488,9 +488,10 @@ class UiConfigNotifier extends ChangeNotifier {
   final ValueNotifier<bool> showType = ValueNotifier(true);
   final ValueNotifier<bool> showContent = ValueNotifier(true);
 
+  late Listenable listenable;
+
   UiConfigNotifier({UiConfig? config}) {
-    setValues(config);
-    Listenable.merge([
+    listenable = Listenable.merge([
       colorMode,
       accentColor,
       ultraDark,
@@ -501,9 +502,8 @@ class UiConfigNotifier extends ChangeNotifier {
       showDownloadStatus,
       showType,
       showContent,
-    ]).addListener(() {
-      super.notifyListeners();
-    });
+    ]);
+    setValues(config);
   }
 
   bool get fileListInfo =>
@@ -518,6 +518,7 @@ class UiConfigNotifier extends ChangeNotifier {
       showContent.value;
 
   void setValues(UiConfig? config) {
+    listenable.removeListener(notifyListeners);
     colorMode.value = config?.colorMode ?? ThemeMode.system;
     accentColor.value = config?.accentColor;
     ultraDark.value = config?.ultraDark ?? false;
@@ -528,6 +529,8 @@ class UiConfigNotifier extends ChangeNotifier {
     showDownloadStatus.value = config?.showDownloadStatus ?? true;
     showType.value = config?.showType ?? true;
     showContent.value = config?.showContent ?? true;
+    listenable.addListener(notifyListeners);
+    notifyListeners();
   }
 }
 
@@ -1078,5 +1081,25 @@ class MyPersistentHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant MyPersistentHeaderDelegate oldDelegate) {
     return oldDelegate.child != child || oldDelegate.height != height;
+  }
+}
+
+class MyListenableBuilder extends ListenableBuilder {
+  final String? name;
+
+  const MyListenableBuilder({
+    super.key,
+    this.name,
+    required super.listenable,
+    required super.builder,
+    super.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (kDebugMode && name != null) {
+      debugPrint('Building MyListenableBuilder $name');
+    }
+    return super.build(context);
   }
 }

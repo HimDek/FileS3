@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
+import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 
 class JobView extends StatefulWidget {
@@ -23,7 +24,8 @@ class JobView extends StatefulWidget {
 class JobViewState extends State<JobView> {
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
+    return MyListenableBuilder(
+      name: 'job_view',
       listenable: Listenable.merge([
         widget.job.status,
         widget.job.bytesCompleted,

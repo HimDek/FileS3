@@ -36,7 +36,7 @@ class Profile {
   Future<void> refreshRemote({required String dir}) async {
     try {
       final fetchedRemoteFiles = await fileManager!.listObjects(dir);
-      Main.remoteFilesRemoveWhere(
+      Main.remoteFilesRemoveWhereNoNotify(
         (file) => p.isWithin(dir, file.key) || file.key == dir || dir.isEmpty,
       );
       Main.remoteFilesAddAll(fetchedRemoteFiles);
@@ -64,9 +64,14 @@ class Profile {
       loading.value = false;
       return;
     }
-
+    if (kDebugMode) {
+      debugPrint("Directory listing for profile: $name");
+    }
     await refreshRemote(dir: name);
     await Main.refreshWatchers(background: background);
+    if (kDebugMode) {
+      debugPrint("Directory listing Completed for profile: $name");
+    }
     loading.value = false;
   }
 }
