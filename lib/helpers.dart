@@ -44,7 +44,9 @@ Future<File> uriToFile(
 
     bytes = bytesBuilder.takeBytes();
   } catch (e) {
-    debugPrint("Error reading content URI bytes: $e");
+    if (kDebugMode) {
+      debugPrint("Error reading content URI bytes: $e");
+    }
     showSnackBar(SnackBar(content: Text('Failed to read file bytes: $e')));
     bytes = null;
   }

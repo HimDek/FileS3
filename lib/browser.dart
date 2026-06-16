@@ -375,7 +375,7 @@ class MyBrowserState extends BrowserState {
           ),
           Container(
             decoration: BoxDecoration(
-              color: _navIndex.value == 3
+              color: _navIndex.value == 1
                   ? Theme.of(context).colorScheme.secondaryContainer
                   : null,
               borderRadius: BorderRadius.circular(32),
@@ -713,23 +713,24 @@ class BrowserState extends State<Browser> {
     final oldDir = _driveDir.value;
     _navIndex.value = 0;
     _controlsVisible.value = true;
-    _driveDir.value = dir;
-    _profile.value = Main.profileFromKey(_driveDir.value.key);
+    String ndir = dir.key;
     for (RemoteFile item in _selection.value) {
-      if (p.isWithin(item.key, _driveDir.value.key) ||
-          item.key == _driveDir.value.key) {
-        _driveDir.value = () {
-          String dir = _driveDir.value.key;
-          while (p.isWithin(item.key, dir) || item.key == dir) {
-            dir = p.s3(p.dirname(dir));
-            if (dir == '') {
+      if (p.isWithin(item.key, dir.key) || item.key == dir.key) {
+        dir = () {
+          while (p.isWithin(item.key, ndir) || item.key == ndir) {
+            ndir = p.s3(p.dirname(ndir));
+            if (ndir == '') {
               break;
             }
           }
-          return Main.remoteFiles.firstWhere((file) => file.key == dir);
+          return Main.remoteFiles.firstWhere((file) => file.key == ndir);
         }();
       }
     }
+    _driveDir.value = ndir.isEmpty
+        ? RemoteFile(key: '', size: 0, etag: '')
+        : dir;
+    _profile.value = Main.profileFromKey(_driveDir.value.key);
     _updateCounts();
     _scrollToFile(oldDir);
     if (_searching.value) {

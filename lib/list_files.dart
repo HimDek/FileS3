@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:sliver_tools/sliver_tools.dart';
