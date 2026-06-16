@@ -43,22 +43,22 @@ abstract class Main {
 
   static void remoteFilesSet(List<RemoteFile> files) {
     _remoteFiles = files;
-    rebuildRemoteFiles();
     _ensureDirectoryObjects();
+    rebuildRemoteFiles();
     onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesAdd(RemoteFile file) {
     _remoteFiles.add(file);
-    rebuildRemoteFiles();
     _ensureDirectoryObjects();
+    rebuildRemoteFiles();
     onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesAddAll(List<RemoteFile> files) {
     _remoteFiles.addAll(files);
-    rebuildRemoteFiles();
     _ensureDirectoryObjects();
+    rebuildRemoteFiles();
     onRemoteFilesChanged.notifyListeners();
   }
 
@@ -71,8 +71,8 @@ abstract class Main {
     bool Function(RemoteFile element) test,
   ) {
     _remoteFiles.removeWhere(test);
-    rebuildRemoteFiles();
     _ensureDirectoryObjects();
+    rebuildRemoteFiles();
   }
 
   static void remoteFilesClear() {
