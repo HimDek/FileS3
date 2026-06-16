@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -688,9 +689,11 @@ class FileContextOption {
             : 'Download',
         subtitle: handler.download() == null
             ? handler.rootExists()
-                  ? Main.pathFromKey(handler.file.key)
+                  ? handler.active()
+                        ? null
+                        : Main.pathFromKey(handler.file.key)
                   : 'Set backup folder to enable downloads'
-            : null,
+            : Main.pathFromKey(handler.file.key),
         icon: handler.download() == null && !handler.active()
             ? handler.rootExists()
                   ? Icons.file_download_done_rounded
@@ -1014,6 +1017,14 @@ class FilesContextOption {
         subtitle: handler.download() != null
             ? "Only missing files with backup folder set will be downloaded"
             : handler.downloadedFiles().length == handler.files.length
+            ? null
+            : handler
+                      .downloadedFiles()
+                      .map((f) => f.key)
+                      .toSet()
+                      .union(handler.activeFiles().map((f) => f.key).toSet())
+                      .length ==
+                  handler.files.length
             ? null
             : 'Set backup folder to enable downloads',
         icon: handler.download() != null
@@ -1397,6 +1408,14 @@ class DirectoryContextOption {
         ? "Only missing files with backup folder set will be downloaded"
         : handler.downloadedFiles().length == handler.files.length
         ? null
+        : handler
+                  .downloadedFiles()
+                  .map((f) => f.key)
+                  .toSet()
+                  .union(handler.activeFiles().map((f) => f.key).toSet())
+                  .length ==
+              handler.files.length
+        ? null
         : 'Set backup folder to enable downloads',
     icon: handler.download() != null
         ? Icons.file_download_rounded
@@ -1689,7 +1708,15 @@ class DirectoriesContextOption {
     subtitle: handler.download() != null
         ? "Only missing files with backup folder set will be downloaded"
         : handler.downloadedFiles().length == handler.files.length
-        ? null
+        ? AutofillHints.telephoneNumberLocalSuffix
+        : handler
+                  .downloadedFiles()
+                  .map((f) => f.key)
+                  .toSet()
+                  .union(handler.activeFiles().map((f) => f.key).toSet())
+                  .length ==
+              handler.files.length
+        ? AutofillHints.telephoneNumberLocal
         : 'Set backup folder to enable downloads',
     icon: handler.download() != null
         ? Icons.file_download_rounded
@@ -2010,15 +2037,69 @@ class BulkContextOption {
     title:
         directoriesHandler.download() != null || filesHandler.download() != null
         ? 'Download'
+        : directoriesHandler.downloadedFiles().length ==
+                  directoriesHandler.files.length &&
+              filesHandler.downloadedFiles().length == filesHandler.files.length
+        ? 'Downloaded'
+        : directoriesHandler
+                  .downloadedFiles()
+                  .map((f) => f.key)
+                  .toSet()
+                  .union(
+                    directoriesHandler.activeFiles().map((f) => f.key).toSet(),
+                  )
+                  .union(
+                    filesHandler.downloadedFiles().map((f) => f.key).toSet(),
+                  )
+                  .union(filesHandler.activeFiles().map((f) => f.key).toSet())
+                  .length ==
+              directoriesHandler.files.length + filesHandler.files.length
+        ? 'Active Jobs'
         : 'Cannot Download',
     subtitle:
-        directoriesHandler.download() == null && filesHandler.download() == null
-        ? 'Set backup folder to enable downloads'
-        : 'Only missing files with backup folder set will be downloaded',
+        directoriesHandler.download() != null || filesHandler.download() != null
+        ? 'Only missing files with backup folder set will be downloaded'
+        : directoriesHandler.downloadedFiles().length ==
+                  directoriesHandler.files.length &&
+              filesHandler.downloadedFiles().length == filesHandler.files.length
+        ? null
+        : directoriesHandler
+                  .downloadedFiles()
+                  .map((f) => f.key)
+                  .toSet()
+                  .union(
+                    directoriesHandler.activeFiles().map((f) => f.key).toSet(),
+                  )
+                  .union(
+                    filesHandler.downloadedFiles().map((f) => f.key).toSet(),
+                  )
+                  .union(filesHandler.activeFiles().map((f) => f.key).toSet())
+                  .length ==
+              directoriesHandler.files.length + filesHandler.files.length
+        ? null
+        : 'Set backup folder to enable downloads',
     icon:
-        directoriesHandler.download() == null && filesHandler.download() == null
-        ? Icons.file_download_off_rounded
-        : Icons.file_download_rounded,
+        directoriesHandler.download() != null || filesHandler.download() != null
+        ? Icons.file_download_rounded
+        : directoriesHandler.downloadedFiles().length ==
+                  directoriesHandler.files.length &&
+              filesHandler.downloadedFiles().length == filesHandler.files.length
+        ? Icons.file_download_done_rounded
+        : directoriesHandler
+                  .downloadedFiles()
+                  .map((f) => f.key)
+                  .toSet()
+                  .union(
+                    directoriesHandler.activeFiles().map((f) => f.key).toSet(),
+                  )
+                  .union(
+                    filesHandler.downloadedFiles().map((f) => f.key).toSet(),
+                  )
+                  .union(filesHandler.activeFiles().map((f) => f.key).toSet())
+                  .length ==
+              directoriesHandler.files.length + filesHandler.files.length
+        ? Icons.file_download_rounded
+        : Icons.file_download_off_rounded,
     action:
         directoriesHandler.download() != null || filesHandler.download() != null
         ? (BuildContext context) {
@@ -2366,65 +2447,87 @@ Widget buildFileContextMenu(
   );
   return Column(
     mainAxisSize: MainAxisSize.min,
-    children:
-        <Widget>[
-              ListTile(
-                visualDensity: VisualDensity.comfortable,
-                leading: Icon(mediaTypeIcon(mediaType)),
-                title: SingleChildScrollView(
+    children: <Widget>[
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: M3ECard(
+          index: 0,
+          position: M3ECardPosition.single,
+          outerRadius: 24,
+          innerRadius: 4,
+          gap: 3,
+          padding: EdgeInsets.zero,
+          color: Colors.transparent,
+          child: ListTile(
+            visualDensity: VisualDensity.comfortable,
+            leading: Icon(mediaTypeIcon(mediaType)),
+            title: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(item.key),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  child: Text(item.key),
+                  child: Row(
+                    children: [
+                      Text(timeToReadable(item.lastModified!)),
+                      const SizedBox(width: 8),
+                      Text(bytesToReadable(item.size)),
+                      const SizedBox(width: 8),
+                      Text(p.extension(item.key)),
+                    ],
+                  ),
                 ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SingleChildScrollView(
+                Text('MD5: ${item.etag}'),
+              ],
+            ),
+          ),
+        ),
+      ),
+      M3ECardColumn(
+        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.zero,
+        color: Color.alphaBlend(
+          Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
+          Colors.white,
+        ),
+        children: [
+          for (final option in FileContextOption.allOptions(
+            context,
+            handler,
+            cut,
+            copy,
+          ))
+            ListTile(
+              visualDensity: VisualDensity.comfortable,
+              leading: Icon(option.icon),
+              title: Text(option.title),
+              subtitle: option.subtitle != null
+                  ? SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          Text(timeToReadable(item.lastModified!)),
-                          const SizedBox(width: 8),
-                          Text(bytesToReadable(item.size)),
-                          const SizedBox(width: 8),
-                          Text(p.extension(item.key)),
-                        ],
-                      ),
-                    ),
-                    Text('MD5: ${item.etag}'),
-                  ],
-                ),
-              ),
-            ]
-            .followedBy(
-              FileContextOption.allOptions(context, handler, cut, copy).map(
-                (option) => ListTile(
-                  visualDensity: VisualDensity.comfortable,
-                  leading: Icon(option.icon),
-                  title: Text(option.title),
-                  subtitle: option.subtitle != null
-                      ? SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Text(option.subtitle!),
-                        )
-                      : null,
-                  trailing: option.secondaryAction != null
-                      ? IconButton(
-                          onPressed: option.secondaryAction,
-                          icon: Icon(option.secondaryIcon),
-                        )
-                      : null,
-                  onTap: option.action == null
-                      ? null
-                      : () async {
-                          if (option.popOnInvoked) globalNavigator?.pop();
-                          await option.action!();
-                          onInvoked?.call();
-                        },
-                  enabled: option.action != null,
-                ),
-              ),
-            )
-            .toList(),
+                      child: Text(option.subtitle!),
+                    )
+                  : null,
+              trailing: option.secondaryAction != null
+                  ? IconButton(
+                      onPressed: option.secondaryAction,
+                      icon: Icon(option.secondaryIcon),
+                    )
+                  : null,
+              onTap: option.action == null
+                  ? null
+                  : () async {
+                      if (option.popOnInvoked) globalNavigator?.pop();
+                      await option.action!();
+                      onInvoked?.call();
+                    },
+              enabled: option.action != null,
+            ),
+        ],
+      ),
+    ],
   );
 }
 
@@ -2451,8 +2554,13 @@ Widget buildFilesContextMenu(
     deleteLocalFile: deleteLocal,
     deleteFiles: deleteFiles,
   );
-  return Column(
-    mainAxisSize: MainAxisSize.min,
+  return M3ECardColumn(
+    margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    padding: EdgeInsets.zero,
+    color: Color.alphaBlend(
+      Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
+      Colors.white,
+    ),
     children:
         FilesContextOption.allOptions(
               context,
@@ -2514,142 +2622,113 @@ Widget buildDirectoryContextMenu(
   );
   return Column(
     mainAxisSize: MainAxisSize.min,
-    children:
-        <Widget>[
-              ListTile(
-                visualDensity: VisualDensity.comfortable,
-                leading: Icon(Icons.cloud_circle_rounded),
-                title: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Text(file.key),
-                ),
-                subtitle: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      Text(dirModified(file)),
-                      SizedBox(width: 8),
-                      Text(bytesToReadable(dirSize(file))),
-                      SizedBox(width: 8),
-                      Text(() {
-                        final count = countContent(file, recursive: true);
-                        if (count.$1 == 0) {
-                          return '${count.$2} files';
-                        }
-                        if (count.$2 == 0) {
-                          return '${count.$1} subfolders';
-                        }
-                        return '${count.$2} files in ${count.$1} subfolders';
-                      }()),
-                    ],
-                  ),
-                ),
-                onTap:
-                    Main.profileFromKey(file.key) == null ||
-                        p.split(file.key).length != 1
-                    ? null
-                    : () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => S3ConfigPage(
-                              profile: Main.profileFromKey(file.key)!,
-                            ),
-                          ),
-                        );
-                      },
-              ),
-              if (p.split(file.key).length == 1)
-                ListTile(
-                  leading: const Icon(Icons.drive_folder_upload_rounded),
-                  title: const Text('Backup From'),
-                  subtitle: Text(
-                    Main.pathFromKey(file.key) == null
-                        ? 'Not set'
-                        : Main.pathFromKey(file.key)!,
-                  ),
-                  onTap: () async {
-                    final String? directoryPath = await getDirectoryPath();
-                    if (directoryPath != null) {
-                      ConfigManager.setLocalDir(file.key, directoryPath);
-                      Main.listDirectories();
-                      globalNavigator!.pop();
+    children: <Widget>[
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: M3ECard(
+          index: 0,
+          position: M3ECardPosition.single,
+          outerRadius: 24,
+          innerRadius: 4,
+          gap: 3,
+          padding: EdgeInsets.zero,
+          color: p.split(file.key).length == 1
+              ? Color.alphaBlend(
+                  Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
+                  Colors.white,
+                )
+              : null,
+          child: ListTile(
+            visualDensity: VisualDensity.comfortable,
+            leading: Icon(Icons.cloud_circle_rounded),
+            title: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(file.key),
+            ),
+            subtitle: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Text(dirModified(file)),
+                  SizedBox(width: 8),
+                  Text(bytesToReadable(dirSize(file))),
+                  SizedBox(width: 8),
+                  Text(() {
+                    final count = countContent(file, recursive: true);
+                    if (count.$1 == 0) {
+                      return '${count.$2} files';
                     }
-                  },
-                  trailing: Main.pathFromKey(file.key) == null
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.clear_rounded),
-                          onPressed: () {
-                            ConfigManager.setLocalDir(file.key, null);
-                            Main.listDirectories();
-                            globalNavigator!.pop();
-                          },
-                        ),
-                ),
-              if (p.isAbsolute(Main.pathFromKey(file.key) ?? file.key) &&
-                  p.split(file.key).length == 1) ...[
-                const SizedBox(height: 8),
-                ListTile(
-                  leading: const Icon(Icons.sync_rounded),
-                  title: const Text('Backup Mode'),
-                ),
-                RadioGroup(
-                  groupValue: Main.backupModeFromKey(file.key),
-                  onChanged: (s) {
-                    ConfigManager.setBackupMode(file.key, s!);
-                    Main.listDirectories();
+                    if (count.$2 == 0) {
+                      return '${count.$1} subfolders';
+                    }
+                    return '${count.$2} files in ${count.$1} subfolders';
+                  }()),
+                ],
+              ),
+            ),
+            onTap:
+                Main.profileFromKey(file.key) == null ||
+                    p.split(file.key).length != 1
+                ? null
+                : () {
                     Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => S3ConfigPage(
+                          profile: Main.profileFromKey(file.key)!,
+                        ),
+                      ),
+                    );
                   },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      RadioListTile(
-                        value: BackupMode.upload,
-                        title: Text(BackupMode.upload.name),
-                        subtitle: Text(BackupMode.upload.description),
-                        dense: true,
-                      ),
-                      RadioListTile(
-                        value: BackupMode.sync,
-                        title: Text(BackupMode.sync.name),
-                        subtitle: Text(BackupMode.sync.description),
-                        dense: true,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-            ]
-            .followedBy(
-              DirectoryContextOption.allOptions(
-                context,
-                handler,
-                cut,
-                copy,
-              ).map(
-                (option) => ListTile(
-                  leading: Icon(option.icon),
-                  title: Text(option.title),
-                  subtitle: option.subtitle != null
-                      ? SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Text(option.subtitle!),
-                        )
-                      : null,
-                  onTap: option.action != null
-                      ? () async {
-                          if (option.popOnInvoked) globalNavigator?.pop();
-                          await option.action!();
-                          onInvoked?.call();
-                        }
-                      : null,
-                  enabled: option.action != null,
-                ),
+          ),
+        ),
+      ),
+      if (p.split(file.key).length == 1)
+        ProfileBackupConfig(
+          initialBackupMode: Main.backupModeFromKey(file.key),
+          initialLocalDir: Main.pathFromKey(file.key),
+          onBackupModeChanged: (mode) {
+            ConfigManager.setBackupMode(file.key, mode);
+            Main.listDirectories();
+            globalNavigator!.pop();
+          },
+          onLocalDirChanged: (localDir) {
+            ConfigManager.setLocalDir(file.key, localDir);
+            Main.listDirectories();
+            globalNavigator!.pop();
+          },
+        ),
+      M3ECardColumn(
+        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.zero,
+        color: Color.alphaBlend(
+          Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
+          Colors.white,
+        ),
+        children: DirectoryContextOption.allOptions(context, handler, cut, copy)
+            .map(
+              (option) => ListTile(
+                leading: Icon(option.icon),
+                title: Text(option.title),
+                subtitle: option.subtitle != null
+                    ? SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Text(option.subtitle!),
+                      )
+                    : null,
+                onTap: option.action != null
+                    ? () async {
+                        if (option.popOnInvoked) globalNavigator?.pop();
+                        await option.action!();
+                        onInvoked?.call();
+                      }
+                    : null,
+                enabled: option.action != null,
               ),
             )
             .toList(),
+      ),
+    ],
   );
 }
 
@@ -2674,8 +2753,13 @@ Widget buildDirectoriesContextMenu(
     deleteLocalDirectory: deleteLocal,
     deleteDirectories: deleteDirectories,
   );
-  return Column(
-    mainAxisSize: MainAxisSize.min,
+  return M3ECardColumn(
+    margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    padding: EdgeInsets.zero,
+    color: Color.alphaBlend(
+      Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
+      Colors.white,
+    ),
     children:
         DirectoriesContextOption.allOptions(
               context,
@@ -2771,8 +2855,13 @@ Widget buildBulkContextMenu(
       deleteLocalFile: deleteLocal,
       deleteFiles: deleteFiles,
     );
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    return M3ECardColumn(
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: EdgeInsets.zero,
+      color: Color.alphaBlend(
+        Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
+        Colors.white,
+      ),
       children:
           BulkContextOption.allOptions(
                 cut,

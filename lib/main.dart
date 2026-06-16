@@ -136,19 +136,25 @@ class MainApp extends StatelessWidget {
     showCloseIcon: true,
   );
 
+  final inputDecorationTheme = InputDecorationThemeData(
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(32)),
+    alignLabelWithHint: true,
+  );
+
   ThemeData getLightTheme(ColorScheme? lightScheme) => ThemeData(
     colorScheme: lightScheme ?? ColorScheme.fromSeed(seedColor: Colors.blue),
     useMaterial3: true,
     snackBarTheme: snackBarTheme,
+    inputDecorationTheme: inputDecorationTheme,
   );
 
   ThemeData getDarkTheme(ColorScheme? darkScheme) => ThemeData(
     colorScheme:
         darkScheme?.copyWith(
-          surface: ultraDarkController.value
+          surface: uiConfigNotifier.ultraDark.value
               ? Colors.black
               : darkScheme.surface,
-          surfaceDim: ultraDarkController.value
+          surfaceDim: uiConfigNotifier.ultraDark.value
               ? Colors.black
               : darkScheme.surfaceDim,
         ) ??
@@ -158,23 +164,36 @@ class MainApp extends StatelessWidget {
         ),
     useMaterial3: true,
     snackBarTheme: snackBarTheme,
+    inputDecorationTheme: inputDecorationTheme,
   );
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([themeController, ultraDarkController]),
+      animation: Listenable.merge([uiConfigNotifier]),
       builder: (_, _) {
         return DynamicColorBuilder(
           builder: (lightScheme, darkScheme) {
             return MaterialApp(
               title: 'FileS3',
-              theme: themeController.value == ThemeMode.dark
-                  ? getDarkTheme(darkScheme)
-                  : getLightTheme(lightScheme),
-              darkTheme: themeController.value == ThemeMode.light
-                  ? getLightTheme(lightScheme)
-                  : getDarkTheme(darkScheme),
+              theme: getLightTheme(
+                uiConfigNotifier.accentColor.value != null
+                    ? ColorScheme.fromSeed(
+                        seedColor: uiConfigNotifier.accentColor.value!,
+                        primary: uiConfigNotifier.accentColor.value!,
+                      )
+                    : lightScheme,
+              ),
+              darkTheme: getDarkTheme(
+                uiConfigNotifier.accentColor.value != null
+                    ? ColorScheme.fromSeed(
+                        seedColor: uiConfigNotifier.accentColor.value!,
+                        primary: uiConfigNotifier.accentColor.value!,
+                        brightness: Brightness.dark,
+                      )
+                    : darkScheme,
+              ),
+              themeMode: uiConfigNotifier.colorMode.value,
               home: Home(key: globalKey),
             );
           },
@@ -561,10 +580,7 @@ class _HomeState extends State<Home> {
           (file) =>
               p.isWithin(dir.key, file.key) &&
               file.key != dir.key &&
-              !p.isDir(file.key) &&
-              Main.ignoreKeyRegexps.every(
-                (String regexp) => !RegExp(regexp).hasMatch(file.key),
-              ),
+              !p.isDir(file.key),
         )
         .toList();
     int progressCount = 0;
@@ -694,8 +710,7 @@ class _HomeState extends State<Home> {
     await Main.init();
 
     final uiConfig = ConfigManager.loadUiConfig();
-    themeController.value = uiConfig.colorMode;
-    ultraDarkController.value = uiConfig.ultraDark;
+    uiConfigNotifier.setValues(uiConfig);
 
     loading.value = false;
   }

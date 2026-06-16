@@ -193,10 +193,29 @@ class S3Config {
 }
 
 class UiConfig {
-  final ThemeMode colorMode;
-  final bool ultraDark;
+  ThemeMode colorMode;
+  Color? accentColor;
+  bool ultraDark;
+  bool showDirectorySummary;
+  bool showDirectoryBackupConfig;
+  bool showTime;
+  bool showSize;
+  bool showDownloadStatus;
+  bool showType;
+  bool showContent;
 
-  UiConfig({required this.colorMode, required this.ultraDark});
+  UiConfig({
+    this.colorMode = ThemeMode.system,
+    this.accentColor,
+    this.ultraDark = false,
+    this.showDirectorySummary = true,
+    this.showDirectoryBackupConfig = true,
+    this.showTime = true,
+    this.showSize = true,
+    this.showDownloadStatus = true,
+    this.showType = true,
+    this.showContent = true,
+  });
 }
 
 class TransferConfig {

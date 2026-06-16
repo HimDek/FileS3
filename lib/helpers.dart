@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:uri_content/uri_content.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:file_magic_number/file_magic_number.dart';
+import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -475,6 +476,61 @@ class ManualNotifier extends ChangeNotifier {
   }
 }
 
+class UiConfigNotifier extends ChangeNotifier {
+  final ValueNotifier<ThemeMode> colorMode = ValueNotifier(ThemeMode.system);
+  final ValueNotifier<Color?> accentColor = ValueNotifier(null);
+  final ValueNotifier<bool> ultraDark = ValueNotifier(false);
+  final ValueNotifier<bool> showDirectorySummary = ValueNotifier(true);
+  final ValueNotifier<bool> showDirectoryBackupConfig = ValueNotifier(true);
+  final ValueNotifier<bool> showTime = ValueNotifier(true);
+  final ValueNotifier<bool> showSize = ValueNotifier(true);
+  final ValueNotifier<bool> showDownloadStatus = ValueNotifier(true);
+  final ValueNotifier<bool> showType = ValueNotifier(true);
+  final ValueNotifier<bool> showContent = ValueNotifier(true);
+
+  UiConfigNotifier({UiConfig? config}) {
+    setValues(config);
+    Listenable.merge([
+      colorMode,
+      accentColor,
+      ultraDark,
+      showDirectorySummary,
+      showDirectoryBackupConfig,
+      showTime,
+      showSize,
+      showDownloadStatus,
+      showType,
+      showContent,
+    ]).addListener(() {
+      super.notifyListeners();
+    });
+  }
+
+  bool get fileListInfo =>
+      showTime.value ||
+      showSize.value ||
+      showDownloadStatus.value ||
+      showType.value;
+  bool get dirListInfo =>
+      showTime.value ||
+      showSize.value ||
+      showDownloadStatus.value ||
+      showContent.value;
+
+  void setValues(UiConfig? config) {
+    colorMode.value = config?.colorMode ?? ThemeMode.system;
+    accentColor.value = config?.accentColor;
+    ultraDark.value = config?.ultraDark ?? false;
+    showDirectorySummary.value = config?.showDirectorySummary ?? true;
+    showDirectoryBackupConfig.value = config?.showDirectoryBackupConfig ?? true;
+    showTime.value = config?.showTime ?? true;
+    showSize.value = config?.showSize ?? true;
+    showDownloadStatus.value = config?.showDownloadStatus ?? true;
+    showType.value = config?.showType ?? true;
+    showContent.value = config?.showContent ?? true;
+  }
+}
+
 abstract class IniManager {
   static late File _file;
   static ValueNotifier<Config?> config = ValueNotifier<Config?>(null);
@@ -658,37 +714,111 @@ abstract class ConfigManager {
   }
 
   static UiConfig loadUiConfig() {
-    final colorModeStr =
-        IniManager.config.value?.get("ui", "color_mode") ?? 'system';
-    final ultraDarkStr =
-        IniManager.config.value?.get("ui", "ultra_dark") ?? 'false';
+    final accentColorStr =
+        IniManager.config.value?.get("ui", "accent_color") ?? '';
 
-    final colorMode = switch (colorModeStr) {
-      'light' => ThemeMode.light,
-      'dark' => ThemeMode.dark,
-      _ => ThemeMode.system,
-    };
+    final colorMode =
+        switch (IniManager.config.value?.get("ui", "color_mode") ?? 'system') {
+          'light' => ThemeMode.light,
+          'dark' => ThemeMode.dark,
+          _ => ThemeMode.system,
+        };
+    final accentColor = accentColorStr.isNotEmpty
+        ? Color.fromARGB(
+            int.tryParse(accentColorStr.substring(0, 2), radix: 16) ?? 0,
+            int.tryParse(accentColorStr.substring(2, 4), radix: 16) ?? 0,
+            int.tryParse(accentColorStr.substring(4, 6), radix: 16) ?? 0,
+            int.tryParse(accentColorStr.substring(6, 8), radix: 16) ?? 0,
+          )
+        : null;
+    final ultraDark =
+        IniManager.config.value?.get("ui", "ultra_dark")?.toLowerCase() ==
+        'true';
+    final showDirectorySummary =
+        IniManager.config.value
+            ?.get("ui", "show_directory_summary")
+            ?.toLowerCase() !=
+        'false';
+    final showDirectoryBackupConfig =
+        IniManager.config.value
+            ?.get("ui", "show_directory_backup_config")
+            ?.toLowerCase() !=
+        'false';
+    final showTime =
+        IniManager.config.value?.get("ui", "show_time")?.toLowerCase() !=
+        'false';
+    final showSize =
+        IniManager.config.value?.get("ui", "show_size")?.toLowerCase() !=
+        'false';
+    final showDownloadStatus =
+        IniManager.config.value
+            ?.get("ui", "show_download_status")
+            ?.toLowerCase() !=
+        'false';
+    final showType =
+        IniManager.config.value?.get("ui", "show_type")?.toLowerCase() !=
+        'false';
+    final showContent =
+        IniManager.config.value?.get("ui", "show_content")?.toLowerCase() !=
+        'false';
 
-    final ultraDark = ultraDarkStr.toLowerCase() == 'true';
-
-    return UiConfig(colorMode: colorMode, ultraDark: ultraDark);
+    return UiConfig(
+      colorMode: colorMode,
+      accentColor: accentColor,
+      ultraDark: ultraDark,
+      showDirectorySummary: showDirectorySummary,
+      showDirectoryBackupConfig: showDirectoryBackupConfig,
+      showTime: showTime,
+      showSize: showSize,
+      showDownloadStatus: showDownloadStatus,
+      showType: showType,
+      showContent: showContent,
+    );
   }
 
   static Future<void> saveUiConfig(UiConfig config) async {
-    final colorModeStr = switch (config.colorMode) {
-      ThemeMode.light => 'light',
-      ThemeMode.dark => 'dark',
-      ThemeMode.system => 'system',
-    };
-
     if (!IniManager.config.value!.sections().contains("ui")) {
       IniManager.config.value!.addSection("ui");
     }
-    IniManager.config.value!.set("ui", "color_mode", colorModeStr);
+    IniManager.config.value!.set("ui", "color_mode", switch (config.colorMode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    });
+    IniManager.config.value!.set(
+      "ui",
+      "accent_color",
+      config.accentColor != null
+          ? ColorTools.colorCode(config.accentColor!)
+          : '',
+    );
     IniManager.config.value!.set(
       "ui",
       "ultra_dark",
       config.ultraDark.toString(),
+    );
+    IniManager.config.value!.set(
+      "ui",
+      "show_directory_summary",
+      config.showDirectorySummary.toString(),
+    );
+    IniManager.config.value!.set(
+      "ui",
+      "show_directory_backup_config",
+      config.showDirectoryBackupConfig.toString(),
+    );
+    IniManager.config.value!.set("ui", "show_time", config.showTime.toString());
+    IniManager.config.value!.set("ui", "show_size", config.showSize.toString());
+    IniManager.config.value!.set(
+      "ui",
+      "show_download_status",
+      config.showDownloadStatus.toString(),
+    );
+    IniManager.config.value!.set("ui", "show_type", config.showType.toString());
+    IniManager.config.value!.set(
+      "ui",
+      "show_content",
+      config.showContent.toString(),
     );
     IniManager.save();
   }
@@ -753,6 +883,35 @@ abstract class ConfigManager {
     IniManager.save();
   }
 
+  static List<Color> loadRecentColors() {
+    final recentColorsStr =
+        IniManager.config.value?.get("ui", "recent_colors") ?? '[]';
+    final List<dynamic> recentColorsJson = jsonDecode(recentColorsStr);
+    return recentColorsJson
+        .map(
+          (colorCode) => Color.fromARGB(
+            int.tryParse(colorCode.substring(0, 2), radix: 16) ?? 0,
+            int.tryParse(colorCode.substring(2, 4), radix: 16) ?? 0,
+            int.tryParse(colorCode.substring(4, 6), radix: 16) ?? 0,
+            int.tryParse(colorCode.substring(6, 8), radix: 16) ?? 0,
+          ),
+        )
+        .whereType<Color>()
+        .toList();
+  }
+
+  static Future<void> saveRecentColors(List<Color> colors) async {
+    if (!IniManager.config.value!.sections().contains("ui")) {
+      IniManager.config.value!.addSection("ui");
+    }
+    IniManager.config.value!.set(
+      "ui",
+      "recent_colors",
+      jsonEncode(colors.map((color) => ColorTools.colorCode(color)).toList()),
+    );
+    IniManager.save();
+  }
+
   static Future<void> saveRemoteFiles(List<RemoteFile> files) async {
     final String jsonString = jsonEncode(
       files.map((file) => file.toJson()).toList(),
@@ -807,14 +966,16 @@ class DeletionRegistrar {
   Future<Map<String, DateTime>> pullDeletions() async {
     await profile.refreshRemote(dir: _key);
 
-    if (Main.remoteFiles.every((file) => file.key != _key)) {
+    if (Main.remoteFilesRaw.every((file) => file.key != _key)) {
       if (kDebugMode) {
         debugPrint("Remote deletion register does not exist.");
       }
       return {};
     }
 
-    final remoteFile = Main.remoteFiles.firstWhere((file) => file.key == _key);
+    final remoteFile = Main.remoteFilesRaw.firstWhere(
+      (file) => file.key == _key,
+    );
 
     if (_lastPulled.toUtc().isAfter(
           remoteFile.lastModified?.toUtc() ??

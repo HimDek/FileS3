@@ -59,6 +59,7 @@ dependencies:
   receive_intent:
   cupertino_icons:
   device_info_plus:
+  flex_color_picker: 
   package_info_plus:
   file_magic_number:
   percent_indicator:

@@ -28,7 +28,14 @@ abstract class Main {
   ];
 
   static Set<Profile> get profiles => _profiles;
-  static List<RemoteFile> get remoteFiles => UnmodifiableListView(_remoteFiles);
+  static List<RemoteFile> get remoteFiles => UnmodifiableListView(
+    _remoteFiles.where(
+      (file) => _ignoreKeyRegexps.every(
+        (regexp) => !RegExp(regexp).hasMatch(file.key),
+      ),
+    ),
+  );
+  static List<RemoteFile> get remoteFilesRaw => _remoteFiles;
 
   static void remoteFilesSet(List<RemoteFile> files) {
     _remoteFiles = files;

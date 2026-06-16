@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
+import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/job_view.dart';
 import 'package:files3/media_view.dart';
@@ -38,7 +40,7 @@ class MyGridTile extends StatelessWidget {
         duration: Duration(milliseconds: 250),
         decoration: BoxDecoration(
           color: selected
-              ? Theme.of(context).colorScheme.primaryContainer
+              ? Theme.of(context).colorScheme.secondaryContainer
               : Theme.of(context).colorScheme.surface,
         ),
         child: GridTile(
@@ -55,7 +57,7 @@ class MyGridTile extends StatelessWidget {
             duration: Duration(milliseconds: 250),
             decoration: BoxDecoration(
               color: selected
-                  ? Theme.of(context).colorScheme.primaryContainer
+                  ? Theme.of(context).colorScheme.secondaryContainer
                   : Theme.of(context).colorScheme.surface,
             ),
             padding: EdgeInsets.all(8),
@@ -81,7 +83,9 @@ class MyGridTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     border: selected
                         ? Border.all(
-                            color: Theme.of(context).colorScheme.primary,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSecondaryContainer,
                             width: 2,
                           )
                         : null,
@@ -320,8 +324,8 @@ class ListFilesState extends State<ListFiles> {
               ),
               selectedTileColor: Theme.of(
                 context,
-              ).colorScheme.primary.withValues(alpha: 0.1),
-              selectedColor: Theme.of(context).colorScheme.primary,
+              ).colorScheme.secondaryContainer,
+              selectedColor: Theme.of(context).colorScheme.onSecondaryContainer,
               leading: SizedBox(
                 height: 32,
                 width: 32,
@@ -343,70 +347,158 @@ class ListFilesState extends State<ListFiles> {
                       )
                     : item.key,
               ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
+              subtitle:
+                  uiConfigNotifier.dirListInfo ||
+                      p.s3(p.dirname(item.file!.key)).isEmpty
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.dirModified(item.file!)),
-                        SizedBox(width: 8),
-                        Text(bytesToReadable(widget.dirSize(item.file!))),
-                        SizedBox(width: 8),
-                        Text(() {
-                          final count = widget.count(
-                            item.file!,
-                            recursive: true,
-                          );
-                          if (count.$1 == 0) {
-                            return '${count.$2} files';
-                          }
-                          if (count.$2 == 0) {
-                            return '${count.$1} subfolders';
-                          }
-                          return '${count.$2} files in ${count.$1} subfolders';
-                        }()),
-                      ],
-                    ),
-                  ),
-                  if (p.s3(p.dirname(item.file!.key)).isEmpty)
-                    Row(
-                      children: [
-                        Text('${Main.backupModeFromKey(item.file!.key).name}:'),
-                        SizedBox(width: 4),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Text(
-                            Main.pathFromKey(item.file!.key) ?? 'Not set',
+                        if (uiConfigNotifier.dirListInfo)
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              spacing: 8,
+                              children: [
+                                if (uiConfigNotifier.showTime.value)
+                                  Text(widget.dirModified(item.file!)),
+                                if (uiConfigNotifier.showSize.value)
+                                  Text(
+                                    bytesToReadable(widget.dirSize(item.file!)),
+                                  ),
+                                if (uiConfigNotifier.showDownloadStatus.value)
+                                  FutureBuilder<void>(
+                                    future: () async {
+                                      for (var file in Main.remoteFiles.where(
+                                        (f) =>
+                                            p.isWithin(item.key, f.key) &&
+                                            !p.isDir(f.key),
+                                      )) {
+                                        _fileDownloadedCache[file.key] =
+                                            await File(
+                                              Main.pathFromKey(file.key) ??
+                                                  file.key,
+                                            ).exists();
+                                      }
+                                    }(),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState ==
+                                              ConnectionState.waiting &&
+                                          _fileDownloadedCache.keys.any(
+                                            (key) =>
+                                                p.isWithin(item.key, key) &&
+                                                !p.isDir(key) &&
+                                                _fileDownloadedCache[key] ==
+                                                    null,
+                                          )) {
+                                        return Icon(
+                                          Icons.hourglass_empty,
+                                          size: 16,
+                                        );
+                                      }
+                                      if (_fileDownloadedCache.keys
+                                          .where(
+                                            (key) =>
+                                                p.isWithin(item.key, key) &&
+                                                !p.isDir(key),
+                                          )
+                                          .every(
+                                            (key) =>
+                                                _fileDownloadedCache[key] ==
+                                                true,
+                                          )) {
+                                        return Icon(
+                                          Icons.download_done,
+                                          size: 16,
+                                        );
+                                      } else {
+                                        return Icon(
+                                          Icons.cloud_download,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                          size: 16,
+                                        );
+                                      }
+                                    },
+                                  ),
+                                if (uiConfigNotifier.showContent.value)
+                                  Text(() {
+                                    final count = widget.count(
+                                      item.file!,
+                                      recursive: true,
+                                    );
+                                    if (count.$1 == 0) {
+                                      return '${count.$2} files';
+                                    }
+                                    if (count.$2 == 0) {
+                                      return '${count.$1} subfolders';
+                                    }
+                                    return '${count.$2} files in ${count.$1} subfolders';
+                                  }()),
+                              ],
+                            ),
                           ),
-                        ),
+                        if (p.s3(p.dirname(item.file!.key)).isEmpty)
+                          Row(
+                            children: [
+                              Text(
+                                '${Main.backupModeFromKey(item.file!.key).name}:',
+                              ),
+                              SizedBox(width: 4),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(
+                                  Main.pathFromKey(item.file!.key) ?? 'Not set',
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
-                    ),
-                ],
-              ),
-              onTap: widget.selection.value.isNotEmpty
-                  ? widget.getSelectAction(item.file!)
-                  : () => widget.changeDirectory(item.file!),
+                    )
+                  : null,
+              onTap: () => widget.changeDirectory(item.file!),
               onLongPress: widget.getSelectAction(item.file!),
               trailing: widget.selection.value.isNotEmpty
-                  ? widget.selection.value.any(
-                          (selected) => selected.key == item.key,
-                        )
-                        ? Icon(Icons.check_circle)
+                  ? widget.selectionAction.value == SelectionAction.none
+                        ? GestureDetector(
+                            onTap: widget.getSelectAction(item.file!),
+                            child: Icon(
+                              widget.selection.value.isEmpty ||
+                                      widget.selection.value.any((selected) {
+                                        return selected.key == item.key;
+                                      })
+                                  ? Icons.check_circle
+                                  : Icons.circle_outlined,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSecondaryContainer,
+                            ),
+                          )
+                        : widget.selection.value.any(
+                            (selected) => selected.key == item.key,
+                          )
+                        ? Icon(
+                            Icons.check_circle,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSecondaryContainer,
+                          )
                         : widget.selection.value.any(
                             (selected) => p.isWithin(selected.key, item.key),
                           )
-                        ? Icon(Icons.check_circle_outline)
-                        : widget.selectionAction.value == SelectionAction.none
-                        ? Icon(Icons.circle_outlined)
+                        ? Icon(
+                            Icons.check_circle_outline,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSecondaryContainer,
+                          )
                         : null
                   : widget.showContextMenu != null
-                  ? IconButton(
-                      onPressed: () async {
+                  ? GestureDetector(
+                      onTap: () async {
                         widget.showContextMenu!(item.file!);
                       },
-                      icon: Icon(Icons.more_vert),
+                      child: Icon(Icons.more_vert),
                     )
                   : null,
             ),
@@ -429,8 +521,8 @@ class ListFilesState extends State<ListFiles> {
               ),
               selectedTileColor: Theme.of(
                 context,
-              ).colorScheme.primary.withValues(alpha: 0.1),
-              selectedColor: Theme.of(context).colorScheme.primary,
+              ).colorScheme.secondaryContainer,
+              selectedColor: Theme.of(context).colorScheme.onSecondaryContainer,
               leading: Hero(
                 tag: item.key,
                 child: SizedBox(height: 32, width: 32, child: preview(item)),
@@ -448,42 +540,48 @@ class ListFilesState extends State<ListFiles> {
                       : item.file!.key,
                 ),
               ),
-              subtitle: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    Text(timeToReadable(item.file!.lastModified!)),
-                    SizedBox(width: 8),
-                    Text(bytesToReadable(item.size)),
-                    SizedBox(width: 8),
-                    FutureBuilder<void>(
-                      future: () async {
-                        _fileDownloadedCache[item.key] = await File(
-                          Main.pathFromKey(item.key) ?? item.key,
-                        ).exists();
-                      }(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                                ConnectionState.waiting &&
-                            _fileDownloadedCache[item.key] == null) {
-                          return Icon(Icons.hourglass_empty, size: 16);
-                        }
-                        if (_fileDownloadedCache[item.key] == true) {
-                          return Icon(Icons.download_done, size: 16);
-                        } else {
-                          return Icon(
-                            Icons.cloud_download,
-                            color: Theme.of(context).colorScheme.primary,
-                            size: 16,
-                          );
-                        }
-                      },
-                    ),
-                    SizedBox(width: 8),
-                    Text(p.extension(item.key)),
-                  ],
-                ),
-              ),
+              subtitle: uiConfigNotifier.fileListInfo
+                  ? SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        spacing: 8,
+                        children: [
+                          if (uiConfigNotifier.showTime.value)
+                            Text(timeToReadable(item.file!.lastModified!)),
+                          if (uiConfigNotifier.showSize.value)
+                            Text(bytesToReadable(item.size)),
+                          if (uiConfigNotifier.showDownloadStatus.value)
+                            FutureBuilder<void>(
+                              future: () async {
+                                _fileDownloadedCache[item.key] = await File(
+                                  Main.pathFromKey(item.key) ?? item.key,
+                                ).exists();
+                              }(),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                        ConnectionState.waiting &&
+                                    _fileDownloadedCache[item.key] == null) {
+                                  return Icon(Icons.hourglass_empty, size: 16);
+                                }
+                                if (_fileDownloadedCache[item.key] == true) {
+                                  return Icon(Icons.download_done, size: 16);
+                                } else {
+                                  return Icon(
+                                    Icons.cloud_download,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                    size: 16,
+                                  );
+                                }
+                              },
+                            ),
+                          if (uiConfigNotifier.showType.value)
+                            Text(p.extension(item.key)),
+                        ],
+                      ),
+                    )
+                  : null,
               trailing: widget.selection.value.isNotEmpty
                   ? widget.selection.value.any(
                           (selected) => selected.key == item.key,
@@ -497,11 +595,11 @@ class ListFilesState extends State<ListFiles> {
                         ? Icon(Icons.circle_outlined)
                         : null
                   : widget.showContextMenu != null
-                  ? IconButton(
-                      onPressed: () async {
+                  ? GestureDetector(
+                      onTap: () async {
                         widget.showContextMenu!(item.file!);
                       },
-                      icon: Icon(Icons.more_vert),
+                      child: Icon(Icons.more_vert),
                     )
                   : null,
               onTap: widget.selection.value.isNotEmpty
@@ -562,6 +660,47 @@ class ListFilesState extends State<ListFiles> {
               ),
               onTap: () => widget.changeDirectory(item.file!),
               onLongPress: widget.getSelectAction(item.file!),
+              topLeftBadge: uiConfigNotifier.showDownloadStatus.value
+                  ? FutureBuilder<void>(
+                      future: () async {
+                        for (var file in Main.remoteFiles.where(
+                          (f) => p.isWithin(item.key, f.key) && !p.isDir(f.key),
+                        )) {
+                          _fileDownloadedCache[file.key] = await File(
+                            Main.pathFromKey(file.key) ?? file.key,
+                          ).exists();
+                        }
+                      }(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                                ConnectionState.waiting &&
+                            _fileDownloadedCache.keys.any(
+                              (key) =>
+                                  p.isWithin(item.key, key) &&
+                                  !p.isDir(key) &&
+                                  _fileDownloadedCache[key] == null,
+                            )) {
+                          return Icon(Icons.hourglass_empty, size: 16);
+                        }
+                        if (_fileDownloadedCache.keys
+                            .where(
+                              (key) =>
+                                  p.isWithin(item.key, key) && !p.isDir(key),
+                            )
+                            .every(
+                              (key) => _fileDownloadedCache[key] == true,
+                            )) {
+                          return Icon(Icons.download_done, size: 16);
+                        } else {
+                          return Icon(
+                            Icons.cloud_download,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 16,
+                          );
+                        }
+                      },
+                    )
+                  : null,
               topRightBadge: widget.selection.value.isNotEmpty
                   ? widget.selectionAction.value == SelectionAction.none
                         ? IconButton(
@@ -643,31 +782,34 @@ class ListFilesState extends State<ListFiles> {
                   ),
                 ],
               ),
-              topLeftBadge: Padding(
-                padding: EdgeInsets.all(16),
-                child: FutureBuilder<void>(
-                  future: () async {
-                    _fileDownloadedCache[item.key] = await File(
-                      Main.pathFromKey(item.key) ?? item.key,
-                    ).exists();
-                  }(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting &&
-                        _fileDownloadedCache[item.key] == null) {
-                      return Icon(Icons.hourglass_empty, size: 16);
-                    }
-                    if (_fileDownloadedCache[item.key] == true) {
-                      return Icon(Icons.download_done, size: 16);
-                    } else {
-                      return Icon(
-                        Icons.cloud_download,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 16,
-                      );
-                    }
-                  },
-                ),
-              ),
+              topLeftBadge: uiConfigNotifier.showDownloadStatus.value
+                  ? Padding(
+                      padding: EdgeInsets.all(16),
+                      child: FutureBuilder<void>(
+                        future: () async {
+                          _fileDownloadedCache[item.key] = await File(
+                            Main.pathFromKey(item.key) ?? item.key,
+                          ).exists();
+                        }(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                                  ConnectionState.waiting &&
+                              _fileDownloadedCache[item.key] == null) {
+                            return Icon(Icons.hourglass_empty, size: 16);
+                          }
+                          if (_fileDownloadedCache[item.key] == true) {
+                            return Icon(Icons.download_done, size: 16);
+                          } else {
+                            return Icon(
+                              Icons.cloud_download,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 16,
+                            );
+                          }
+                        },
+                      ),
+                    )
+                  : null,
               topRightBadge: widget.selection.value.isNotEmpty
                   ? widget.selectionAction.value == SelectionAction.none
                         ? IconButton(
@@ -741,9 +883,12 @@ class ListFilesState extends State<ListFiles> {
                 gridItemBuilder(context, group.value[index]),
           )
         else
-          SliverList.builder(
+          SliverM3ECardList(
             key: ValueKey(widget.relativeto.value.key + group.key),
             itemCount: group.value.length,
+            margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: EdgeInsets.zero,
+            color: Colors.transparent,
             itemBuilder: (context, index) => TweenAnimationBuilder<double>(
               duration: Duration(milliseconds: 300),
               tween: Tween(begin: 0, end: 1),
@@ -838,14 +983,64 @@ class ListFilesState extends State<ListFiles> {
                       height: 34,
                       child: Container(
                         color: Theme.of(context).colorScheme.surface,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
+                        padding: EdgeInsets.only(
+                          left: 16,
+                          right: 40,
+                          top: 8,
+                          bottom: 8,
                         ),
                         alignment: Alignment.centerLeft,
-                        child: Text(
-                          group.key.replaceAll('_folder', ''),
-                          style: Theme.of(context).textTheme.titleMedium,
+                        child: ListenableBuilder(
+                          listenable: widget.selection,
+                          builder: (context, _) => Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                group.key.replaceAll('_folder', ''),
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              if (widget.selection.value.isNotEmpty)
+                                GestureDetector(
+                                  onTap: () {
+                                    if (group.value.any(
+                                      (f) => !widget.selection.value.contains(
+                                        f.file,
+                                      ),
+                                    )) {
+                                      for (final file in group.value) {
+                                        if (!widget.selection.value.contains(
+                                          file.file,
+                                        )) {
+                                          widget.selection.value = {
+                                            ...widget.selection.value,
+                                            file.file!,
+                                          };
+                                        }
+                                      }
+                                    } else {
+                                      widget.selection.value = {
+                                        ...widget.selection.value.where(
+                                          (f) => !group.value
+                                              .map((f) => f.file)
+                                              .contains(f),
+                                        ),
+                                      };
+                                    }
+                                  },
+                                  child: Icon(
+                                    group.value.any(
+                                          (f) => !widget.selection.value
+                                              .contains(f.file),
+                                        )
+                                        ? Icons.circle_outlined
+                                        : Icons.check_circle,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSecondaryContainer,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

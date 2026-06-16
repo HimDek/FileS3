@@ -318,6 +318,7 @@ class MyBrowserState extends BrowserState {
       builder: (context, _) => NavigationDrawer(
         children: [
           ListTile(
+            contentPadding: EdgeInsets.symmetric(horizontal: 32),
             title: Text(
               'Files3',
               style: Theme.of(context).textTheme.headlineSmall,
@@ -329,103 +330,164 @@ class MyBrowserState extends BrowserState {
             },
           ),
           Divider(),
-          ListTile(
-            title: Text('Active'),
-            leading: Icon(
-              _navIndex.value == 2
-                  ? Icons.swap_vert_circle
-                  : Icons.swap_vert_circle_outlined,
+          Container(
+            decoration: BoxDecoration(
+              color: _navIndex.value == 2
+                  ? Theme.of(context).colorScheme.secondaryContainer
+                  : null,
+              borderRadius: BorderRadius.circular(32),
             ),
-            trailing:
-                Job.jobs.value
-                    .where((job) => job.status.value != JobStatus.completed)
-                    .isNotEmpty
-                ? Text(
-                    Job.jobs.value
-                        .where((job) => job.status.value != JobStatus.completed)
-                        .length
-                        .toString(),
-                  )
-                : null,
-            selected: _navIndex.value == 2,
-            onTap: () {
-              _navIndex.value = 2;
-              _controlsVisible.value = true;
-              Navigator.of(context).pop();
-            },
-          ),
-          ListTile(
-            title: Text('Completed'),
-            leading: Icon(
-              _navIndex.value == 1
-                  ? Icons.check_circle
-                  : Icons.check_circle_outline,
-            ),
-            trailing:
-                Job.jobs.value
-                    .where((job) => job.status.value == JobStatus.completed)
-                    .isNotEmpty
-                ? Text(
-                    Job.jobs.value
-                        .where((job) => job.status.value == JobStatus.completed)
-                        .length
-                        .toString(),
-                  )
-                : null,
-            selected: _navIndex.value == 1,
-            onTap: () {
-              _navIndex.value = 1;
-              _controlsVisible.value = true;
-              Navigator.of(context).pop();
-            },
-          ),
-          Divider(),
-          ListTile(
-            title: Text('Home'),
-            leading: Icon(
-              _navIndex.value == 0 && _driveDir.value.key == ''
-                  ? Icons.home
-                  : Icons.home_outlined,
-            ),
-            selected: _navIndex.value == 0 && _driveDir.value.key == '',
-            onTap: () {
-              _navIndex.value = 0;
-              _controlsVisible.value = true;
-              _driveDir.value = const RemoteFile(key: '', size: 0, etag: '');
-              Navigator.of(context).pop();
-            },
-          ),
-          for (final pinned in ConfigManager.loadPinnedFolders())
-            ListTile(
-              title: Text(pinned.key),
+            margin: EdgeInsets.symmetric(horizontal: 12),
+            child: ListTile(
+              title: Text('Active'),
               leading: Icon(
-                _navIndex.value == 0 && _driveDir.value.key == pinned.value
-                    ? Icons.folder
-                    : Icons.folder_outlined,
+                _navIndex.value == 2
+                    ? Icons.swap_vert_circle
+                    : Icons.swap_vert_circle_outlined,
               ),
-              selected:
-                  _navIndex.value == 0 && _driveDir.value.key == pinned.value,
+              trailing:
+                  Job.jobs.value
+                      .where((job) => job.status.value != JobStatus.completed)
+                      .isNotEmpty
+                  ? Text(
+                      Job.jobs.value
+                          .where(
+                            (job) => job.status.value != JobStatus.completed,
+                          )
+                          .length
+                          .toString(),
+                    )
+                  : null,
+              selected: _navIndex.value == 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
               onTap: () {
-                _navIndex.value = 0;
+                _navIndex.value = 2;
                 _controlsVisible.value = true;
-                _driveDir.value = Main.remoteFiles.firstWhere(
-                  (file) => file.key == pinned.value,
-                  orElse: () =>
-                      RemoteFile(key: pinned.value, size: 0, etag: ''),
-                );
                 Navigator.of(context).pop();
               },
             ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: _navIndex.value == 3
+                  ? Theme.of(context).colorScheme.secondaryContainer
+                  : null,
+              borderRadius: BorderRadius.circular(32),
+            ),
+            margin: EdgeInsets.symmetric(horizontal: 12),
+            child: ListTile(
+              title: Text('Completed'),
+              leading: Icon(
+                _navIndex.value == 1
+                    ? Icons.check_circle
+                    : Icons.check_circle_outline,
+              ),
+              trailing:
+                  Job.jobs.value
+                      .where((job) => job.status.value == JobStatus.completed)
+                      .isNotEmpty
+                  ? Text(
+                      Job.jobs.value
+                          .where(
+                            (job) => job.status.value == JobStatus.completed,
+                          )
+                          .length
+                          .toString(),
+                    )
+                  : null,
+              selected: _navIndex.value == 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+              onTap: () {
+                _navIndex.value = 1;
+                _controlsVisible.value = true;
+                Navigator.of(context).pop();
+              },
+            ),
+          ),
           Divider(),
-          ListTile(
-            title: Text('Settings'),
-            leading: Icon(Icons.settings),
-            onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
-            },
+          Container(
+            decoration: BoxDecoration(
+              color: _navIndex.value == 0 && _driveDir.value.key == ''
+                  ? Theme.of(context).colorScheme.secondaryContainer
+                  : null,
+              borderRadius: BorderRadius.circular(32),
+            ),
+            margin: EdgeInsets.symmetric(horizontal: 12),
+            child: ListTile(
+              title: Text('Home'),
+              leading: Icon(
+                _navIndex.value == 0 && _driveDir.value.key == ''
+                    ? Icons.home
+                    : Icons.home_outlined,
+              ),
+              selected: _navIndex.value == 0 && _driveDir.value.key == '',
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+              onTap: () {
+                _navIndex.value = 0;
+                _controlsVisible.value = true;
+                _driveDir.value = const RemoteFile(key: '', size: 0, etag: '');
+                Navigator.of(context).pop();
+              },
+            ),
+          ),
+          for (final pinned in ConfigManager.loadPinnedFolders())
+            Container(
+              decoration: BoxDecoration(
+                color:
+                    _navIndex.value == 0 && _driveDir.value.key == pinned.value
+                    ? Theme.of(context).colorScheme.secondaryContainer
+                    : null,
+                borderRadius: BorderRadius.circular(32),
+              ),
+              clipBehavior: Clip.antiAlias,
+              margin: EdgeInsets.symmetric(horizontal: 12),
+              child: ListTile(
+                title: Text(pinned.key),
+                leading: Icon(
+                  _navIndex.value == 0 && _driveDir.value.key == pinned.value
+                      ? Icons.folder
+                      : Icons.folder_outlined,
+                ),
+                selected:
+                    _navIndex.value == 0 && _driveDir.value.key == pinned.value,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(32),
+                ),
+                onTap: () {
+                  _navIndex.value = 0;
+                  _controlsVisible.value = true;
+                  _driveDir.value = Main.remoteFiles.firstWhere(
+                    (file) => file.key == pinned.value,
+                    orElse: () =>
+                        RemoteFile(key: pinned.value, size: 0, etag: ''),
+                  );
+                  Navigator.of(context).pop();
+                },
+              ),
+            ),
+          Divider(),
+          Container(
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(32)),
+            margin: EdgeInsets.symmetric(horizontal: 12),
+            child: ListTile(
+              title: Text('Settings'),
+              leading: Icon(Icons.settings),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
+              },
+            ),
           ),
         ],
       ),
@@ -745,9 +807,6 @@ class BrowserState extends State<Browser> {
             ...Main.remoteFiles.where(
               (file) =>
                   p.s3(p.dirname(file.key)) == p.s3(_driveDir.value.key) &&
-                  !Main.ignoreKeyRegexps.any(
-                    (regexp) => RegExp(regexp).hasMatch(file.key),
-                  ) &&
                   !Job.jobs.value.any(
                     (job) =>
                         job.remoteKey == file.key &&
@@ -1517,16 +1576,13 @@ class BrowserState extends State<Browser> {
                     _profile.value?.accessible,
                     Job.jobs,
                     Job.onProgressUpdate,
+                    uiConfigNotifier,
                   ]),
                   builder: (context, child) => SliverAppBar(
                     floating: _selection.value.isEmpty,
                     snap: _selection.value.isEmpty,
                     pinned: true,
-                    actionsPadding: EdgeInsets.only(
-                      right: 24,
-                      top: 4,
-                      bottom: 4,
-                    ),
+                    actionsPadding: EdgeInsets.only(right: 28),
                     leading: drawer(context) != null
                         ? Builder(
                             builder: (context) {
@@ -1584,6 +1640,9 @@ class BrowserState extends State<Browser> {
                                   hintText: 'Search',
                                   border: InputBorder.none,
                                   isDense: true,
+                                  helperText: _searchResults.value.isNotEmpty
+                                      ? "${_searchResults.value.where((item) => item is RemoteFile && p.isDir(item.key)).isNotEmpty ? '${_searchResults.value.where((item) => item is RemoteFile && p.isDir(item.key)).length} Folders ' : ''}${_searchResults.value.where((item) => item is RemoteFile && !p.isDir(item.key)).isNotEmpty ? '${_searchResults.value.where((item) => item is RemoteFile && !p.isDir(item.key)).length} Files ' : ''}found"
+                                      : "No results found",
                                 ),
                                 onChanged: (value) {
                                   _selection.value = {};
@@ -1615,23 +1674,15 @@ class BrowserState extends State<Browser> {
 
                                   style: Theme.of(context).textTheme.bodySmall,
                                 )
-                              : _navIndex.value == 0 && widget.onPick == null
-                              ? _searching.value
-                                    ? Text(
-                                        "${_searchResults.value.where((item) => item is RemoteFile && p.isDir(item.key)).isNotEmpty ? '${_searchResults.value.where((item) => item is RemoteFile && p.isDir(item.key)).length} Folders ' : ''}${_searchResults.value.where((item) => item is RemoteFile && !p.isDir(item.key)).isNotEmpty ? '${_searchResults.value.where((item) => item is RemoteFile && !p.isDir(item.key)).length} Files ' : ''}found",
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      )
-                                    : Text(
-                                        _dirCount.value > 0 ||
-                                                _fileCount.value > 0
-                                            ? "${_dirCount.value > 0 ? '${_dirCount.value} Folders ' : ''}${_fileCount.value > 0 ? '${_fileCount.value} Files' : ''}"
-                                            : "Empty",
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      )
+                              : _navIndex.value == 0 &&
+                                    widget.onPick == null &&
+                                    !_searching.value
+                              ? Text(
+                                  _dirCount.value > 0 || _fileCount.value > 0
+                                      ? "${_dirCount.value > 0 ? '${_dirCount.value} Folders ' : ''}${_fileCount.value > 0 ? '${_fileCount.value} Files' : ''}"
+                                      : "Empty",
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                )
                               : SizedBox.shrink(),
                       ],
                     ),
@@ -1821,47 +1872,50 @@ class BrowserState extends State<Browser> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: Row(
-                                            children: [
-                                              Text(
-                                                _dirModified(_driveDir.value),
-                                                style: Theme.of(
-                                                  context,
-                                                ).textTheme.labelSmall,
-                                              ),
-                                              SizedBox(width: 6),
-                                              Text(
-                                                bytesToReadable(
-                                                  _dirSize(_driveDir.value),
+                                        if (uiConfigNotifier
+                                            .showDirectorySummary
+                                            .value)
+                                          SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: Row(
+                                              children: [
+                                                Text(
+                                                  _dirModified(_driveDir.value),
+                                                  style: Theme.of(
+                                                    context,
+                                                  ).textTheme.labelSmall,
                                                 ),
-                                                style: Theme.of(
-                                                  context,
-                                                ).textTheme.labelSmall,
-                                              ),
-                                              SizedBox(width: 6),
-                                              Text(
-                                                () {
-                                                  final count = _count(
-                                                    _driveDir.value,
-                                                    recursive: true,
-                                                  );
-                                                  if (count.$1 == 0) {
-                                                    return '${count.$2} files';
-                                                  }
-                                                  if (count.$2 == 0) {
-                                                    return '${count.$1} subfolders';
-                                                  }
-                                                  return '${count.$2} files in ${count.$1} subfolders';
-                                                }(),
-                                                style: Theme.of(
-                                                  context,
-                                                ).textTheme.labelSmall,
-                                              ),
-                                            ],
+                                                SizedBox(width: 6),
+                                                Text(
+                                                  bytesToReadable(
+                                                    _dirSize(_driveDir.value),
+                                                  ),
+                                                  style: Theme.of(
+                                                    context,
+                                                  ).textTheme.labelSmall,
+                                                ),
+                                                SizedBox(width: 6),
+                                                Text(
+                                                  () {
+                                                    final count = _count(
+                                                      _driveDir.value,
+                                                      recursive: true,
+                                                    );
+                                                    if (count.$1 == 0) {
+                                                      return '${count.$2} files';
+                                                    }
+                                                    if (count.$2 == 0) {
+                                                      return '${count.$1} subfolders';
+                                                    }
+                                                    return '${count.$2} files in ${count.$1} subfolders';
+                                                  }(),
+                                                  style: Theme.of(
+                                                    context,
+                                                  ).textTheme.labelSmall,
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
                                         if (_driveDir.value.key != '')
                                           SingleChildScrollView(
                                             scrollDirection: Axis.horizontal,
@@ -1962,9 +2016,12 @@ class BrowserState extends State<Browser> {
                                             ),
                                           ),
                                         if (Main.pathFromKey(
-                                              _driveDir.value.key,
-                                            ) !=
-                                            null)
+                                                  _driveDir.value.key,
+                                                ) !=
+                                                null &&
+                                            uiConfigNotifier
+                                                .showDirectoryBackupConfig
+                                                .value)
                                           Row(
                                             children: [
                                               Text(
