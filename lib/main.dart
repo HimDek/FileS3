@@ -171,8 +171,9 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: Listenable.merge([
-        uiConfigNotifier.accentColor,
         uiConfigNotifier.colorMode,
+        uiConfigNotifier.accentColor,
+        uiConfigNotifier.ultraDark,
       ]),
       builder: (context, child) {
         return DynamicColorBuilder(

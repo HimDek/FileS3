@@ -1755,7 +1755,6 @@ class BrowserState extends State<Browser> {
                                     )
                             : SizedBox.shrink(),
                       ),
-
                       // Select All
                       MyListenableBuilder(
                         name: 'browser_app_bar_actions_select_all',
@@ -1782,7 +1781,6 @@ class BrowserState extends State<Browser> {
                               )
                             : SizedBox.shrink(),
                       ),
-
                       // Clear Selection
                       MyListenableBuilder(
                         name: 'browser_app_bar_actions_clear_selection',
@@ -1803,7 +1801,6 @@ class BrowserState extends State<Browser> {
                               )
                             : SizedBox.shrink(),
                       ),
-
                       // Context Menu
                       MyListenableBuilder(
                         name: 'browser_app_bar_actions_context_menu',
@@ -1828,7 +1825,6 @@ class BrowserState extends State<Browser> {
                               )
                             : SizedBox.shrink(),
                       ),
-
                       // Paste
                       MyListenableBuilder(
                         name: 'browser_app_bar_actions_paste',
@@ -1850,7 +1846,6 @@ class BrowserState extends State<Browser> {
                               )
                             : SizedBox.shrink(),
                       ),
-
                       // Clear Selection
                       MyListenableBuilder(
                         name: 'browser_app_bar_actions_clear_selection',
@@ -1871,7 +1866,6 @@ class BrowserState extends State<Browser> {
                               )
                             : SizedBox.shrink(),
                       ),
-
                       // Search
                       MyListenableBuilder(
                         name: 'browser_app_bar_actions_search',
@@ -1906,7 +1900,6 @@ class BrowserState extends State<Browser> {
                               )
                             : SizedBox.shrink(),
                       ),
-
                       // Exit Search
                       MyListenableBuilder(
                         name: 'browser_app_bar_actions_exit_search',
@@ -1931,7 +1924,6 @@ class BrowserState extends State<Browser> {
                               )
                             : SizedBox.shrink(),
                       ),
-
                       // More Options
                       MyListenableBuilder(
                         name: 'browser_app_bar_actions_more_options',
@@ -1962,106 +1954,6 @@ class BrowserState extends State<Browser> {
                               )
                             : SizedBox.shrink(),
                       ),
-
-                      // Column(
-                      //   children: _selection.value.isNotEmpty
-                      //       ? _selectionAction.value == SelectionAction.none
-                      //             ? [
-                      //                 if (_selection.value.length <
-                      //                     _allSelectableItems.length)
-                      //                   IconButton(
-                      //                     onPressed: () {
-                      //                       _selection.value = {
-                      //                         ..._selection.value,
-                      //                         ..._allSelectableItems,
-                      //                       };
-                      //                     },
-                      //                     icon: const Icon(Icons.select_all),
-                      //                   ),
-                      //                 IconButton(
-                      //                   onPressed: () {
-                      //                     _selection.value = {};
-                      //                   },
-                      //                   icon: Icon(Icons.close),
-                      //                 ),
-                      //                 if (!loading.value)
-                      //                   IconButton(
-                      //                     onPressed: () async {
-                      //                       await Main.stopWatchers();
-                      //                       await _showContextMenu(null);
-                      //                     },
-                      //                     icon: Icon(Icons.more_vert),
-                      //                   ),
-                      //               ]
-                      //             : [
-                      //                 if (!loading.value)
-                      //                   IconButton(
-                      //                     onPressed: _paste(),
-                      //                     icon: const Icon(Icons.paste),
-                      //                   ),
-                      //                 IconButton(
-                      //                   onPressed: () {
-                      //                     _selectionAction.value =
-                      //                         SelectionAction.none;
-                      //                   },
-                      //                   icon: const Icon(Icons.close),
-                      //                 ),
-                      //               ]
-                      //       : [
-                      //           if (!loading.value &&
-                      //               widget.onPick == null) ...[
-                      //             if (!_searching.value ||
-                      //                 _searchController.text.trim().isNotEmpty)
-                      //               IconButton(
-                      //                 icon: _searching.value
-                      //                     ? Icon(Icons.backspace)
-                      //                     : Icon(Icons.search),
-                      //                 onPressed: _searching.value
-                      //                     ? () {
-                      //                         _selection.value = {};
-                      //                         _searchController.clear();
-                      //                         _search();
-                      //                       }
-                      //                     : () async {
-                      //                         _selection.value = {};
-                      //                         _searching.value = true;
-                      //                         _search();
-                      //                       },
-                      //               ),
-                      //             if (_searching.value)
-                      //               IconButton(
-                      //                 icon: const Icon(Icons.close),
-                      //                 onPressed: () {
-                      //                   _searching.value = false;
-                      //                   _selection.value = {};
-                      //                 },
-                      //               ),
-                      //           ],
-                      //           if (!_searching.value)
-                      //             IconButton(
-                      //               icon: const Icon(Icons.more_vert),
-                      //               onPressed: () {
-                      //                 showMenu(
-                      //                   context: context,
-                      //                   position: RelativeRect.fromLTRB(
-                      //                     1000,
-                      //                     60,
-                      //                     0,
-                      //                     0,
-                      //                   ),
-                      //                   menuPadding: EdgeInsets.zero,
-                      //                   items: [
-                      //                     PopupMenuItem(
-                      //                       padding: EdgeInsets.zero,
-                      //                       enabled: false,
-                      //                       child: _buildPopupMenu(context),
-                      //                     ),
-                      //                   ],
-                      //                 );
-                      //               },
-                      //             ),
-                      //         ],
-                      // ),
                     ],
                     bottom: _navIndex.value == 0
                         ? PreferredSize(
