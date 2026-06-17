@@ -179,26 +179,30 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
     String thumbPath,
   ) async {
     if (_thumbInflight.add(thumbPath)) {
-      final thumb = await _thumbQueue.withResource<TransferableTypedData>(
-        () => compute<(TransferableTypedData, int, int), TransferableTypedData>(
-          _genThumb,
-          (TransferableTypedData.fromList([png]), maxWidth, maxHeight),
-        ),
-      );
+      try {
+        final thumb = await _thumbQueue.withResource<TransferableTypedData>(
+          () =>
+              compute<(TransferableTypedData, int, int), TransferableTypedData>(
+                _genThumb,
+                (TransferableTypedData.fromList([png]), maxWidth, maxHeight),
+              ),
+        );
 
-      final file = File(thumbPath);
-      await file.parent.create(recursive: true);
+        final file = File(thumbPath);
+        await file.parent.create(recursive: true);
 
-      final tmp = File('${file.path}.tmp');
-      await tmp.writeAsBytes(thumb.materialize().asUint8List());
-      await tmp.rename(file.path);
-      _thumbInflight.remove(thumbPath);
+        final tmp = File('${file.path}.tmp');
+        await tmp.writeAsBytes(thumb.materialize().asUint8List());
+        await tmp.rename(file.path);
+      } finally {
+        _thumbInflight.remove(thumbPath);
+      }
     }
   }
 
-  static Future<TransferableTypedData> _genThumb(
+  static TransferableTypedData _genThumb(
     (TransferableTypedData, int, int) args,
-  ) async {
+  ) {
     final png = args.$1.materialize().asUint8List();
     final maxWidth = args.$2;
     final maxHeight = args.$3;
