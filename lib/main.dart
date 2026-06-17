@@ -370,7 +370,7 @@ class _HomeState extends State<Home> {
         ? Directory(Main.cachePathFromKey(key))
         : File(Main.cachePathFromKey(key));
     if (e.existsSync()) {
-      e.deleteSync();
+      e.deleteSync(recursive: true);
     }
   }
 

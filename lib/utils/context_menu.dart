@@ -542,6 +542,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         : null;
   }
 
+  @override
   Future<String> Function()? deleteCache(bool? yes) {
     return (yes ?? false) && deleteCacheDirectory != null && cacheExist()
         ? () async {
@@ -3291,8 +3292,9 @@ Widget buildBulkContextMenu(
                               : null,
                           onTap: option.action != null
                               ? () async {
-                                  if (option.popOnInvoked)
+                                  if (option.popOnInvoked) {
                                     globalNavigator?.pop();
+                                  }
                                   await option.action!(context);
                                   onInvoked?.call();
                                 }
