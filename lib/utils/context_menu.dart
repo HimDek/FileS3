@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:files3/info_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
@@ -956,26 +957,23 @@ class FileContextOption {
     popOnInvoked: true,
   );
 
-  static List<FileContextOption> allOptions(
+  static List<List<FileContextOption>> allOptions(
     BuildContext context,
     FileContextActionHandler handler,
     Function(RemoteFile)? cutKey,
     Function(RemoteFile)? copyKey,
   ) {
     return [
-      open(handler),
-      download(handler),
-      saveAs(handler, context),
-      share(handler),
-      copyLink(handler, context),
-      cut(handler, cutKey),
-      copy(handler, copyKey),
-      rename(handler, context),
-      if (handler.removable())
-        deleteUploaded(handler, context)
-      else if (handler.downloaded())
-        deleteLocal(handler, context),
-      delete(handler, context),
+      [open(handler), download(handler), saveAs(handler, context)],
+      [share(handler), copyLink(handler, context)],
+      [cut(handler, cutKey), copy(handler, copyKey), rename(handler, context)],
+      [
+        if (handler.removable())
+          deleteUploaded(handler, context)
+        else if (handler.downloaded())
+          deleteLocal(handler, context),
+        delete(handler, context),
+      ],
     ];
   }
 }
@@ -1338,7 +1336,7 @@ class FilesContextOption {
     popOnInvoked: true,
   );
 
-  static List<FilesContextOption> allOptions(
+  static List<List<FilesContextOption>> allOptions(
     BuildContext context,
     FilesContextActionHandler handler,
     Function(RemoteFile?)? cutKey,
@@ -1346,17 +1344,16 @@ class FilesContextOption {
     Function() clearSelection,
   ) {
     return [
-      downloadAll(handler),
-      saveAllTo(context, handler),
-      shareAll(handler),
-      copyAllLinks(context, handler),
-      cut(cutKey),
-      copy(copyKey),
-      if (handler.removableFiles().isNotEmpty)
-        deleteUploaded(context, handler, handler.removableFiles()),
-      if (handler.downloadedFiles().isNotEmpty)
-        deleteLocalAll(context, handler, handler.downloadedFiles()),
-      deleteAll(context, handler, clearSelection),
+      [downloadAll(handler), saveAllTo(context, handler)],
+      [shareAll(handler), copyAllLinks(context, handler)],
+      [cut(cutKey), copy(copyKey)],
+      [
+        if (handler.removableFiles().isNotEmpty)
+          deleteUploaded(context, handler, handler.removableFiles()),
+        if (handler.downloadedFiles().isNotEmpty)
+          deleteLocalAll(context, handler, handler.downloadedFiles()),
+        deleteAll(context, handler, clearSelection),
+      ],
     ];
   }
 }
@@ -1653,23 +1650,25 @@ class DirectoryContextOption {
     popOnInvoked: true,
   );
 
-  static List<DirectoryContextOption> allOptions(
+  static List<List<DirectoryContextOption>> allOptions(
     BuildContext context,
     DirectoryContextActionHandler handler,
     Function(RemoteFile)? cutKey,
     Function(RemoteFile)? copyKey,
   ) {
     return [
-      open(handler),
-      download(handler),
-      saveTo(handler, context),
-      cut(handler, cutKey),
-      copy(handler, copyKey),
-      if (handler.rename('any name') != null) rename(context, handler),
-      if (handler.removableFiles().isNotEmpty)
-        deleteUploaded(context, handler, handler.removableFiles()),
-      if (handler.localExists()) deleteLocal(context, handler),
-      delete(context, handler),
+      [open(handler), download(handler), saveTo(handler, context)],
+      [
+        cut(handler, cutKey),
+        copy(handler, copyKey),
+        if (handler.rename('any name') != null) rename(context, handler),
+      ],
+      [
+        if (handler.removableFiles().isNotEmpty)
+          deleteUploaded(context, handler, handler.removableFiles()),
+        if (handler.localExists()) deleteLocal(context, handler),
+        delete(context, handler),
+      ],
     ];
   }
 }
@@ -1994,7 +1993,7 @@ class DirectoriesContextOption {
     popOnInvoked: true,
   );
 
-  static List<DirectoriesContextOption> allOptions(
+  static List<List<DirectoriesContextOption>> allOptions(
     BuildContext context,
     DirectoriesContextActionHandler handler,
     Function(RemoteFile?)? cutKey,
@@ -2002,15 +2001,15 @@ class DirectoriesContextOption {
     Function() clearSelection,
   ) {
     return [
-      downloadAll(handler),
-      saveAllTo(handler, context),
-      cut(cutKey),
-      copy(copyKey),
-      if (handler.removableFiles().isNotEmpty)
-        deleteUploaded(handler, context, handler.removableFiles()),
-      if (handler.localDirectories().isNotEmpty)
-        deleteLocal(handler, context, handler.localDirectories()),
-      deleteAll(handler, context, clearSelection),
+      [downloadAll(handler), saveAllTo(handler, context)],
+      [cut(cutKey), copy(copyKey)],
+      [
+        if (handler.removableFiles().isNotEmpty)
+          deleteUploaded(handler, context, handler.removableFiles()),
+        if (handler.localDirectories().isNotEmpty)
+          deleteLocal(handler, context, handler.localDirectories()),
+        deleteAll(handler, context, clearSelection),
+      ],
     ];
   }
 }
@@ -2398,7 +2397,7 @@ class BulkContextOption {
     popOnInvoked: true,
   );
 
-  static List<BulkContextOption> allOptions(
+  static List<List<BulkContextOption>> allOptions(
     Function(RemoteFile?)? cutKey,
     Function(RemoteFile?)? copyKey,
     DirectoriesContextActionHandler directoriesHandler,
@@ -2407,17 +2406,20 @@ class BulkContextOption {
     Function() clearSelection,
   ) {
     return [
-      downloadAll(directoriesHandler, filesHandler),
-      saveAllTo(directoriesHandler, filesHandler, context),
-      cut(cutKey),
-      copy(copyKey),
-      if (directoriesHandler.removableFiles().isNotEmpty ||
-          filesHandler.removableFiles().isNotEmpty)
-        deleteUploaded(directoriesHandler, filesHandler, context),
-      if (directoriesHandler.localDirectories().isNotEmpty ||
-          filesHandler.downloadedFiles().isNotEmpty)
-        deleteLocalAll(directoriesHandler, filesHandler, context),
-      deleteAll(directoriesHandler, filesHandler, context, clearSelection),
+      [
+        downloadAll(directoriesHandler, filesHandler),
+        saveAllTo(directoriesHandler, filesHandler, context),
+      ],
+      [cut(cutKey), copy(copyKey)],
+      [
+        if (directoriesHandler.removableFiles().isNotEmpty ||
+            filesHandler.removableFiles().isNotEmpty)
+          deleteUploaded(directoriesHandler, filesHandler, context),
+        if (directoriesHandler.localDirectories().isNotEmpty ||
+            filesHandler.downloadedFiles().isNotEmpty)
+          deleteLocalAll(directoriesHandler, filesHandler, context),
+        deleteAll(directoriesHandler, filesHandler, context, clearSelection),
+      ],
     ];
   }
 }
@@ -2449,17 +2451,18 @@ Widget buildFileContextMenu(
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: M3ECard(
           index: 0,
           position: M3ECardPosition.single,
-          outerRadius: 24,
+          outerRadius: 18,
           innerRadius: 4,
           gap: 3,
           padding: EdgeInsets.zero,
           color: Colors.transparent,
           child: ListTile(
             visualDensity: VisualDensity.comfortable,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
             leading: Icon(mediaTypeIcon(mediaType)),
             title: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -2470,14 +2473,14 @@ Widget buildFileContextMenu(
               children: [
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      Text(timeToReadable(item.lastModified!)),
-                      const SizedBox(width: 8),
-                      Text(bytesToReadable(item.size)),
-                      const SizedBox(width: 8),
-                      Text(p.extension(item.key)),
-                    ],
+                  child: InfoRow(
+                    file: item,
+                    uiConfig: UiConfig(
+                      showTime: true,
+                      showSize: true,
+                      showDownloadStatus: false,
+                      showType: true,
+                    ),
                   ),
                 ),
                 Text('MD5: ${item.etag}'),
@@ -2486,47 +2489,47 @@ Widget buildFileContextMenu(
           ),
         ),
       ),
-      M3ECardColumn(
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        padding: EdgeInsets.zero,
-        color: Color.alphaBlend(
-          Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-          Colors.white,
+      ...(FileContextOption.allOptions(context, handler, cut, copy).map(
+        (options) => M3ECardColumn(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          padding: EdgeInsets.zero,
+          outerRadius: 14,
+          color: Colors.transparent,
+          children: options
+              .map(
+                (option) => ListTile(
+                  visualDensity: VisualDensity.comfortable,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 0,
+                  ),
+                  leading: Icon(option.icon),
+                  title: Text(option.title),
+                  subtitle: option.subtitle != null
+                      ? SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Text(option.subtitle!),
+                        )
+                      : null,
+                  trailing: option.secondaryAction != null
+                      ? IconButton(
+                          onPressed: option.secondaryAction,
+                          icon: Icon(option.secondaryIcon),
+                        )
+                      : null,
+                  onTap: option.action == null
+                      ? null
+                      : () async {
+                          if (option.popOnInvoked) globalNavigator?.pop();
+                          await option.action!();
+                          onInvoked?.call();
+                        },
+                  enabled: option.action != null,
+                ),
+              )
+              .toList(),
         ),
-        children: [
-          for (final option in FileContextOption.allOptions(
-            context,
-            handler,
-            cut,
-            copy,
-          ))
-            ListTile(
-              visualDensity: VisualDensity.comfortable,
-              leading: Icon(option.icon),
-              title: Text(option.title),
-              subtitle: option.subtitle != null
-                  ? SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Text(option.subtitle!),
-                    )
-                  : null,
-              trailing: option.secondaryAction != null
-                  ? IconButton(
-                      onPressed: option.secondaryAction,
-                      icon: Icon(option.secondaryIcon),
-                    )
-                  : null,
-              onTap: option.action == null
-                  ? null
-                  : () async {
-                      if (option.popOnInvoked) globalNavigator?.pop();
-                      await option.action!();
-                      onInvoked?.call();
-                    },
-              enabled: option.action != null,
-            ),
-        ],
-      ),
+      )),
     ],
   );
 }
@@ -2554,13 +2557,8 @@ Widget buildFilesContextMenu(
     deleteLocalFile: deleteLocal,
     deleteFiles: deleteFiles,
   );
-  return M3ECardColumn(
-    margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    padding: EdgeInsets.zero,
-    color: Color.alphaBlend(
-      Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-      Colors.white,
-    ),
+  return Column(
+    mainAxisSize: MainAxisSize.min,
     children:
         FilesContextOption.allOptions(
               context,
@@ -2570,27 +2568,41 @@ Widget buildFilesContextMenu(
               clearSelection,
             )
             .map(
-              (option) => ListTile(
-                visualDensity: VisualDensity.comfortable,
-                leading: Icon(option.icon),
-                title: Text(option.title),
-                subtitle: option.subtitle != null
-                    ? Text(option.subtitle!)
-                    : null,
-                trailing: option.secondaryAction != null
-                    ? IconButton(
-                        onPressed: option.secondaryAction,
-                        icon: Icon(option.secondaryIcon),
-                      )
-                    : null,
-                onTap: option.action != null
-                    ? () async {
-                        if (option.popOnInvoked) globalNavigator?.pop();
-                        await option.action!();
-                        onInvoked?.call();
-                      }
-                    : null,
-                enabled: option.action != null,
+              (options) => M3ECardColumn(
+                margin: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: EdgeInsets.zero,
+                outerRadius: 14,
+                color: Colors.transparent,
+                children: options
+                    .map(
+                      (option) => ListTile(
+                        visualDensity: VisualDensity.comfortable,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 0,
+                        ),
+                        leading: Icon(option.icon),
+                        title: Text(option.title),
+                        subtitle: option.subtitle != null
+                            ? Text(option.subtitle!)
+                            : null,
+                        trailing: option.secondaryAction != null
+                            ? IconButton(
+                                onPressed: option.secondaryAction,
+                                icon: Icon(option.secondaryIcon),
+                              )
+                            : null,
+                        onTap: option.action != null
+                            ? () async {
+                                if (option.popOnInvoked) globalNavigator?.pop();
+                                await option.action!();
+                                onInvoked?.call();
+                              }
+                            : null,
+                        enabled: option.action != null,
+                      ),
+                    )
+                    .toList(),
               ),
             )
             .toList(),
@@ -2607,9 +2619,6 @@ Widget buildDirectoryContextMenu(
   Future<void> Function(List<String>, List<String>)? moveDirectories,
   Function(String)? deleteLocal,
   Future<void> Function(List<String>)? deleteDirectories,
-  (int, int) Function(RemoteFile, {bool recursive}) countContent,
-  int Function(RemoteFile) dirSize,
-  String Function(RemoteFile) dirModified,
   void Function()? onInvoked,
 ) {
   DirectoryContextActionHandler handler = DirectoryContextActionHandler(
@@ -2624,22 +2633,18 @@ Widget buildDirectoryContextMenu(
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: M3ECard(
           index: 0,
           position: M3ECardPosition.single,
-          outerRadius: 24,
+          outerRadius: 14,
           innerRadius: 4,
           gap: 3,
           padding: EdgeInsets.zero,
-          color: p.split(file.key).length == 1
-              ? Color.alphaBlend(
-                  Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-                  Colors.white,
-                )
-              : null,
+          color: Colors.transparent,
           child: ListTile(
             visualDensity: VisualDensity.comfortable,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
             leading: Icon(Icons.cloud_circle_rounded),
             title: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -2647,23 +2652,14 @@ Widget buildDirectoryContextMenu(
             ),
             subtitle: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  Text(dirModified(file)),
-                  SizedBox(width: 8),
-                  Text(bytesToReadable(dirSize(file))),
-                  SizedBox(width: 8),
-                  Text(() {
-                    final count = countContent(file, recursive: true);
-                    if (count.$1 == 0) {
-                      return '${count.$2} files';
-                    }
-                    if (count.$2 == 0) {
-                      return '${count.$1} subfolders';
-                    }
-                    return '${count.$2} files in ${count.$1} subfolders';
-                  }()),
-                ],
+              child: InfoRow(
+                file: file,
+                uiConfig: UiConfig(
+                  showTime: true,
+                  showSize: true,
+                  showDownloadStatus: false,
+                  showContent: true,
+                ),
               ),
             ),
             onTap:
@@ -2697,37 +2693,46 @@ Widget buildDirectoryContextMenu(
             Main.listDirectories();
             globalNavigator!.pop();
           },
+          margin: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          outerRadius: 14,
+          visualDensity: VisualDensity.comfortable,
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
         ),
-      M3ECardColumn(
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        padding: EdgeInsets.zero,
-        color: Color.alphaBlend(
-          Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-          Colors.white,
+      ...(DirectoryContextOption.allOptions(context, handler, cut, copy).map(
+        (options) => M3ECardColumn(
+          margin: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: EdgeInsets.zero,
+          outerRadius: 14,
+          color: Colors.transparent,
+          children: options
+              .map(
+                (option) => ListTile(
+                  visualDensity: VisualDensity.comfortable,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 0,
+                  ),
+                  leading: Icon(option.icon),
+                  title: Text(option.title),
+                  subtitle: option.subtitle != null
+                      ? SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Text(option.subtitle!),
+                        )
+                      : null,
+                  onTap: option.action != null
+                      ? () async {
+                          if (option.popOnInvoked) globalNavigator?.pop();
+                          await option.action!();
+                          onInvoked?.call();
+                        }
+                      : null,
+                  enabled: option.action != null,
+                ),
+              )
+              .toList(),
         ),
-        children: DirectoryContextOption.allOptions(context, handler, cut, copy)
-            .map(
-              (option) => ListTile(
-                leading: Icon(option.icon),
-                title: Text(option.title),
-                subtitle: option.subtitle != null
-                    ? SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Text(option.subtitle!),
-                      )
-                    : null,
-                onTap: option.action != null
-                    ? () async {
-                        if (option.popOnInvoked) globalNavigator?.pop();
-                        await option.action!();
-                        onInvoked?.call();
-                      }
-                    : null,
-                enabled: option.action != null,
-              ),
-            )
-            .toList(),
-      ),
+      )),
     ],
   );
 }
@@ -2753,13 +2758,7 @@ Widget buildDirectoriesContextMenu(
     deleteLocalDirectory: deleteLocal,
     deleteDirectories: deleteDirectories,
   );
-  return M3ECardColumn(
-    margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    padding: EdgeInsets.zero,
-    color: Color.alphaBlend(
-      Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-      Colors.white,
-    ),
+  return Column(
     children:
         DirectoriesContextOption.allOptions(
               context,
@@ -2769,20 +2768,35 @@ Widget buildDirectoriesContextMenu(
               clearSelection,
             )
             .map(
-              (option) => ListTile(
-                leading: Icon(option.icon),
-                title: Text(option.title),
-                subtitle: option.subtitle != null
-                    ? Text(option.subtitle!)
-                    : null,
-                onTap: option.action != null
-                    ? () async {
-                        if (option.popOnInvoked) globalNavigator?.pop();
-                        await option.action!();
-                        onInvoked?.call();
-                      }
-                    : null,
-                enabled: option.action != null,
+              (options) => M3ECardColumn(
+                margin: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: EdgeInsets.zero,
+                outerRadius: 14,
+                color: Colors.transparent,
+                children: options
+                    .map(
+                      (option) => ListTile(
+                        visualDensity: VisualDensity.comfortable,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 0,
+                        ),
+                        leading: Icon(option.icon),
+                        title: Text(option.title),
+                        subtitle: option.subtitle != null
+                            ? Text(option.subtitle!)
+                            : null,
+                        onTap: option.action != null
+                            ? () async {
+                                if (option.popOnInvoked) globalNavigator?.pop();
+                                await option.action!();
+                                onInvoked?.call();
+                              }
+                            : null,
+                        enabled: option.action != null,
+                      ),
+                    )
+                    .toList(),
               ),
             )
             .toList(),
@@ -2855,13 +2869,7 @@ Widget buildBulkContextMenu(
       deleteLocalFile: deleteLocal,
       deleteFiles: deleteFiles,
     );
-    return M3ECardColumn(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      padding: EdgeInsets.zero,
-      color: Color.alphaBlend(
-        Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-        Colors.white,
-      ),
+    return Column(
       children:
           BulkContextOption.allOptions(
                 cut,
@@ -2872,20 +2880,36 @@ Widget buildBulkContextMenu(
                 clearSelection,
               )
               .map(
-                (option) => ListTile(
-                  leading: Icon(option.icon),
-                  title: Text(option.title),
-                  subtitle: option.subtitle != null
-                      ? Text(option.subtitle!)
-                      : null,
-                  onTap: option.action != null
-                      ? () async {
-                          if (option.popOnInvoked) globalNavigator?.pop();
-                          await option.action!(context);
-                          onInvoked?.call();
-                        }
-                      : null,
-                  enabled: option.action != null,
+                (options) => M3ECardColumn(
+                  margin: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: EdgeInsets.zero,
+                  outerRadius: 14,
+                  color: Colors.transparent,
+                  children: options
+                      .map(
+                        (option) => ListTile(
+                          visualDensity: VisualDensity.comfortable,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 0,
+                          ),
+                          leading: Icon(option.icon),
+                          title: Text(option.title),
+                          subtitle: option.subtitle != null
+                              ? Text(option.subtitle!)
+                              : null,
+                          onTap: option.action != null
+                              ? () async {
+                                  if (option.popOnInvoked)
+                                    globalNavigator?.pop();
+                                  await option.action!(context);
+                                  onInvoked?.call();
+                                }
+                              : null,
+                          enabled: option.action != null,
+                        ),
+                      )
+                      .toList(),
                 ),
               )
               .toList(),

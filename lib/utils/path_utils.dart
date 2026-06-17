@@ -12,7 +12,7 @@ String Function(String) convert = (String path) =>
     : path;
 
 bool Function(String) isDir = (String path) =>
-    path.endsWith('/') || path.endsWith('\\');
+    path.endsWith('/') || path.endsWith('\\') || path.isEmpty;
 
 String Function(String) asDir = (String path) =>
     isDir(path) ? path : '$path${p.separator}';

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:async';
+import 'package:files3/info_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart';
@@ -435,7 +436,7 @@ class MyBrowserState extends BrowserState {
               onTap: () {
                 _navIndex.value = 0;
                 _controlsVisible.value = true;
-                _driveDir.value = const RemoteFile(key: '', size: 0, etag: '');
+                _driveDir.value = RemoteFile(key: '', etag: '');
                 Navigator.of(context).pop();
               },
             ),
@@ -452,7 +453,10 @@ class MyBrowserState extends BrowserState {
               clipBehavior: Clip.antiAlias,
               margin: EdgeInsets.symmetric(horizontal: 12),
               child: ListTile(
-                title: Text(pinned.key),
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(pinned.key),
+                ),
                 leading: Icon(
                   _navIndex.value == 0 && _driveDir.value.key == pinned.value
                       ? Icons.folder
@@ -503,7 +507,7 @@ class Browser extends StatefulWidget {
   final Widget title;
   final Widget? subtitle;
   final Function()? onInit;
-  final RemoteFile initialDir;
+  final RemoteFile? initialDir;
   final Widget? drawer;
   final Widget? floatingActionButton;
   final Widget? bottomNavigationBar;
@@ -528,7 +532,7 @@ class Browser extends StatefulWidget {
     super.key,
     this.title = const Text('Select Path'),
     this.subtitle,
-    this.initialDir = const RemoteFile(key: '', size: 0, etag: ''),
+    this.initialDir,
     this.onInit,
     this.drawer,
     this.floatingActionButton,
@@ -572,7 +576,7 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<bool> _thumbVisibility = ValueNotifier(false);
   final ValueNotifier<Profile?> _profile = ValueNotifier(null);
   final ValueNotifier<RemoteFile> _driveDir = ValueNotifier(
-    const RemoteFile(key: '', size: 0, etag: ''),
+    RemoteFile(key: '', etag: ''),
   );
   final ValueNotifier<ListOptions> _listOptions = ValueNotifier(ListOptions());
   final ValueNotifier<SelectionAction> _selectionAction = ValueNotifier(
@@ -591,50 +595,11 @@ class BrowserState extends State<Browser> {
 
   double _lastScrollOffset = 0;
 
-  String _dirModified(RemoteFile dir) {
-    DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
-    for (final file in Main.remoteFiles.where(
-      (file) => p.isWithin(dir.key, file.key) && !p.isDir(file.key),
-    )) {
-      if (file.lastModified!.isAfter(latest)) {
-        latest = file.lastModified!;
-      }
-    }
-    return timeToReadable(latest);
-  }
-
-  (int, int) _count(RemoteFile dir, {bool recursive = false}) {
-    int dirCount = 0;
-    int fileCount = 0;
-    for (final file in Main.remoteFiles) {
-      if (p.isWithin(dir.key, file.key) &&
-          file.key != dir.key &&
-          (recursive || p.s3(p.dirname(file.key)) == p.s3(dir.key))) {
-        if (p.isDir(file.key)) {
-          dirCount += 1;
-        } else {
-          fileCount += 1;
-        }
-      }
-    }
-    return (dirCount, fileCount);
-  }
-
-  int _dirSize(RemoteFile dir) {
-    int size = 0;
-    for (final file in Main.remoteFiles) {
-      if (p.isWithin(dir.key, file.key)) {
-        size += file.size;
-      }
-    }
-    return size;
-  }
-
-  void _updateCounts() {
+  Future<void> _updateCounts() async {
     _dirCount.value = 0;
     _fileCount.value = 0;
 
-    final counts = _count(_driveDir.value, recursive: false);
+    final counts = await _driveDir.value.getCount(recursive: false);
     _dirCount.value = counts.$1;
     _fileCount.value = counts.$2;
     if (_driveDir.value.key == '') {
@@ -727,9 +692,7 @@ class BrowserState extends State<Browser> {
         }();
       }
     }
-    _driveDir.value = ndir.isEmpty
-        ? RemoteFile(key: '', size: 0, etag: '')
-        : dir;
+    _driveDir.value = ndir.isEmpty ? RemoteFile(key: '', etag: '') : dir;
     _profile.value = Main.profileFromKey(_driveDir.value.key);
     _updateCounts();
     _scrollToFile(oldDir);
@@ -1093,9 +1056,6 @@ class BrowserState extends State<Browser> {
                     : (List<String> dirs) async => await widget
                           .deleteDirectories
                           ?.call(dirs, refresh: true),
-                _count,
-                _dirSize,
-                _dirModified,
                 () {
                   rebuild.notifyListeners();
                 },
@@ -1334,10 +1294,9 @@ class BrowserState extends State<Browser> {
 
   @override
   void initState() {
-    _driveDir.value = widget.initialDir;
     super.initState();
     widget.onInit?.call();
-    _changeDirectory(widget.initialDir);
+    _changeDirectory(widget.initialDir ?? RemoteFile(key: '', etag: ''));
 
     _profile.addListener(() {
       if (_profile.value != null) {
@@ -1379,6 +1338,18 @@ class BrowserState extends State<Browser> {
       }
     });
 
+    _currentItemsNotifiers = Listenable.merge([
+      _navIndex,
+      _driveDir,
+      _searching,
+      _searchResults,
+      Main.onRemoteFilesChanged,
+      Job.jobs,
+      Job.onProgressUpdate,
+    ]);
+
+    _currentItemsNotifiers.addListener(_setCurrentItems);
+
     Listenable.merge([
       _navIndex,
       _driveDir,
@@ -1396,33 +1367,29 @@ class BrowserState extends State<Browser> {
       _listOptions,
     ]).addListener(_applyListOptions);
 
-    _currentItemsNotifiers = Listenable.merge([
-      _navIndex,
-      _driveDir,
-      _searching,
-      _searchResults,
-      Main.onRemoteFilesChanged,
-      Job.jobs,
-      Job.onProgressUpdate,
-    ]);
-
-    _currentItemsNotifiers.addListener(_setCurrentItems);
-
     Main.onRemoteFilesChanged.addListener(_updateCounts);
 
     if (IniManager.config.value == null) {
-      IniManager.config.addListener(() {
-        if (IniManager.config.value != null) {
-          _fetchListOptions();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        IniManager.config.addListener(() {
+          if (IniManager.config.value != null) {
+            _fetchListOptions();
+          }
+        });
+        if (!loading.value) {
+          _setCurrentItems();
+          _applyListOptions();
+        }
+      });
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fetchListOptions();
+        if (!loading.value) {
+          _setCurrentItems();
+          _applyListOptions();
         }
       });
     }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!loading.value) {
-        Main.listDirectories();
-      }
-    });
   }
 
   @override
@@ -1588,7 +1555,7 @@ class BrowserState extends State<Browser> {
                     floating: _selection.value.isEmpty,
                     snap: _selection.value.isEmpty,
                     pinned: true,
-                    actionsPadding: EdgeInsets.only(right: 28),
+                    actionsPadding: EdgeInsets.only(right: 6),
                     leading: drawer(context) != null
                         ? MyListenableBuilder(
                             name: 'browser_app_bar_leading',
@@ -2021,43 +1988,19 @@ class BrowserState extends State<Browser> {
                                 if (uiConfigNotifier.showDirectorySummary.value)
                                   SingleChildScrollView(
                                     scrollDirection: Axis.horizontal,
-                                    child: Row(
-                                      children: [
-                                        Text(
-                                          _dirModified(_driveDir.value),
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.labelSmall,
-                                        ),
-                                        SizedBox(width: 6),
-                                        Text(
-                                          bytesToReadable(
-                                            _dirSize(_driveDir.value),
-                                          ),
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.labelSmall,
-                                        ),
-                                        SizedBox(width: 6),
-                                        Text(
-                                          () {
-                                            final count = _count(
-                                              _driveDir.value,
-                                              recursive: true,
-                                            );
-                                            if (count.$1 == 0) {
-                                              return '${count.$2} files';
-                                            }
-                                            if (count.$2 == 0) {
-                                              return '${count.$1} subfolders';
-                                            }
-                                            return '${count.$2} files in ${count.$1} subfolders';
-                                          }(),
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.labelSmall,
-                                        ),
-                                      ],
+                                    child: InfoRow(
+                                      file: _driveDir.value,
+                                      uiConfig: UiConfig(
+                                        showTime: true,
+                                        showSize: true,
+                                        showDownloadStatus: true,
+                                        showContent: true,
+                                      ),
+                                      spacing: 6,
+                                      iconSize: 14,
+                                      textStyle: Theme.of(
+                                        context,
+                                      ).textTheme.labelSmall,
                                     ),
                                   ),
                                 if (_driveDir.value.key != '')
@@ -2123,9 +2066,24 @@ class BrowserState extends State<Browser> {
                                                         },
                                                         child: Text(
                                                           dir,
-                                                          style: Theme.of(
-                                                            context,
-                                                          ).textTheme.bodyLarge,
+                                                          style: Theme.of(context)
+                                                              .textTheme
+                                                              .bodyLarge
+                                                              ?.copyWith(
+                                                                color:
+                                                                    p.asDir(
+                                                                          dir,
+                                                                        ) ==
+                                                                        p.basename(
+                                                                          _driveDir
+                                                                              .value
+                                                                              .key,
+                                                                        )
+                                                                    ? Theme.of(
+                                                                        context,
+                                                                      ).colorScheme.primary
+                                                                    : null,
+                                                              ),
                                                         ),
                                                       ),
                                                     )
@@ -2245,9 +2203,6 @@ class BrowserState extends State<Browser> {
                           await _showContextMenu(file);
                         }
                       : null,
-                  count: _count,
-                  dirSize: _dirSize,
-                  dirModified: _dirModified,
                 ),
                 MyListenableBuilder(
                   listenable: _driveDir,

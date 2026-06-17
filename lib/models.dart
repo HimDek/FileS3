@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 
 class FileProps {
@@ -138,15 +139,74 @@ class BackupMode {
 
 class RemoteFile {
   final String key;
-  final int size;
+  int _size;
   final String etag;
-  final DateTime? lastModified;
-  const RemoteFile({
+  DateTime? _lastModified;
+  (int, int) _count = (0, 1);
+
+  RemoteFile({
     required this.key,
-    required this.size,
+    int size = 0,
     required this.etag,
-    this.lastModified,
-  });
+    lastModified,
+  }) : _size = size,
+       _lastModified = lastModified;
+
+  int get size => _size;
+  DateTime? get lastModified => _lastModified;
+  (int, int) get count => _count;
+
+  Future<int> getSize() async {
+    if (!p.isDir(key)) {
+      return _size;
+    }
+    int size = 0;
+    for (final file in Main.remoteFiles.where(
+      (file) => p.isWithin(key, file.key) && !p.isDir(file.key),
+    )) {
+      size += file.size;
+    }
+    _size = size;
+    return size;
+  }
+
+  Future<DateTime?> getLastModified() async {
+    if (!p.isDir(key)) {
+      return _lastModified;
+    }
+    DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
+    for (final file in Main.remoteFiles.where(
+      (file) => p.isWithin(key, file.key) && !p.isDir(file.key),
+    )) {
+      if (file.lastModified!.isAfter(latest)) {
+        latest = file.lastModified!;
+      }
+    }
+    _lastModified = latest;
+    return latest == DateTime.fromMillisecondsSinceEpoch(0) ? null : latest;
+  }
+
+  Future<(int, int)> getCount({bool recursive = false}) async {
+    if (!p.isDir(key)) {
+      return (0, 1);
+    }
+    int dirCount = 0;
+    int fileCount = 0;
+    for (final file in Main.remoteFiles.where(
+      (file) =>
+          p.isWithin(key, file.key) &&
+          file.key != key &&
+          (recursive || p.s3(p.dirname(file.key)) == p.s3(key)),
+    )) {
+      if (p.isDir(file.key)) {
+        dirCount += 1;
+      } else {
+        fileCount += 1;
+      }
+    }
+    _count = (dirCount, fileCount);
+    return (dirCount, fileCount);
+  }
 
   @override
   String toString() {

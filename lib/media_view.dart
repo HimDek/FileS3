@@ -1152,7 +1152,6 @@ class GalleryState extends State<Gallery> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      actionsPadding: EdgeInsets.only(right: 28),
                       actions: [
                         IconButton(
                           icon: const Icon(Icons.more_vert_rounded),
@@ -1452,7 +1451,6 @@ class ExternalFileViewState extends State<ExternalFileView> {
                       scrollDirection: Axis.horizontal,
                       child: Text(p.basename(_path.value ?? widget.path)),
                     ),
-                    actionsPadding: EdgeInsets.only(right: 28),
                     actions: [
                       IconButton(
                         icon: const Icon(Icons.more_vert_rounded),

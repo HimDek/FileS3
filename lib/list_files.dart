@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'package:collection/collection.dart';
+import 'package:files3/info_row.dart';
 import 'package:flutter/material.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -127,9 +127,6 @@ class ListFiles extends StatefulWidget {
   final Function(RemoteFile) changeDirectory;
   final void Function()? Function(RemoteFile) getSelectAction;
   final Function(RemoteFile)? showContextMenu;
-  final (int, int) Function(RemoteFile, {bool recursive}) count;
-  final int Function(RemoteFile) dirSize;
-  final String Function(RemoteFile) dirModified;
 
   static void Function()? setSelectActionDefault(RemoteFile file) => () {};
 
@@ -148,9 +145,6 @@ class ListFiles extends StatefulWidget {
     required this.changeDirectory,
     this.getSelectAction = setSelectActionDefault,
     this.showContextMenu,
-    required this.count,
-    required this.dirSize,
-    required this.dirModified,
   });
 
   @override
@@ -158,7 +152,6 @@ class ListFiles extends StatefulWidget {
 }
 
 class ListFilesState extends State<ListFiles> {
-  final Map<String, bool> _fileDownloadedCache = {};
   final ValueNotifier<List<MapEntry<String, List<FileProps>>>> _groups =
       ValueNotifier([]);
 
@@ -320,6 +313,7 @@ class ListFilesState extends State<ListFiles> {
               visualDensity: MediaQuery.of(context).size.width < 600
                   ? VisualDensity.compact
                   : VisualDensity.standard,
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
               selected: widget.selection.value.any(
                 (selected) =>
                     selected.key == item.key ||
@@ -359,87 +353,7 @@ class ListFilesState extends State<ListFiles> {
                         if (uiConfigNotifier.dirListInfo)
                           SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
-                            child: Row(
-                              spacing: 8,
-                              children: [
-                                if (uiConfigNotifier.showTime.value)
-                                  Text(widget.dirModified(item.file!)),
-                                if (uiConfigNotifier.showSize.value)
-                                  Text(
-                                    bytesToReadable(widget.dirSize(item.file!)),
-                                  ),
-                                if (uiConfigNotifier.showDownloadStatus.value)
-                                  FutureBuilder<void>(
-                                    future: () async {
-                                      for (var file in Main.remoteFiles.where(
-                                        (f) =>
-                                            p.isWithin(item.key, f.key) &&
-                                            !p.isDir(f.key),
-                                      )) {
-                                        _fileDownloadedCache[file.key] =
-                                            await File(
-                                              Main.pathFromKey(file.key) ??
-                                                  file.key,
-                                            ).exists();
-                                      }
-                                    }(),
-                                    builder: (context, snapshot) {
-                                      if (snapshot.connectionState ==
-                                              ConnectionState.waiting &&
-                                          _fileDownloadedCache.keys.any(
-                                            (key) =>
-                                                p.isWithin(item.key, key) &&
-                                                !p.isDir(key) &&
-                                                _fileDownloadedCache[key] ==
-                                                    null,
-                                          )) {
-                                        return Icon(
-                                          Icons.hourglass_empty,
-                                          size: 16,
-                                        );
-                                      }
-                                      if (_fileDownloadedCache.keys
-                                          .where(
-                                            (key) =>
-                                                p.isWithin(item.key, key) &&
-                                                !p.isDir(key),
-                                          )
-                                          .every(
-                                            (key) =>
-                                                _fileDownloadedCache[key] ==
-                                                true,
-                                          )) {
-                                        return Icon(
-                                          Icons.download_done,
-                                          size: 16,
-                                        );
-                                      } else {
-                                        return Icon(
-                                          Icons.cloud_download,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
-                                          size: 16,
-                                        );
-                                      }
-                                    },
-                                  ),
-                                if (uiConfigNotifier.showContent.value)
-                                  Text(() {
-                                    final count = widget.count(
-                                      item.file!,
-                                      recursive: true,
-                                    );
-                                    if (count.$1 == 0) {
-                                      return '${count.$2} files';
-                                    }
-                                    if (count.$2 == 0) {
-                                      return '${count.$1} subfolders';
-                                    }
-                                    return '${count.$2} files in ${count.$1} subfolders';
-                                  }()),
-                              ],
-                            ),
+                            child: InfoRow(file: item.file!),
                           ),
                         if (p.s3(p.dirname(item.file!.key)).isEmpty)
                           Row(
@@ -519,6 +433,7 @@ class ListFilesState extends State<ListFiles> {
               visualDensity: MediaQuery.of(context).size.width < 600
                   ? VisualDensity.compact
                   : VisualDensity.standard,
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
               selected: widget.selection.value.any(
                 (selected) =>
                     selected.key == item.key ||
@@ -548,43 +463,7 @@ class ListFilesState extends State<ListFiles> {
               subtitle: uiConfigNotifier.fileListInfo
                   ? SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: Row(
-                        spacing: 8,
-                        children: [
-                          if (uiConfigNotifier.showTime.value)
-                            Text(timeToReadable(item.file!.lastModified!)),
-                          if (uiConfigNotifier.showSize.value)
-                            Text(bytesToReadable(item.size)),
-                          if (uiConfigNotifier.showDownloadStatus.value)
-                            FutureBuilder<void>(
-                              future: () async {
-                                _fileDownloadedCache[item.key] = await File(
-                                  Main.pathFromKey(item.key) ?? item.key,
-                                ).exists();
-                              }(),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                        ConnectionState.waiting &&
-                                    _fileDownloadedCache[item.key] == null) {
-                                  return Icon(Icons.hourglass_empty, size: 16);
-                                }
-                                if (_fileDownloadedCache[item.key] == true) {
-                                  return Icon(Icons.download_done, size: 16);
-                                } else {
-                                  return Icon(
-                                    Icons.cloud_download,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
-                                    size: 16,
-                                  );
-                                }
-                              },
-                            ),
-                          if (uiConfigNotifier.showType.value)
-                            Text(p.extension(item.key)),
-                        ],
-                      ),
+                      child: InfoRow(file: item.file!),
                     )
                   : null,
               trailing: widget.selection.value.isNotEmpty
@@ -669,45 +548,7 @@ class ListFilesState extends State<ListFiles> {
               onTap: () => widget.changeDirectory(item.file!),
               onLongPress: widget.getSelectAction(item.file!),
               topLeftBadge: uiConfigNotifier.showDownloadStatus.value
-                  ? FutureBuilder<void>(
-                      future: () async {
-                        for (var file in Main.remoteFiles.where(
-                          (f) => p.isWithin(item.key, f.key) && !p.isDir(f.key),
-                        )) {
-                          _fileDownloadedCache[file.key] = await File(
-                            Main.pathFromKey(file.key) ?? file.key,
-                          ).exists();
-                        }
-                      }(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                                ConnectionState.waiting &&
-                            _fileDownloadedCache.keys.any(
-                              (key) =>
-                                  p.isWithin(item.key, key) &&
-                                  !p.isDir(key) &&
-                                  _fileDownloadedCache[key] == null,
-                            )) {
-                          return Icon(Icons.hourglass_empty, size: 16);
-                        }
-                        if (_fileDownloadedCache.keys
-                            .where(
-                              (key) =>
-                                  p.isWithin(item.key, key) && !p.isDir(key),
-                            )
-                            .every(
-                              (key) => _fileDownloadedCache[key] == true,
-                            )) {
-                          return Icon(Icons.download_done, size: 16);
-                        } else {
-                          return Icon(
-                            Icons.cloud_download,
-                            color: Theme.of(context).colorScheme.primary,
-                            size: 16,
-                          );
-                        }
-                      },
-                    )
+                  ? DownloadStatusIcon(file: item.file!)
                   : null,
               topRightBadge: widget.selection.value.isNotEmpty
                   ? widget.selectionAction.value == SelectionAction.none
@@ -795,29 +636,7 @@ class ListFilesState extends State<ListFiles> {
               topLeftBadge: uiConfigNotifier.showDownloadStatus.value
                   ? Padding(
                       padding: EdgeInsets.all(16),
-                      child: FutureBuilder<void>(
-                        future: () async {
-                          _fileDownloadedCache[item.key] = await File(
-                            Main.pathFromKey(item.key) ?? item.key,
-                          ).exists();
-                        }(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                                  ConnectionState.waiting &&
-                              _fileDownloadedCache[item.key] == null) {
-                            return Icon(Icons.hourglass_empty, size: 16);
-                          }
-                          if (_fileDownloadedCache[item.key] == true) {
-                            return Icon(Icons.download_done, size: 16);
-                          } else {
-                            return Icon(
-                              Icons.cloud_download,
-                              color: Theme.of(context).colorScheme.primary,
-                              size: 16,
-                            );
-                          }
-                        },
-                      ),
+                      child: DownloadStatusIcon(file: item.file!),
                     )
                   : null,
               topRightBadge: widget.selection.value.isNotEmpty
@@ -896,7 +715,10 @@ class ListFilesState extends State<ListFiles> {
           SliverM3ECardList(
             key: ValueKey(widget.relativeto.value.key + group.key),
             itemCount: group.value.length,
-            margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            outerRadius: 14,
+            innerRadius: 4,
+            gap: 3,
+            margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             padding: EdgeInsets.zero,
             color: Colors.transparent,
             itemBuilder: (context, index) => TweenAnimationBuilder<double>(
@@ -991,14 +813,15 @@ class ListFilesState extends State<ListFiles> {
                     floating: false,
                     pinned: true,
                     delegate: MyPersistentHeaderDelegate(
-                      height: 34,
+                      height: 32,
                       child: Container(
                         color: Theme.of(context).colorScheme.surface,
                         padding: EdgeInsets.only(
                           left: 16,
-                          right: 40,
-                          top: 8,
-                          bottom: 8,
+                          right:
+                              widget.listOptions.value.viewMode == ViewMode.grid
+                              ? 12
+                              : 18,
                         ),
                         alignment: Alignment.centerLeft,
                         child: MyListenableBuilder(

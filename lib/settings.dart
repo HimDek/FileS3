@@ -20,6 +20,14 @@ class ProfileBackupConfig extends StatefulWidget {
   final String? initialLocalDir;
   final Function(BackupMode)? onBackupModeChanged;
   final Function(String?)? onLocalDirChanged;
+  final EdgeInsetsGeometry margin;
+  final EdgeInsetsGeometry padding;
+  final double outerRadius;
+  final double innerRadius;
+  final double gap;
+  final Color? color;
+  final EdgeInsetsGeometry? contentPadding;
+  final VisualDensity? visualDensity;
 
   const ProfileBackupConfig({
     super.key,
@@ -27,6 +35,14 @@ class ProfileBackupConfig extends StatefulWidget {
     this.initialLocalDir,
     this.onBackupModeChanged,
     this.onLocalDirChanged,
+    this.margin = const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    this.padding = EdgeInsets.zero,
+    this.outerRadius = 14,
+    this.innerRadius = 4,
+    this.gap = 3,
+    this.color = Colors.transparent,
+    this.contentPadding,
+    this.visualDensity,
   });
 
   @override
@@ -60,14 +76,16 @@ class ProfileBackupConfigState extends State<ProfileBackupConfig> {
   @override
   Widget build(BuildContext context) {
     return M3ECardColumn(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      padding: EdgeInsets.zero,
-      color: Color.alphaBlend(
-        Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-        Colors.white,
-      ),
+      margin: widget.margin,
+      padding: widget.padding,
+      outerRadius: widget.outerRadius,
+      innerRadius: widget.innerRadius,
+      gap: widget.gap,
+      color: widget.color,
       children: [
         ListTile(
+          visualDensity: widget.visualDensity,
+          contentPadding: widget.contentPadding,
           leading: const Icon(Icons.drive_folder_upload_rounded),
           title: const Text('Backup From'),
           subtitle: Text(_localDir == null ? 'Not set' : _localDir!),
@@ -93,6 +111,8 @@ class ProfileBackupConfigState extends State<ProfileBackupConfig> {
                 ),
         ),
         ListTile(
+          visualDensity: widget.visualDensity,
+          contentPadding: widget.contentPadding,
           title: Text('BackupMode'),
           subtitle: Text(
             _backupMode == BackupMode.sync
@@ -342,10 +362,13 @@ class S3ConfigPageState extends State<S3ConfigPage> {
         body: CustomScrollView(
           slivers: [
             SliverAppBar(
+              floating: true,
+              snap: true,
+              pinned: true,
               title: Text(
                 '${_profileNameController.text.isEmpty ? "New " : ""}S3 Profile Config',
               ),
-              actionsPadding: EdgeInsets.only(right: 28),
+              actionsPadding: EdgeInsets.only(right: 4),
               actions: [
                 IconButton(
                   onPressed: _saveConfig(),
@@ -687,10 +710,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                 itemCount: _permissionPolicy != null ? 3 : 1,
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 padding: EdgeInsets.zero,
-                color: Color.alphaBlend(
-                  Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-                  Colors.white,
-                ),
+                color: Colors.transparent,
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
@@ -782,10 +802,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                 itemCount: 3,
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 padding: EdgeInsets.zero,
-                color: Color.alphaBlend(
-                  Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-                  Colors.white,
-                ),
+                color: Colors.transparent,
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
@@ -903,12 +920,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                     innerRadius: 4,
                     gap: 3,
                     padding: EdgeInsets.zero,
-                    color: Color.alphaBlend(
-                      Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainer.withAlpha(242),
-                      Colors.white,
-                    ),
+                    color: Colors.transparent,
                     child: ListTile(
                       title: Text('Import:'),
                       trailing: Row(
@@ -996,12 +1008,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                     innerRadius: 4,
                     gap: 3,
                     padding: EdgeInsets.zero,
-                    color: Color.alphaBlend(
-                      Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainer.withAlpha(242),
-                      Colors.white,
-                    ),
+                    color: Colors.transparent,
                     child: ListTile(
                       dense: true,
                       visualDensity: VisualDensity.compact,
@@ -1032,7 +1039,6 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                                   ),
                                 ),
                               ),
-                              actionsPadding: EdgeInsets.only(right: 28),
                               actions: [
                                 IconButton(
                                   onPressed: () async {
@@ -1127,12 +1133,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                     innerRadius: 4,
                     gap: 3,
                     padding: EdgeInsets.zero,
-                    color: Color.alphaBlend(
-                      Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainer.withAlpha(242),
-                      Colors.white,
-                    ),
+                    color: Colors.transparent,
                     child: ListTile(
                       title: Text('Remove Profile'),
                       subtitle: Text(
@@ -1331,7 +1332,6 @@ class SettingsPageState extends State<SettingsPage> {
             snap: false,
             pinned: true,
             title: Text('Settings'),
-            actionsPadding: EdgeInsets.only(right: 28),
           ),
           SliverMainAxisGroup(
             slivers: [
@@ -1341,7 +1341,7 @@ class SettingsPageState extends State<SettingsPage> {
                 delegate: MyPersistentHeaderDelegate(
                   height: 34,
                   child: Container(
-                    color: Theme.of(context).colorScheme.surface,
+                    color: Colors.transparent,
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -1357,10 +1357,7 @@ class SettingsPageState extends State<SettingsPage> {
                 itemCount: 3,
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 padding: EdgeInsets.zero,
-                color: Color.alphaBlend(
-                  Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-                  Colors.white,
-                ),
+                color: Colors.transparent,
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
@@ -1455,6 +1452,11 @@ class SettingsPageState extends State<SettingsPage> {
                           setState(() {
                             _uiConfig.accentColor = null;
                           });
+                          showSnackBar(
+                            SnackBar(
+                              content: Text('Accent color reset to default'),
+                            ),
+                          );
                           await _saveConfig();
                           uiConfigNotifier.accentColor.value =
                               _uiConfig.accentColor;
@@ -1520,7 +1522,7 @@ class SettingsPageState extends State<SettingsPage> {
                 delegate: MyPersistentHeaderDelegate(
                   height: 34,
                   child: Container(
-                    color: Theme.of(context).colorScheme.surface,
+                    color: Colors.transparent,
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -1536,10 +1538,7 @@ class SettingsPageState extends State<SettingsPage> {
                 itemCount: 8,
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 padding: EdgeInsets.zero,
-                color: Color.alphaBlend(
-                  Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-                  Colors.white,
-                ),
+                color: Colors.transparent,
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
@@ -1556,117 +1555,103 @@ class SettingsPageState extends State<SettingsPage> {
                         ),
                       );
                     case 1:
-                      return ListTile(
+                      return SwitchListTile(
                         title: Text('Show Directory Summary'),
                         subtitle: Text("App Bar"),
-                        leading: Icon(Icons.folder_rounded),
-                        trailing: Switch(
-                          value: _uiConfig.showDirectorySummary,
-                          onChanged: (value) async {
-                            setState(() {
-                              _uiConfig.showDirectorySummary = value;
-                            });
-                            await _saveConfig();
-                            uiConfigNotifier.showDirectorySummary.value = value;
-                          },
-                        ),
+                        secondary: Icon(Icons.folder_rounded),
+                        value: _uiConfig.showDirectorySummary,
+                        onChanged: (value) async {
+                          setState(() {
+                            _uiConfig.showDirectorySummary = value;
+                          });
+                          await _saveConfig();
+                          uiConfigNotifier.showDirectorySummary.value = value;
+                        },
                       );
                     case 2:
-                      return ListTile(
+                      return SwitchListTile(
                         title: Text('Show Backup Configuration'),
                         subtitle: Text("App Bar"),
-                        leading: Icon(Icons.backup_rounded),
-                        trailing: Switch(
-                          value: _uiConfig.showDirectoryBackupConfig,
-                          onChanged: (value) async {
-                            setState(() {
-                              _uiConfig.showDirectoryBackupConfig = value;
-                            });
-                            await _saveConfig();
-                            uiConfigNotifier.showDirectoryBackupConfig.value =
-                                value;
-                          },
-                        ),
+                        secondary: Icon(Icons.backup_rounded),
+                        value: _uiConfig.showDirectoryBackupConfig,
+                        onChanged: (value) async {
+                          setState(() {
+                            _uiConfig.showDirectoryBackupConfig = value;
+                          });
+                          await _saveConfig();
+                          uiConfigNotifier.showDirectoryBackupConfig.value =
+                              value;
+                        },
                       );
                     case 3:
-                      return ListTile(
+                      return SwitchListTile(
                         title: Text('Show Time'),
                         subtitle: Text("List View"),
-                        leading: Icon(Icons.access_time_rounded),
-                        trailing: Switch(
-                          value: _uiConfig.showTime,
-                          onChanged: (value) async {
-                            setState(() {
-                              _uiConfig.showTime = value;
-                            });
-                            await _saveConfig();
-                            uiConfigNotifier.showTime.value = value;
-                          },
-                        ),
+                        secondary: Icon(Icons.access_time_rounded),
+                        value: _uiConfig.showTime,
+                        onChanged: (value) async {
+                          setState(() {
+                            _uiConfig.showTime = value;
+                          });
+                          await _saveConfig();
+                          uiConfigNotifier.showTime.value = value;
+                        },
                       );
                     case 4:
-                      return ListTile(
+                      return SwitchListTile(
                         title: Text('Show Size'),
                         subtitle: Text("List View"),
-                        leading: Icon(Icons.storage_rounded),
-                        trailing: Switch(
-                          value: _uiConfig.showSize,
-                          onChanged: (value) async {
-                            setState(() {
-                              _uiConfig.showSize = value;
-                            });
-                            await _saveConfig();
-                            uiConfigNotifier.showSize.value = value;
-                          },
-                        ),
+                        secondary: Icon(Icons.storage_rounded),
+                        value: _uiConfig.showSize,
+                        onChanged: (value) async {
+                          setState(() {
+                            _uiConfig.showSize = value;
+                          });
+                          await _saveConfig();
+                          uiConfigNotifier.showSize.value = value;
+                        },
                       );
                     case 5:
-                      return ListTile(
+                      return SwitchListTile(
                         title: Text('Show Download Status'),
                         subtitle: Text("List & Grid View"),
-                        leading: Icon(Icons.download_rounded),
-                        trailing: Switch(
-                          value: _uiConfig.showDownloadStatus,
-                          onChanged: (value) async {
-                            setState(() {
-                              _uiConfig.showDownloadStatus = value;
-                            });
-                            await _saveConfig();
-                            uiConfigNotifier.showDownloadStatus.value = value;
-                          },
-                        ),
+                        secondary: Icon(Icons.download_rounded),
+                        value: _uiConfig.showDownloadStatus,
+                        onChanged: (value) async {
+                          setState(() {
+                            _uiConfig.showDownloadStatus = value;
+                          });
+                          await _saveConfig();
+                          uiConfigNotifier.showDownloadStatus.value = value;
+                        },
                       );
                     case 6:
-                      return ListTile(
+                      return SwitchListTile(
                         title: Text('Show File Type'),
                         subtitle: Text("List View"),
-                        leading: Icon(Icons.description_rounded),
-                        trailing: Switch(
-                          value: _uiConfig.showType,
-                          onChanged: (value) async {
-                            setState(() {
-                              _uiConfig.showType = value;
-                            });
-                            await _saveConfig();
-                            uiConfigNotifier.showType.value = value;
-                          },
-                        ),
+                        secondary: Icon(Icons.description_rounded),
+                        value: _uiConfig.showType,
+                        onChanged: (value) async {
+                          setState(() {
+                            _uiConfig.showType = value;
+                          });
+                          await _saveConfig();
+                          uiConfigNotifier.showType.value = value;
+                        },
                       );
                     case 7:
-                      return ListTile(
+                      return SwitchListTile(
                         title: Text('Show Directory Content'),
                         subtitle: Text("List View"),
-                        leading: Icon(Icons.preview_rounded),
-                        trailing: Switch(
-                          value: _uiConfig.showContent,
-                          onChanged: (value) async {
-                            setState(() {
-                              _uiConfig.showContent = value;
-                            });
-                            await _saveConfig();
-                            uiConfigNotifier.showContent.value = value;
-                          },
-                        ),
+                        secondary: Icon(Icons.preview_rounded),
+                        value: _uiConfig.showContent,
+                        onChanged: (value) async {
+                          setState(() {
+                            _uiConfig.showContent = value;
+                          });
+                          await _saveConfig();
+                          uiConfigNotifier.showContent.value = value;
+                        },
                       );
                     default:
                       return SizedBox.shrink();
@@ -1683,7 +1668,7 @@ class SettingsPageState extends State<SettingsPage> {
                 delegate: MyPersistentHeaderDelegate(
                   height: 34,
                   child: Container(
-                    color: Theme.of(context).colorScheme.surface,
+                    color: Colors.transparent,
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -1700,10 +1685,7 @@ class SettingsPageState extends State<SettingsPage> {
                 itemCount: 2,
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 padding: EdgeInsets.zero,
-                color: Color.alphaBlend(
-                  Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-                  Colors.white,
-                ),
+                color: Colors.transparent,
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
@@ -1767,14 +1749,24 @@ class SettingsPageState extends State<SettingsPage> {
                         leading: Icon(Icons.history_rounded),
                         trailing: TextButton(
                           onPressed: _cacheSize > 0
-                              ? () {
-                                  Job.clearCache();
-                                  showSnackBar(
-                                    SnackBar(content: Text('Cache cleared')),
-                                  );
-                                  setState(() {
-                                    _cacheSize = Job.cacheSize();
-                                  });
+                              ? () async {
+                                  if (await confirmDialog(
+                                    context,
+                                    title: 'Confirm Clear Cache',
+                                    content: Text(
+                                      'Are you sure you want to clear the cache?',
+                                    ),
+                                    okText: 'Clear',
+                                    cancelText: 'Cancel',
+                                  )) {
+                                    Job.clearCache();
+                                    showSnackBar(
+                                      SnackBar(content: Text('Cache cleared')),
+                                    );
+                                    setState(() {
+                                      _cacheSize = Job.cacheSize();
+                                    });
+                                  }
                                 }
                               : null,
                           child: Text('Clear'),
@@ -1795,7 +1787,7 @@ class SettingsPageState extends State<SettingsPage> {
                 delegate: MyPersistentHeaderDelegate(
                   height: 34,
                   child: Container(
-                    color: Theme.of(context).colorScheme.surface,
+                    color: Colors.transparent,
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -1811,10 +1803,7 @@ class SettingsPageState extends State<SettingsPage> {
                 itemCount: 2,
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 padding: EdgeInsets.zero,
-                color: Color.alphaBlend(
-                  Theme.of(context).colorScheme.surfaceContainer.withAlpha(242),
-                  Colors.white,
-                ),
+                color: Colors.transparent,
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
@@ -1900,10 +1889,7 @@ class PinnedFoldersPageState extends State<PinnedFoldersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Pinned Folders'),
-        actionsPadding: EdgeInsets.only(right: 28),
-      ),
+      appBar: AppBar(title: Text('Pinned Folders')),
       body: ReorderableListView(
         onReorderItem: (oldIndex, newIndex) async {
           setState(() {
@@ -1915,46 +1901,131 @@ class PinnedFoldersPageState extends State<PinnedFoldersPage> {
           });
           await _saveConfig();
         },
-        children: _pinnedFolders
-            .map(
-              (folder) => ListTile(
-                key: ValueKey(folder),
-                title: Text(folder.key),
-                subtitle: Text(folder.value),
-                trailing: IconButton(
-                  icon: Icon(Icons.close_rounded),
-                  onPressed: () async {
-                    setState(() {
-                      _pinnedFolders.remove(folder);
-                    });
-                    await _saveConfig();
+        padding: EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          for (int i = 0; i < _pinnedFolders.length; i++)
+            Dismissible(
+              key: ValueKey(_pinnedFolders[i].key),
+              confirmDismiss: (direction) async {
+                if (direction == DismissDirection.endToStart) {
+                  return false;
+                } else {
+                  return true;
+                }
+              },
+              onDismissed: (direction) async {
+                MapEntry<String, String> removedFolder = _pinnedFolders[i];
+                setState(() {
+                  _pinnedFolders.removeAt(i);
+                });
+                showSnackBar(
+                  SnackBar(
+                    content: Text('Pinned folder removed'),
+                    showCloseIcon: false,
+                    action: SnackBarAction(
+                      label: 'Undo',
+                      onPressed: () async {
+                        setState(() {
+                          _pinnedFolders.insert(
+                            i,
+                            MapEntry(removedFolder.key, removedFolder.value),
+                          );
+                        });
+                        await _saveConfig();
+                      },
+                    ),
+                  ),
+                );
+                await _saveConfig();
+              },
+              child: M3ECard(
+                index: i,
+                position: i <= 0
+                    ? M3ECardPosition.first
+                    : i >= _pinnedFolders.length - 1
+                    ? M3ECardPosition.last
+                    : M3ECardPosition.middle,
+                outerRadius: 24,
+                innerRadius: 4,
+                gap: 3,
+                padding: EdgeInsets.zero,
+                child: ListTile(
+                  visualDensity: VisualDensity.compact,
+                  contentPadding: EdgeInsets.only(left: 20, right: 8),
+                  key: ValueKey(_pinnedFolders[i]),
+                  title: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Text(
+                      _pinnedFolders[i].key,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  subtitle: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Text(
+                      _pinnedFolders[i].value,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  leading: Icon(Icons.drag_handle_rounded),
+                  trailing: IconButton(
+                    icon: Icon(Icons.close_rounded),
+                    onPressed: () async {
+                      MapEntry<String, String> removedFolder =
+                          _pinnedFolders[i];
+                      setState(() {
+                        _pinnedFolders.removeAt(i);
+                      });
+                      showSnackBar(
+                        SnackBar(
+                          content: Text('Pinned folder removed'),
+                          showCloseIcon: false,
+                          action: SnackBarAction(
+                            label: 'Undo',
+                            onPressed: () async {
+                              setState(() {
+                                _pinnedFolders.insert(
+                                  i,
+                                  MapEntry(
+                                    removedFolder.key,
+                                    removedFolder.value,
+                                  ),
+                                );
+                              });
+                              await _saveConfig();
+                            },
+                          ),
+                        ),
+                      );
+                      await _saveConfig();
+                    },
+                  ),
+                  onTap: () async {
+                    String newName =
+                        (await renameDialog(
+                          context,
+                          _pinnedFolders[i].key,
+                          title: 'Rename ${_pinnedFolders[i].key}',
+                          existingNames: _pinnedFolders
+                              .map((e) => e.key)
+                              .toList(),
+                        )) ??
+                        _pinnedFolders[i].key;
+                    if (newName != _pinnedFolders[i].key) {
+                      _pinnedFolders[i] = MapEntry(
+                        newName,
+                        _pinnedFolders[i].value,
+                      );
+                      setState(() {});
+                      await _saveConfig();
+                    }
                   },
                 ),
-                onTap: () async {
-                  String newName =
-                      (await renameDialog(
-                        context,
-                        folder.key,
-                        title: 'Rename ${folder.key}',
-                        existingNames: _pinnedFolders
-                            .map((e) => e.key)
-                            .toList(),
-                      )) ??
-                      folder.key;
-                  if (newName != folder.key) {
-                    _pinnedFolders[_pinnedFolders.indexWhere(
-                      (element) => element == folder,
-                    )] = MapEntry(
-                      newName,
-                      folder.value,
-                    );
-                    setState(() {});
-                    await _saveConfig();
-                  }
-                },
               ),
-            )
-            .toList(),
+            ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {

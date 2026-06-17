@@ -133,7 +133,10 @@ renameDialog =
         );
         return StatefulBuilder(
           builder: (c, set) => AlertDialog(
-            title: Text(title),
+            title: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(title),
+            ),
             content: Form(
               key: formKey,
               autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -245,6 +248,44 @@ saveAsDialog = (BuildContext context, {String suggestedName = ''}) async {
   }
   return null;
 };
+
+Future<bool> Function(
+  BuildContext, {
+  String title,
+  Widget? content,
+  String okText,
+  String cancelText,
+})
+confirmDialog =
+    (
+      BuildContext context, {
+      String title = 'Confirm',
+      Widget? content,
+      String okText = 'Confirm',
+      String cancelText = 'Cancel',
+    }) async {
+      final bool? result = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Text(title),
+          ),
+          content: content,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(cancelText),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(okText),
+            ),
+          ],
+        ),
+      );
+      return result ?? false;
+    };
 
 String bytesToReadable(int bytes) {
   const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
