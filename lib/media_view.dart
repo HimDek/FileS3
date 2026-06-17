@@ -1290,10 +1290,28 @@ class MediaPreviewState extends State<MediaPreview> {
               fit: BoxFit.cover,
               loadingBuilder: (context, child, loadingProgress) {
                 if (loadingProgress == null) return child;
-                return fallback(
-                  getMediaType(widget.item.key) ?? 'application/octet-stream',
+                if (loadingProgress.expectedTotalBytes != null &&
+                    loadingProgress.cumulativeBytesLoaded >=
+                        loadingProgress.expectedTotalBytes!) {
+                  return child;
+                }
+                return Stack(
+                  fit: StackFit.loose,
+                  alignment: Alignment.center,
+                  children: [
+                    child,
+                    CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                          : null,
+                    ),
+                  ],
                 );
               },
+              errorBuilder: (context, error, stackTrace) => fallback(
+                getMediaType(widget.item.key) ?? 'application/octet-stream',
+              ),
             ),
     );
   }
