@@ -329,9 +329,9 @@ class MyBrowserState extends BrowserState {
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             onTap: () {
+              Navigator.of(context).pop();
               _navIndex.value = 0;
               _controlsVisible.value = true;
-              Navigator.of(context).pop();
             },
           ),
           Divider(),
@@ -368,9 +368,9 @@ class MyBrowserState extends BrowserState {
                 borderRadius: BorderRadius.circular(32),
               ),
               onTap: () {
+                Navigator.of(context).pop();
                 _navIndex.value = 2;
                 _controlsVisible.value = true;
-                Navigator.of(context).pop();
               },
             ),
           ),
@@ -407,9 +407,9 @@ class MyBrowserState extends BrowserState {
                 borderRadius: BorderRadius.circular(32),
               ),
               onTap: () {
+                Navigator.of(context).pop();
                 _navIndex.value = 1;
                 _controlsVisible.value = true;
-                Navigator.of(context).pop();
               },
             ),
           ),
@@ -434,10 +434,10 @@ class MyBrowserState extends BrowserState {
                 borderRadius: BorderRadius.circular(32),
               ),
               onTap: () {
+                Navigator.of(context).pop();
                 _navIndex.value = 0;
                 _controlsVisible.value = true;
                 _driveDir.value = RemoteFile(key: '', etag: '');
-                Navigator.of(context).pop();
               },
             ),
           ),
@@ -468,6 +468,7 @@ class MyBrowserState extends BrowserState {
                   borderRadius: BorderRadius.circular(32),
                 ),
                 onTap: () {
+                  Navigator.of(context).pop();
                   _navIndex.value = 0;
                   _controlsVisible.value = true;
                   _driveDir.value = Main.remoteFiles.firstWhere(
@@ -475,7 +476,6 @@ class MyBrowserState extends BrowserState {
                     orElse: () =>
                         RemoteFile(key: pinned.value, size: 0, etag: ''),
                   );
-                  Navigator.of(context).pop();
                 },
               ),
             ),
@@ -1496,6 +1496,7 @@ class BrowserState extends State<Browser> {
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
+              minThumbLength: 64,
               maxThumbLength: 64,
               popup: MyListenableBuilder(
                 listenable: Listenable.merge([_scrollController]),

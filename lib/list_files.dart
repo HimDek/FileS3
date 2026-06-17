@@ -1,5 +1,4 @@
 import 'package:collection/collection.dart';
-import 'package:files3/info_row.dart';
 import 'package:flutter/material.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -8,6 +7,7 @@ import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
+import 'package:files3/info_row.dart';
 import 'package:files3/job_view.dart';
 import 'package:files3/media_view.dart';
 
@@ -282,26 +282,22 @@ class ListFilesState extends State<ListFiles> {
   }
 
   Widget preview(FileProps item) {
-    return getMediaType(item.key) != null
-        ? SizedBox(
-            height: 256,
-            width: 256,
-            child: MediaPreview(item: item, height: 256, width: 256),
-          )
-        : Icon(Icons.insert_drive_file);
+    return SizedBox(
+      height: 256,
+      width: 256,
+      child: MediaPreview(item: item, height: 256, width: 256),
+    );
   }
 
   Widget listItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
         ? MyListenableBuilder(
-            name: 'list_item_job_view',
             listenable: widget.relativeto,
             builder: (ccontext, _) =>
                 JobView(job: item.job!, relativeTo: widget.relativeto.value),
           )
         : p.isDir(item.key)
         ? MyListenableBuilder(
-            name: 'list_item_dir',
             listenable: Listenable.merge([
               widget.selection,
               widget.relativeto,
@@ -421,7 +417,6 @@ class ListFilesState extends State<ListFiles> {
             ),
           )
         : MyListenableBuilder(
-            name: 'list_item_file',
             listenable: Listenable.merge([
               widget.selection,
               widget.relativeto,
@@ -503,7 +498,6 @@ class ListFilesState extends State<ListFiles> {
   Widget gridItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
         ? MyListenableBuilder(
-            name: 'grid_item_job_view',
             listenable: widget.relativeto,
             builder: (ccontext, _) => JobView(
               job: item.job!,
@@ -513,7 +507,6 @@ class ListFilesState extends State<ListFiles> {
           )
         : p.isDir(item.key)
         ? MyListenableBuilder(
-            name: 'grid_item_dir',
             listenable: Listenable.merge([
               widget.selection,
               widget.relativeto,
@@ -603,7 +596,6 @@ class ListFilesState extends State<ListFiles> {
             ),
           )
         : MyListenableBuilder(
-            name: 'list_item_file',
             listenable: Listenable.merge([
               widget.selection,
               widget.relativeto,
@@ -697,11 +689,9 @@ class ListFilesState extends State<ListFiles> {
           );
   }
 
-  MultiSliver _groupContent(MapEntry<String, List<FileProps>> group) {
-    return MultiSliver(
-      children: [
-        if (widget.listOptions.value.viewMode == ViewMode.grid)
-          SliverGrid.builder(
+  Widget _groupContent(MapEntry<String, List<FileProps>> group) {
+    return widget.listOptions.value.viewMode == ViewMode.grid
+        ? SliverGrid.builder(
             key: ValueKey(widget.relativeto.value.key + group.key),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: MediaQuery.of(context).size.width < 600 ? 4 : 6,
@@ -711,8 +701,7 @@ class ListFilesState extends State<ListFiles> {
             itemBuilder: (context, index) =>
                 gridItemBuilder(context, group.value[index]),
           )
-        else
-          SliverM3ECardList(
+        : SliverM3ECardList(
             key: ValueKey(widget.relativeto.value.key + group.key),
             itemCount: group.value.length,
             outerRadius: 14,
@@ -735,9 +724,7 @@ class ListFilesState extends State<ListFiles> {
               },
               child: listItemBuilder(context, group.value[index]),
             ),
-          ),
-      ],
-    );
+          );
   }
 
   @override
@@ -795,98 +782,102 @@ class ListFilesState extends State<ListFiles> {
     return MyListenableBuilder(
       name: 'list_files',
       listenable: Listenable.merge([_groups, widget.listOptions]),
-      builder: (ccontext, _) => MultiSliver(
-        children: [
-          for (final group
-              in widget.listOptions.value.group
-                  ? _groups.value
-                  : [
-                      MapEntry(
-                        '',
-                        _groups.value.map((g) => g.value).flattenedToList,
-                      ),
-                    ])
-            if (widget.listOptions.value.group)
-              SliverMainAxisGroup(
-                slivers: [
-                  SliverPersistentHeader(
-                    floating: false,
-                    pinned: true,
-                    delegate: MyPersistentHeaderDelegate(
-                      height: 32,
-                      child: Container(
-                        color: Theme.of(context).colorScheme.surface,
-                        padding: EdgeInsets.only(
-                          left: 16,
-                          right:
-                              widget.listOptions.value.viewMode == ViewMode.grid
-                              ? 12
-                              : 18,
+      builder: (ccontext, _) {
+        return MultiSliver(
+          children: [
+            for (final group
+                in widget.listOptions.value.group
+                    ? _groups.value
+                    : [
+                        MapEntry(
+                          '',
+                          _groups.value.map((g) => g.value).flattenedToList,
                         ),
-                        alignment: Alignment.centerLeft,
-                        child: MyListenableBuilder(
-                          name: 'list_files_persistent_header',
-                          listenable: widget.selection,
-                          builder: (context, _) => Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                group.key.replaceAll('_folder', ''),
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              if (widget.selection.value.isNotEmpty)
-                                GestureDetector(
-                                  onTap: () {
-                                    if (group.value.any(
-                                      (f) => !widget.selection.value.contains(
-                                        f.file,
-                                      ),
-                                    )) {
-                                      for (final file in group.value) {
-                                        if (!widget.selection.value.contains(
-                                          file.file,
-                                        )) {
-                                          widget.selection.value = {
-                                            ...widget.selection.value,
-                                            file.file!,
-                                          };
-                                        }
-                                      }
-                                    } else {
-                                      widget.selection.value = {
-                                        ...widget.selection.value.where(
-                                          (f) => !group.value
-                                              .map((f) => f.file)
-                                              .contains(f),
-                                        ),
-                                      };
-                                    }
-                                  },
-                                  child: Icon(
-                                    group.value.any(
-                                          (f) => !widget.selection.value
-                                              .contains(f.file),
-                                        )
-                                        ? Icons.circle_outlined
-                                        : Icons.check_circle,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSecondaryContainer,
-                                  ),
+                      ])
+              if (widget.listOptions.value.group)
+                SliverMainAxisGroup(
+                  slivers: [
+                    SliverPersistentHeader(
+                      floating: false,
+                      pinned: true,
+                      delegate: MyPersistentHeaderDelegate(
+                        height: 32,
+                        child: Container(
+                          color: Theme.of(context).colorScheme.surface,
+                          padding: EdgeInsets.only(
+                            left: 16,
+                            right:
+                                widget.listOptions.value.viewMode ==
+                                    ViewMode.grid
+                                ? 12
+                                : 18,
+                          ),
+                          alignment: Alignment.centerLeft,
+                          child: MyListenableBuilder(
+                            listenable: widget.selection,
+                            builder: (context, _) => Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  group.key.replaceAll('_folder', ''),
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
                                 ),
-                            ],
+                                if (widget.selection.value.isNotEmpty)
+                                  GestureDetector(
+                                    onTap: () {
+                                      if (group.value.any(
+                                        (f) => !widget.selection.value.contains(
+                                          f.file,
+                                        ),
+                                      )) {
+                                        for (final file in group.value) {
+                                          if (!widget.selection.value.contains(
+                                            file.file,
+                                          )) {
+                                            widget.selection.value = {
+                                              ...widget.selection.value,
+                                              file.file!,
+                                            };
+                                          }
+                                        }
+                                      } else {
+                                        widget.selection.value = {
+                                          ...widget.selection.value.where(
+                                            (f) => !group.value
+                                                .map((f) => f.file)
+                                                .contains(f),
+                                          ),
+                                        };
+                                      }
+                                    },
+                                    child: Icon(
+                                      group.value.any(
+                                            (f) => !widget.selection.value
+                                                .contains(f.file),
+                                          )
+                                          ? Icons.circle_outlined
+                                          : Icons.check_circle,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSecondaryContainer,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  _groupContent(group),
-                ],
-              )
-            else
-              _groupContent(group),
-        ],
-      ),
+                    _groupContent(group),
+                  ],
+                )
+              else
+                _groupContent(group),
+          ],
+        );
+      },
     );
   }
 }

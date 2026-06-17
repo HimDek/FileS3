@@ -1239,7 +1239,7 @@ class MediaPreview extends StatefulWidget {
 class MediaPreviewState extends State<MediaPreview> {
   Widget fallback(String mediaType) => Icon(mediaTypeIcon(mediaType));
 
-  void setImageProvider() {
+  Future<void> setImageProvider() async {
     thumbnailCache[widget.item.key] ??= HybridImageProvider(
       url: widget.item.url,
       path: Main.pathFromKey(widget.item.key),
@@ -1265,20 +1265,31 @@ class MediaPreviewState extends State<MediaPreview> {
   @override
   void initState() {
     super.initState();
-    setImageProvider();
   }
 
   @override
   Widget build(BuildContext context) {
-    return getMediaType(widget.item.key) != null &&
-            getMediaType(widget.item.key)!.startsWith('image/')
-        ? Image(
-            image: thumbnailCache[widget.item.key]!,
-            width: widget.width ?? 256,
-            height: widget.height ?? 256,
-            fit: BoxFit.cover,
-          )
-        : fallback(getMediaType(widget.item.key) ?? 'application/octet-stream');
+    return FutureBuilder<void>(
+      future: () async {
+        if (getMediaType(widget.item.key) != null &&
+            getMediaType(widget.item.key)!.startsWith('image/') &&
+            thumbnailCache[widget.item.key] == null) {
+          await setImageProvider();
+        }
+      }(),
+      builder: (context, snapshot) =>
+          snapshot.connectionState != ConnectionState.done ||
+              thumbnailCache[widget.item.key] == null
+          ? fallback(
+              getMediaType(widget.item.key) ?? 'application/octet-stream',
+            )
+          : Image(
+              image: thumbnailCache[widget.item.key]!,
+              width: widget.width ?? 256,
+              height: widget.height ?? 256,
+              fit: BoxFit.cover,
+            ),
+    );
   }
 }
 
