@@ -1288,6 +1288,12 @@ class MediaPreviewState extends State<MediaPreview> {
               width: widget.width ?? 256,
               height: widget.height ?? 256,
               fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return fallback(
+                  getMediaType(widget.item.key) ?? 'application/octet-stream',
+                );
+              },
             ),
     );
   }

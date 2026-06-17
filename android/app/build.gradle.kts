@@ -23,6 +23,7 @@ android {
     }
 
     defaultConfig {
+        manifestPlaceholders["appName"] = "FileS3"
         applicationId = "com.himdek.files3"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -47,9 +48,12 @@ android {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
+        getByName("profile") {
+            manifestPlaceholders["appName"] = "FileS3 Profile"
+            applicationIdSuffix = ".profile"
+            versionNameSuffix = "-profile"
+        }
         release {
-            manifestPlaceholders["appName"] = "FileS3"
-
             isMinifyEnabled = false
             isShrinkResources = false
 
