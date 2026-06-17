@@ -220,7 +220,7 @@ class RemoteFile {
       'key': key,
       'size': size,
       'etag': etag,
-      'lastModified': lastModified?.toIso8601String(),
+      'lastModified': !p.isDir(key) ? lastModified?.toIso8601String() : null,
     };
   }
 

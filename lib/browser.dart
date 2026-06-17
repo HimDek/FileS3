@@ -439,7 +439,7 @@ class MyBrowserState extends BrowserState {
                 Navigator.of(context).pop();
                 _navIndex.value = 0;
                 _controlsVisible.value = true;
-                _driveDir.value = RemoteFile(key: '', etag: '');
+                _driveDir.value = BrowserState.root;
               },
             ),
           ),
@@ -561,6 +561,8 @@ class Browser extends StatefulWidget {
 }
 
 class BrowserState extends State<Browser> {
+  static RemoteFile root = RemoteFile(key: '', etag: '');
+
   final List<RemoteFile> _allSelectableItems = <RemoteFile>[];
   final List<GalleryProps> _galleryFiles = <GalleryProps>[];
   final Map<String, double> _groupOffsetMap = <String, double>{};
@@ -578,9 +580,7 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<bool> _globalListOptions = ValueNotifier(true);
   final ValueNotifier<bool> _thumbVisibility = ValueNotifier(false);
   final ValueNotifier<Profile?> _profile = ValueNotifier(null);
-  final ValueNotifier<RemoteFile> _driveDir = ValueNotifier(
-    RemoteFile(key: '', etag: ''),
-  );
+  final ValueNotifier<RemoteFile> _driveDir = ValueNotifier(BrowserState.root);
   final ValueNotifier<ListOptions> _listOptions = ValueNotifier(ListOptions());
   final ValueNotifier<SelectionAction> _selectionAction = ValueNotifier(
     SelectionAction.none,
@@ -697,7 +697,7 @@ class BrowserState extends State<Browser> {
         }();
       }
     }
-    _driveDir.value = ndir.isEmpty ? RemoteFile(key: '', etag: '') : dir;
+    _driveDir.value = ndir.isEmpty ? BrowserState.root : dir;
     _profile.value = Main.profileFromKey(_driveDir.value.key);
     _updateCounts();
     _scrollToFile(oldDir);
@@ -1322,7 +1322,7 @@ class BrowserState extends State<Browser> {
   void initState() {
     super.initState();
     widget.onInit?.call();
-    _changeDirectory(widget.initialDir ?? RemoteFile(key: '', etag: ''));
+    _changeDirectory(widget.initialDir ?? BrowserState.root);
 
     _profile.addListener(() {
       if (_profile.value != null) {
@@ -2044,10 +2044,7 @@ class BrowserState extends State<Browser> {
                                           <Widget>[
                                                 GestureDetector(
                                                   onTap: () => _changeDirectory(
-                                                    RemoteFile(
-                                                      key: '',
-                                                      etag: '',
-                                                    ),
+                                                    BrowserState.root,
                                                   ),
                                                   child: Text(
                                                     'FileS3',
