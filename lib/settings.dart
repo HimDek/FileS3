@@ -128,7 +128,7 @@ class ProfileBackupConfigState extends State<ProfileBackupConfig> {
                 ? Icons.upload_rounded
                 : Icons.question_mark_rounded,
           ),
-          trailing: PopupMenuButton(
+          trailing: MyPopupMenuButton(
             key: _popupKey,
             initialValue: _backupMode,
             onOpened: () => setState(() {
@@ -144,6 +144,10 @@ class ProfileBackupConfigState extends State<ProfileBackupConfig> {
             onCanceled: () => setState(() {
               _popupVisible = false;
             }),
+            menuPadding: EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
             icon: Icon(
               _popupVisible
                   ? Icons.arrow_drop_up_rounded
@@ -151,8 +155,34 @@ class ProfileBackupConfigState extends State<ProfileBackupConfig> {
             ),
             position: PopupMenuPosition.under,
             itemBuilder: (context) => [
-              PopupMenuItem(value: BackupMode.upload, child: Text('Upload')),
-              PopupMenuItem(value: BackupMode.sync, child: Text('Sync')),
+              MyPopupMenuItem(
+                value: BackupMode.upload,
+                child: Text('Upload'),
+                backgroundColor: Colors.transparent,
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                foregroundColor: Theme.of(context).colorScheme.onSurface,
+                selectedBackgroundColor: Theme.of(context).colorScheme.primary,
+                selectedForegroundColor: Theme.of(
+                  context,
+                ).colorScheme.onPrimary,
+              ),
+              MyPopupMenuItem(
+                value: BackupMode.sync,
+                child: Text('Sync'),
+                backgroundColor: Colors.transparent,
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                foregroundColor: Theme.of(context).colorScheme.onSurface,
+                selectedBackgroundColor: Theme.of(context).colorScheme.primary,
+                selectedForegroundColor: Theme.of(
+                  context,
+                ).colorScheme.onPrimary,
+              ),
             ],
           ),
           onTap: () {
@@ -1377,7 +1407,7 @@ class SettingsPageState extends State<SettingsPage> {
                               ? Icons.light_mode_rounded
                               : Icons.dark_mode_rounded,
                         ),
-                        trailing: PopupMenuButton(
+                        trailing: MyPopupMenuButton<ThemeMode>(
                           key: _colorModepopupKey,
                           initialValue: _uiConfig.colorMode,
                           onOpened: () => setState(() {
@@ -1395,6 +1425,10 @@ class SettingsPageState extends State<SettingsPage> {
                           onCanceled: () => setState(() {
                             _colorModePopupVisible = false;
                           }),
+                          menuPadding: EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
                           icon: Icon(
                             _colorModePopupVisible
                                 ? Icons.arrow_drop_up_rounded
@@ -1402,17 +1436,68 @@ class SettingsPageState extends State<SettingsPage> {
                           ),
                           position: PopupMenuPosition.under,
                           itemBuilder: (context) => [
-                            PopupMenuItem(
+                            MyPopupMenuItem(
                               value: ThemeMode.system,
                               child: Text('System Default'),
+                              backgroundColor: Colors.transparent,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.onSurface,
+                              selectedBackgroundColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
+                              selectedForegroundColor: Theme.of(
+                                context,
+                              ).colorScheme.onPrimary,
                             ),
-                            PopupMenuItem(
+                            MyPopupMenuItem(
                               value: ThemeMode.light,
                               child: Text('Light Mode'),
+                              backgroundColor: Colors.transparent,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.onSurface,
+                              selectedBackgroundColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
+                              selectedForegroundColor: Theme.of(
+                                context,
+                              ).colorScheme.onPrimary,
                             ),
-                            PopupMenuItem(
+                            MyPopupMenuItem(
                               value: ThemeMode.dark,
                               child: Text('Dark Mode'),
+                              backgroundColor: Colors.transparent,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.onSurface,
+                              selectedBackgroundColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
+                              selectedForegroundColor: Theme.of(
+                                context,
+                              ).colorScheme.onPrimary,
                             ),
                           ],
                         ),
@@ -1695,37 +1780,57 @@ class SettingsPageState extends State<SettingsPage> {
                           _downloadConfig.maxConcurrentTransfers.toString(),
                         ),
                         leading: Icon(Icons.swap_vertical_circle),
-                        trailing: PopupMenuButton<int>(
+                        trailing: MyPopupMenuButton<int>(
                           key: _maxTransfersPopupKey,
                           initialValue: _downloadConfig.maxConcurrentTransfers,
                           position: PopupMenuPosition.under,
                           itemBuilder: (context) =>
-                              List.generate(10, (index) => index + 1)
+                              List.generate(10, (i) => i + 1)
                                   .map(
-                                    (value) => PopupMenuItem<int>(
-                                      value: value,
-                                      child: Text(value.toString()),
+                                    (index) => MyPopupMenuItem<int>(
+                                      value: index,
+                                      child: Text(index.toString()),
+                                      backgroundColor: Colors.transparent,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      foregroundColor: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
+                                      selectedBackgroundColor: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                      selectedForegroundColor: Theme.of(
+                                        context,
+                                      ).colorScheme.onPrimary,
                                     ),
                                   )
                                   .toList(),
+
                           onOpened: () => setState(() {
                             _maxTransfersPopupVisible = true;
                           }),
+                          menuPadding: EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
                           icon: Icon(
                             _maxTransfersPopupVisible
                                 ? Icons.arrow_drop_up_rounded
                                 : Icons.arrow_drop_down_rounded,
                           ),
-                          onSelected: (int? value) async {
-                            if (value != null) {
-                              setState(() {
-                                _maxTransfersPopupVisible = false;
-                                _downloadConfig = TransferConfig(
-                                  maxConcurrentTransfers: value,
-                                );
-                              });
-                              await _saveConfig();
-                            }
+                          onSelected: (int value) async {
+                            setState(() {
+                              _maxTransfersPopupVisible = false;
+                              _downloadConfig = TransferConfig(
+                                maxConcurrentTransfers: value,
+                              );
+                            });
+                            await _saveConfig();
                           },
                           onCanceled: () => setState(() {
                             _maxTransfersPopupVisible = false;

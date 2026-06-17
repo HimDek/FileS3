@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart';
 import 'package:fuzzywuzzy/fuzzywuzzy.dart';
+import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:files3/utils/path_utils.dart' as p;
@@ -1139,164 +1140,179 @@ class BrowserState extends State<Browser> {
         _listOptions,
         _globalListOptions,
       ]),
-      builder: (context, _) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (context, _) => M3ECardColumn(
+        padding: EdgeInsets.all(8),
         children: [
-          SizedBox(height: 0, width: 128),
-          ListTile(
-            dense: true,
-            enabled: !loading.value && !_searching.value,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Refresh', maxLines: 1),
-            trailing: loading.value
-                ? Icon(Icons.hourglass_empty)
-                : Icon(Icons.refresh),
-            onTap: () {
-              Main.listDirectories();
-            },
+          M3ECardColumn(
+            padding: EdgeInsets.zero,
+            outerRadius: 16,
+            children: [
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                enabled: !loading.value && !_searching.value,
+                contentPadding: EdgeInsets.only(left: 16, right: 16),
+                titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+                title: Text('Refresh', maxLines: 1),
+                trailing: loading.value
+                    ? Icon(Icons.hourglass_empty)
+                    : Icon(Icons.refresh),
+                onTap: () {
+                  Main.listDirectories();
+                },
+              ),
+            ],
           ),
-          const PopupMenuDivider(),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Name'),
-            trailing: _listOptions.value.sortMode == SortMode.nameAsc
-                ? Icon(Icons.arrow_upward)
-                : _listOptions.value.sortMode == SortMode.nameDesc
-                ? Icon(Icons.arrow_downward)
-                : null,
-            onTap: () {
-              _listOptions.value =
-                  _listOptions.value.sortMode == SortMode.nameAsc
-                  ? _listOptions.value.copyWith(sortMode: SortMode.nameDesc)
-                  : _listOptions.value.copyWith(sortMode: SortMode.nameAsc);
-              _setListOptions(_listOptions.value);
-            },
+          M3ECardColumn(
+            padding: EdgeInsets.zero,
+            outerRadius: 16,
+            children: [
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: EdgeInsets.only(left: 16, right: 16),
+                titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+                title: Text('Name'),
+                trailing: _listOptions.value.sortMode == SortMode.nameAsc
+                    ? Icon(Icons.arrow_upward)
+                    : _listOptions.value.sortMode == SortMode.nameDesc
+                    ? Icon(Icons.arrow_downward)
+                    : null,
+                onTap: () {
+                  _listOptions.value =
+                      _listOptions.value.sortMode == SortMode.nameAsc
+                      ? _listOptions.value.copyWith(sortMode: SortMode.nameDesc)
+                      : _listOptions.value.copyWith(sortMode: SortMode.nameAsc);
+                  _setListOptions(_listOptions.value);
+                },
+              ),
+              SizedBox(height: 0, width: 160),
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: EdgeInsets.only(left: 16, right: 16),
+                titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+                title: Text('Date'),
+                trailing: _listOptions.value.sortMode == SortMode.dateAsc
+                    ? Icon(Icons.arrow_upward)
+                    : _listOptions.value.sortMode == SortMode.dateDesc
+                    ? Icon(Icons.arrow_downward)
+                    : null,
+                onTap: () {
+                  _listOptions.value =
+                      _listOptions.value.sortMode == SortMode.dateAsc
+                      ? _listOptions.value.copyWith(sortMode: SortMode.dateDesc)
+                      : _listOptions.value.copyWith(sortMode: SortMode.dateAsc);
+                  _setListOptions(_listOptions.value);
+                },
+              ),
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: EdgeInsets.only(left: 16, right: 16),
+                titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+                title: Text('Size'),
+                trailing: _listOptions.value.sortMode == SortMode.sizeAsc
+                    ? Icon(Icons.arrow_upward)
+                    : _listOptions.value.sortMode == SortMode.sizeDesc
+                    ? Icon(Icons.arrow_downward)
+                    : null,
+                onTap: () {
+                  _listOptions.value =
+                      _listOptions.value.sortMode == SortMode.sizeAsc
+                      ? _listOptions.value.copyWith(sortMode: SortMode.sizeDesc)
+                      : _listOptions.value.copyWith(sortMode: SortMode.sizeAsc);
+                  _setListOptions(_listOptions.value);
+                },
+              ),
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: EdgeInsets.only(left: 16, right: 16),
+                titleTextStyle: Theme.of(context).textTheme.bodyMedium,
+                title: Text('Type'),
+                trailing: _listOptions.value.sortMode == SortMode.typeAsc
+                    ? Icon(Icons.arrow_upward)
+                    : _listOptions.value.sortMode == SortMode.typeDesc
+                    ? Icon(Icons.arrow_downward)
+                    : null,
+                onTap: () {
+                  _listOptions.value =
+                      _listOptions.value.sortMode == SortMode.typeAsc
+                      ? _listOptions.value.copyWith(sortMode: SortMode.typeDesc)
+                      : _listOptions.value.copyWith(sortMode: SortMode.typeAsc);
+                  _setListOptions(_listOptions.value);
+                },
+              ),
+            ],
           ),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Date'),
-            trailing: _listOptions.value.sortMode == SortMode.dateAsc
-                ? Icon(Icons.arrow_upward)
-                : _listOptions.value.sortMode == SortMode.dateDesc
-                ? Icon(Icons.arrow_downward)
-                : null,
-            onTap: () {
-              _listOptions.value =
-                  _listOptions.value.sortMode == SortMode.dateAsc
-                  ? _listOptions.value.copyWith(sortMode: SortMode.dateDesc)
-                  : _listOptions.value.copyWith(sortMode: SortMode.dateAsc);
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Size'),
-            trailing: _listOptions.value.sortMode == SortMode.sizeAsc
-                ? Icon(Icons.arrow_upward)
-                : _listOptions.value.sortMode == SortMode.sizeDesc
-                ? Icon(Icons.arrow_downward)
-                : null,
-            onTap: () {
-              _listOptions.value =
-                  _listOptions.value.sortMode == SortMode.sizeAsc
-                  ? _listOptions.value.copyWith(sortMode: SortMode.sizeDesc)
-                  : _listOptions.value.copyWith(sortMode: SortMode.sizeAsc);
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            titleTextStyle: Theme.of(context).textTheme.bodyMedium,
-            title: Text('Type'),
-            trailing: _listOptions.value.sortMode == SortMode.typeAsc
-                ? Icon(Icons.arrow_upward)
-                : _listOptions.value.sortMode == SortMode.typeDesc
-                ? Icon(Icons.arrow_downward)
-                : null,
-            onTap: () {
-              _listOptions.value =
-                  _listOptions.value.sortMode == SortMode.typeAsc
-                  ? _listOptions.value.copyWith(sortMode: SortMode.typeDesc)
-                  : _listOptions.value.copyWith(sortMode: SortMode.typeAsc);
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          const PopupMenuDivider(),
-          CheckboxListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            title: Text(
-              'Folders First',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            value: _listOptions.value.foldersFirst,
-            onChanged: (value) {
-              _listOptions.value = _listOptions.value.copyWith(
-                foldersFirst: value ?? true,
-              );
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          CheckboxListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            title: Text(
-              'Grid View',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            value: _listOptions.value.viewMode == ViewMode.grid,
-            onChanged: (value) {
-              _listOptions.value = _listOptions.value.copyWith(
-                viewMode: value! ? ViewMode.grid : ViewMode.list,
-              );
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          CheckboxListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            title: Text(
-              'Grouped View',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            value: _listOptions.value.group,
-            onChanged: (value) {
-              _listOptions.value = _listOptions.value.copyWith(
-                group: value ?? true,
-              );
-              _setListOptions(_listOptions.value);
-            },
-          ),
-          const PopupMenuDivider(),
-          CheckboxListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: EdgeInsets.only(left: 16, right: 16),
-            title: Text(
-              'Only here',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            value: !_globalListOptions.value,
-            onChanged: (value) {
-              _globalListOptions.value = !(value ?? true);
-              _setListOptions(_listOptions.value);
-            },
+          M3ECardColumn(
+            padding: EdgeInsets.zero,
+            outerRadius: 16,
+            children: [
+              CheckboxListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: EdgeInsets.only(left: 16, right: 16),
+                title: Text(
+                  'Folders First',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                value: _listOptions.value.foldersFirst,
+                onChanged: (value) {
+                  _listOptions.value = _listOptions.value.copyWith(
+                    foldersFirst: value ?? true,
+                  );
+                  _setListOptions(_listOptions.value);
+                },
+              ),
+              CheckboxListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: EdgeInsets.only(left: 16, right: 16),
+                title: Text(
+                  'Grid View',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                value: _listOptions.value.viewMode == ViewMode.grid,
+                onChanged: (value) {
+                  _listOptions.value = _listOptions.value.copyWith(
+                    viewMode: value! ? ViewMode.grid : ViewMode.list,
+                  );
+                  _setListOptions(_listOptions.value);
+                },
+              ),
+              CheckboxListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: EdgeInsets.only(left: 16, right: 16),
+                title: Text(
+                  'Grouped View',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                value: _listOptions.value.group,
+                onChanged: (value) {
+                  _listOptions.value = _listOptions.value.copyWith(
+                    group: value ?? true,
+                  );
+                  _setListOptions(_listOptions.value);
+                },
+              ),
+              CheckboxListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: EdgeInsets.only(left: 16, right: 16),
+                title: Text(
+                  'Only here',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                value: !_globalListOptions.value,
+                onChanged: (value) {
+                  _globalListOptions.value = !(value ?? true);
+                  _setListOptions(_listOptions.value);
+                },
+              ),
+            ],
           ),
         ],
       ),
@@ -1921,7 +1937,13 @@ class BrowserState extends State<Browser> {
                                       0,
                                       0,
                                     ),
-                                    menuPadding: EdgeInsets.zero,
+                                    menuPadding: EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
+                                    color: Colors.transparent,
                                     items: [
                                       PopupMenuItem(
                                         padding: EdgeInsets.zero,

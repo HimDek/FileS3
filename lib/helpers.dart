@@ -1146,3 +1146,114 @@ class MyListenableBuilder extends ListenableBuilder {
     return super.build(context);
   }
 }
+
+class MyPopupMenuButton<T> extends PopupMenuButton<T> {
+  MyPopupMenuButton({
+    super.key,
+    required List<MyPopupMenuItem<T>> Function(BuildContext) itemBuilder,
+    super.initialValue,
+    super.onOpened,
+    super.onSelected,
+    super.onCanceled,
+    super.tooltip,
+    super.elevation,
+    super.shadowColor,
+    super.surfaceTintColor,
+    super.padding = const EdgeInsets.all(8.0),
+    double menuItemsSpacing = 8.0,
+    super.menuPadding,
+    super.child,
+    super.borderRadius,
+    super.splashRadius,
+    super.icon,
+    super.iconSize,
+    super.offset = Offset.zero,
+    super.enabled = true,
+    super.shape,
+    super.color,
+    super.iconColor,
+    super.enableFeedback,
+    super.constraints,
+    super.position,
+    super.clipBehavior = Clip.none,
+    super.useRootNavigator = false,
+    super.popUpAnimationStyle,
+    super.routeSettings,
+    super.style,
+    super.requestFocus,
+  }) : super(
+         itemBuilder: (context) => [
+           PopupMenuItem(
+             enabled: false,
+             child: Column(
+               spacing: menuItemsSpacing,
+               children: [
+                 for (final item in itemBuilder(context))
+                   TextButton(
+                     onPressed: () {
+                       if (item.enabled) {
+                         item.onTap?.call();
+                         onSelected?.call(item.value as T);
+                         Navigator.of(context).pop(item.value);
+                       }
+                     },
+                     style: TextButton.styleFrom(
+                       padding: item.padding,
+                       minimumSize: Size(double.infinity, item.height),
+                       alignment: Alignment.centerLeft,
+                       backgroundColor: item.value == initialValue
+                           ? item.selectedBackgroundColor
+                           : item.backgroundColor,
+                       foregroundColor: item.value == initialValue
+                           ? item.selectedForegroundColor
+                           : item.foregroundColor,
+                       shape: item.shape,
+                     ),
+                     child:
+                         item.child ??
+                         Text(item.value.toString(), style: item.textStyle),
+                   ),
+               ],
+             ),
+           ),
+         ],
+       );
+}
+
+class MyPopupMenuItem<T> {
+  final Key? key;
+  final T? value;
+  final void Function()? onTap;
+  final bool enabled;
+  final double height;
+  final EdgeInsetsGeometry padding;
+  final TextStyle? textStyle;
+  final WidgetStateProperty<TextStyle?>? labelTextStyle;
+  final MouseCursor? mouseCursor;
+  final Widget? child;
+  final OutlinedBorder? shape;
+  final Color? backgroundColor;
+  final Color? foregroundColor;
+  final Color? disabledColor;
+  final Color? selectedBackgroundColor;
+  final Color? selectedForegroundColor;
+
+  MyPopupMenuItem({
+    this.key,
+    this.value,
+    this.onTap,
+    this.enabled = true,
+    this.height = kMinInteractiveDimension,
+    this.padding = const EdgeInsets.symmetric(horizontal: 16.0),
+    this.textStyle,
+    this.labelTextStyle,
+    this.mouseCursor,
+    required this.child,
+    this.shape,
+    this.backgroundColor,
+    this.foregroundColor,
+    this.disabledColor,
+    this.selectedBackgroundColor,
+    this.selectedForegroundColor,
+  });
+}
