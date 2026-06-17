@@ -102,6 +102,7 @@ class MyBrowser extends Browser {
     required super.moveDirectories,
     required super.deleteLocal,
     required super.deleteFiles,
+    required super.deleteCache,
     required super.deleteDirectories,
     required super.createDirectory,
     required super.uploadDirectory,
@@ -522,6 +523,7 @@ class Browser extends StatefulWidget {
   final Future<void> Function(List<String>, List<String>, {bool refresh})?
   moveDirectories;
   final Function(String)? deleteLocal;
+  final Function(String)? deleteCache;
   final Future<void> Function(List<String>, {bool refresh})? deleteFiles;
   final Future<void> Function(List<String>, {bool refresh})? deleteDirectories;
   final Future<void> Function(String)? createDirectory;
@@ -546,6 +548,7 @@ class Browser extends StatefulWidget {
     this.moveFiles,
     this.moveDirectories,
     this.deleteLocal,
+    this.deleteCache,
     this.deleteFiles,
     this.deleteDirectories,
     this.createDirectory,
@@ -587,6 +590,7 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<List> _currentItems = ValueNotifier<List>([]);
   final ValueNotifier<List<FileProps>> _currentProps = ValueNotifier([]);
   final ValueNotifier<Map<String, double>> _keysOffsetMap = ValueNotifier({});
+  final ManualNotifier _rebuildContext = ManualNotifier();
 
   late Listenable _currentItemsNotifiers;
 
@@ -659,6 +663,7 @@ class BrowserState extends State<Browser> {
           keysOffsetMap: _keysOffsetMap.value,
           scrollController: _scrollController,
           buildContextMenu: _buildContextMenu,
+          rebuildContext: _rebuildContext.notifyListeners,
         ),
       ),
     );
@@ -989,10 +994,13 @@ class BrowserState extends State<Browser> {
         };
 
   Widget _buildContextMenu(BuildContext context, RemoteFile? file) {
-    final ManualNotifier rebuild = ManualNotifier();
     return MyListenableBuilder(
       name: 'browser_context_menu',
-      listenable: Listenable.merge([loading, rebuild, Job.onProgressUpdate]),
+      listenable: Listenable.merge([
+        loading,
+        _rebuildContext,
+        Job.onProgressUpdate,
+      ]),
       builder: (context, _) => SingleChildScrollView(
         child: file == null
             ? buildBulkContextMenu(
@@ -1017,6 +1025,7 @@ class BrowserState extends State<Browser> {
                 loading.value ? null : _cut,
                 loading.value ? null : _copy,
                 loading.value ? null : widget.deleteLocal,
+                loading.value ? null : widget.deleteCache,
                 loading.value
                     ? null
                     : (keys) async =>
@@ -1031,7 +1040,7 @@ class BrowserState extends State<Browser> {
                   _selection.value = {};
                 },
                 () {
-                  rebuild.notifyListeners();
+                  _rebuildContext.notifyListeners();
                 },
               )
             : p.isDir(file.key)
@@ -1051,13 +1060,14 @@ class BrowserState extends State<Browser> {
                             refresh: true,
                           ),
                 loading.value ? null : widget.deleteLocal,
+                loading.value ? null : widget.deleteCache,
                 loading.value
                     ? null
                     : (List<String> dirs) async => await widget
                           .deleteDirectories
                           ?.call(dirs, refresh: true),
                 () {
-                  rebuild.notifyListeners();
+                  _rebuildContext.notifyListeners();
                 },
               )
             : buildFileContextMenu(
@@ -1077,12 +1087,13 @@ class BrowserState extends State<Browser> {
                             refresh: true,
                           ),
                 loading.value ? null : widget.deleteLocal,
+                loading.value ? null : widget.deleteCache,
                 loading.value
                     ? null
                     : (List<String> keys) async =>
                           await widget.deleteFiles?.call(keys, refresh: true),
                 () {
-                  rebuild.notifyListeners();
+                  _rebuildContext.notifyListeners();
                 },
               ),
       ),

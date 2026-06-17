@@ -37,7 +37,25 @@ String Function(String) canonicalize = p.canonicalize;
 
 String Function(String) absolute = p.absolute;
 
-String Function(String, String?) join = p.join;
+String Function(
+  String, [
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+  String?,
+])
+join = p.join;
 
 String Function(List<String>) joinAll = p.joinAll;
 

@@ -336,6 +336,7 @@ class PdfInteractiveMedia extends StatefulWidget {
   final String? heroTag;
   final bool showControls;
   final Function(bool paging)? setPaging;
+  final Function()? onCached;
   const PdfInteractiveMedia({
     super.key,
     required this.path,
@@ -344,6 +345,7 @@ class PdfInteractiveMedia extends StatefulWidget {
     this.heroTag,
     this.showControls = true,
     this.setPaging,
+    this.onCached,
   });
 
   @override
@@ -385,7 +387,7 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
         _updatePaging();
       },
     ),
-    onViewerReady: (document, controller) {
+    onViewerReady: (document, controller) async {
       if (!mounted || !controller.isReady) return;
 
       _pdfReady = true;
@@ -397,6 +399,13 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
       _initialZoom = controller.currentZoom;
       _currentZoom = controller.currentZoom;
       setState(() {});
+
+      if (!(await File(widget.path).exists()) &&
+          !(await File(widget.cachePath).exists())) {
+        final encodedPdf = await document.encodePdf();
+        File(widget.cachePath).writeAsBytes(encodedPdf);
+        widget.onCached?.call();
+      }
     },
     onInteractionUpdate: (details) {
       _currentZoom = _pdfViewerController?.currentZoom ?? 1.0;
@@ -772,6 +781,7 @@ class InteractiveMediaView extends StatefulWidget {
   final Function(bool paging)? setPaging;
   final Function(bool dragging)? setDragging;
   final bool isActive;
+  final Function()? onCached;
 
   const InteractiveMediaView({
     super.key,
@@ -784,6 +794,7 @@ class InteractiveMediaView extends StatefulWidget {
     this.setPaging,
     this.setDragging,
     this.isActive = false,
+    this.onCached,
   });
 
   @override
@@ -841,6 +852,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
               path: widget.path,
               cachePath: widget.cachePath,
               cacheKey: widget.remoteKey,
+              onCached: widget.onCached,
             ),
             loadingBuilder: (context, event) => Stack(
               fit: StackFit.expand,
@@ -887,6 +899,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             heroTag: widget.heroTag ?? widget.remoteKey ?? widget.path,
             showControls: widget.showControls,
             setPaging: widget.setPaging,
+            onCached: widget.onCached,
           )
         : mediaType.startsWith('audio/')
         ? AudioVideoInteractiveMedia(
@@ -926,6 +939,7 @@ class Gallery extends StatefulWidget {
   final Map<String, double> keysOffsetMap;
   final ScrollController scrollController;
   final Widget Function(BuildContext, RemoteFile) buildContextMenu;
+  final Function() rebuildContext;
 
   const Gallery({
     super.key,
@@ -934,6 +948,7 @@ class Gallery extends StatefulWidget {
     required this.keysOffsetMap,
     required this.scrollController,
     required this.buildContextMenu,
+    required this.rebuildContext,
   });
 
   @override
@@ -1126,6 +1141,7 @@ class GalleryState extends State<Gallery> {
                           setPaging: _setPaging,
                           setDragging: _setDragging,
                           isActive: index == _currentIndex.value,
+                          onCached: widget.rebuildContext,
                         ),
                       ),
                     ),
@@ -1244,9 +1260,7 @@ class MediaPreviewState extends State<MediaPreview> {
       url: widget.item.url,
       path: Main.pathFromKey(widget.item.key),
       cachePath: Main.cachePathFromKey(widget.item.key),
-      thumbPath: Main.cachePathFromKey(
-        widget.item.key,
-      ).replaceFirst(RegExp(r'(\.[^./\\]+)$'), '_thumb'),
+      thumbPath: "${Main.cachePathFromKey(widget.item.key)}_thumb",
       thumbnail: true,
       maxWidth: widget.width?.toInt(),
       maxHeight: widget.height?.toInt(),

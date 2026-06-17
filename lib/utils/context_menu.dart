@@ -29,6 +29,7 @@ class FileContextActionHandler extends ContextActionHandler {
   final Function(RemoteFile, String)? saveFile;
   final Future<void> Function(List<String>, List<String>)? moveFiles;
   final Function(String)? deleteLocalFile;
+  final Function(String)? deleteCacheFile;
   final Future<void> Function(List<String>)? deleteFiles;
   FileContextActionHandler({
     required this.file,
@@ -37,6 +38,7 @@ class FileContextActionHandler extends ContextActionHandler {
     required this.saveFile,
     required this.moveFiles,
     required this.deleteLocalFile,
+    required this.deleteCacheFile,
     required this.deleteFiles,
   });
 
@@ -49,6 +51,11 @@ class FileContextActionHandler extends ContextActionHandler {
         File(Main.pathFromKey(file.key) ?? file.key).existsSync();
   }
 
+  bool cacheExists() {
+    return !p.isDir(file.key) &&
+        File(Main.cachePathFromKey(file.key)).existsSync();
+  }
+
   bool active() {
     return Job.jobs.value.any(
       (job) =>
@@ -58,8 +65,7 @@ class FileContextActionHandler extends ContextActionHandler {
   }
 
   bool removable() {
-    return !p.isDir(file.key) &&
-        File(Main.pathFromKey(file.key) ?? file.key).existsSync() &&
+    return downloaded() &&
         Main.backupModeFromKey(file.key) == BackupMode.upload;
   }
 
@@ -68,6 +74,10 @@ class FileContextActionHandler extends ContextActionHandler {
     return File(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? () {
             OpenFile.open(Main.pathFromKey(file.key) ?? file.key);
+          }
+        : cacheExists()
+        ? () {
+            OpenFile.open(Main.cachePathFromKey(file.key));
           }
         : link == null
         ? null
@@ -99,6 +109,10 @@ class FileContextActionHandler extends ContextActionHandler {
     return File(Main.pathFromKey(file.key) ?? file.key).existsSync()
         ? () {
             return XFile(Main.pathFromKey(file.key) ?? file.key);
+          }
+        : cacheExists()
+        ? () {
+            return XFile(Main.cachePathFromKey(file.key));
           }
         : null;
   }
@@ -152,6 +166,15 @@ class FileContextActionHandler extends ContextActionHandler {
           }
         : null;
   }
+
+  Future<String> Function()? deleteCache(bool? yes) {
+    return (yes ?? false) && deleteCacheFile != null && cacheExists()
+        ? () async {
+            await deleteCacheFile!(file.key);
+            return 'Deleted cache of ${p.basename(file.key)}';
+          }
+        : null;
+  }
 }
 
 class FilesContextActionHandler extends ContextActionHandler {
@@ -161,6 +184,7 @@ class FilesContextActionHandler extends ContextActionHandler {
   final Function(RemoteFile, String)? saveFile;
   final Future<void> Function(List<String>, List<String>)? moveFiles;
   final Function(String)? deleteLocalFile;
+  final Function(String)? deleteCacheFile;
   final Future<void> Function(List<String>)? deleteFiles;
 
   FilesContextActionHandler({
@@ -170,6 +194,7 @@ class FilesContextActionHandler extends ContextActionHandler {
     required this.saveFile,
     required this.moveFiles,
     required this.deleteLocalFile,
+    required this.deleteCacheFile,
     required this.deleteFiles,
   });
 
@@ -254,11 +279,25 @@ class FilesContextActionHandler extends ContextActionHandler {
         ? () {
             return files
                 .where(
-                  (file) => File(
-                    (Main.pathFromKey(file.key) ?? file.key),
-                  ).existsSync(),
+                  (file) =>
+                      File(
+                        (Main.pathFromKey(file.key) ?? file.key),
+                      ).existsSync() ||
+                      File(Main.cachePathFromKey(file.key)).existsSync(),
                 )
-                .map((file) => XFile(Main.pathFromKey(file.key) ?? file.key))
+                .map((file) {
+                  if (File(
+                    Main.pathFromKey(file.key) ?? file.key,
+                  ).existsSync()) {
+                    return XFile(Main.pathFromKey(file.key) ?? file.key);
+                  } else if (File(
+                    Main.cachePathFromKey(file.key),
+                  ).existsSync()) {
+                    return XFile(Main.cachePathFromKey(file.key));
+                  } else {
+                    throw Exception('File ${file.key} does not exist locally');
+                  }
+                })
                 .toList();
           }
         : null;
@@ -315,6 +354,20 @@ class FilesContextActionHandler extends ContextActionHandler {
           }
         : null;
   }
+
+  Future<String> Function()? deleteCache(
+    bool? yes,
+    List<RemoteFile> cacheFiles,
+  ) {
+    return (yes ?? false) && deleteCacheFile != null && cacheFiles.isNotEmpty
+        ? () async {
+            for (final file in cacheFiles) {
+              await deleteCacheFile!(file.key);
+            }
+            return 'Deleted cache of ${cacheFiles.length} files';
+          }
+        : null;
+  }
 }
 
 class DirectoryContextActionHandler extends ContextActionHandler {
@@ -323,6 +376,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   final Function(RemoteFile, String)? saveDirectory;
   final Future<void> Function(List<String>, List<String>)? moveDirectories;
   final Function(String)? deleteLocalDirectory;
+  final Function(String)? deleteCacheDirectory;
   final Future<void> Function(List<String>)? deleteDirectories;
 
   DirectoryContextActionHandler({
@@ -331,6 +385,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     required this.saveDirectory,
     required this.moveDirectories,
     required this.deleteLocalDirectory,
+    required this.deleteCacheDirectory,
     required this.deleteDirectories,
   });
 
@@ -469,6 +524,16 @@ class DirectoryContextActionHandler extends ContextActionHandler {
           }
         : null;
   }
+
+  Future<String> Function()? deleteCache(bool? yes) {
+    return (yes ?? false) && deleteCacheDirectory != null
+        ? () async {
+            final key = file.key;
+            deleteCacheDirectory!(key);
+            return 'Deleted cache of ${p.basename(key)}';
+          }
+        : null;
+  }
 }
 
 class DirectoriesContextActionHandler extends ContextActionHandler {
@@ -477,6 +542,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   final Function(RemoteFile, String)? saveDirectory;
   final Future<void> Function(List<String>, List<String>)? moveDirectories;
   final Function(String)? deleteLocalDirectory;
+  final Function(String)? deleteCacheDirectory;
   final Future<void> Function(List<String>)? deleteDirectories;
 
   DirectoriesContextActionHandler({
@@ -485,6 +551,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     required this.saveDirectory,
     required this.moveDirectories,
     required this.deleteLocalDirectory,
+    required this.deleteCacheDirectory,
     required this.deleteDirectories,
   });
 
@@ -639,6 +706,23 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
             final keys = directories.map((dir) => dir.key).toList();
             await deleteDirectories!(keys);
             return 'Deleted ${directories.length} folders';
+          }
+        : null;
+  }
+
+  Future<String> Function()? deleteCache(
+    bool? yes,
+    List<RemoteFile> cacheDirs,
+  ) {
+    return (yes ?? false) &&
+            deleteCacheDirectory != null &&
+            cacheDirs.isNotEmpty
+        ? () async {
+            for (final dir in cacheDirs) {
+              final key = dir.key;
+              deleteCacheDirectory!(key);
+            }
+            return 'Deleted cache of ${cacheDirs.length} folders';
           }
         : null;
   }
@@ -957,6 +1041,44 @@ class FileContextOption {
     popOnInvoked: true,
   );
 
+  static FileContextOption deleteCache(
+    FileContextActionHandler handler,
+    BuildContext context,
+  ) => FileContextOption(
+    title: 'Delete Cache',
+    subtitle: 'Delete cached copy of file',
+    icon: Icons.delete_outline_rounded,
+    action: handler.deleteCache(true) == null
+        ? null
+        : () async {
+            final handle = handler.deleteCache(
+              await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Delete Cache'),
+                  content: Text(
+                    'Are you sure you want to delete the cached copy of ${p.basename(handler.file.key)}? This action cannot be undone.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('Delete'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+            if (handle != null) {
+              showSnackBar(SnackBar(content: Text(await handle())));
+            }
+          },
+    popOnInvoked: false,
+  );
+
   static List<List<FileContextOption>> allOptions(
     BuildContext context,
     FileContextActionHandler handler,
@@ -973,6 +1095,7 @@ class FileContextOption {
         else if (handler.downloaded())
           deleteLocal(handler, context),
         delete(handler, context),
+        deleteCache(handler, context),
       ],
     ];
   }
@@ -1336,6 +1459,67 @@ class FilesContextOption {
     popOnInvoked: true,
   );
 
+  static FilesContextOption deleteCache(
+    BuildContext context,
+    FilesContextActionHandler handler,
+  ) => FilesContextOption(
+    title: 'Delete Cache',
+    subtitle: 'Delete cached copies of files',
+    icon: Icons.delete_outline_rounded,
+    action: handler.deleteCache(true, handler.files) == null
+        ? null
+        : () async {
+            final yes = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Delete Cache'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Are you sure you want to delete the cached copies of ${handler.files.length} selected files? This action cannot be undone.',
+                    ),
+                    Container(
+                      height: 200,
+                      padding: EdgeInsets.only(top: 16),
+                      child: SingleChildScrollView(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final file in handler.files)
+                                Text(Main.pathFromKey(file.key) ?? file.key),
+                              if (handler.files.isEmpty)
+                                const Text('No files to delete'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+            if (yes ?? false) {
+              await handler.deleteCache(true, handler.files)!.call();
+              showSnackBar(
+                const SnackBar(content: Text('Cached copies deleted')),
+              );
+            }
+          },
+  );
+
   static List<List<FilesContextOption>> allOptions(
     BuildContext context,
     FilesContextActionHandler handler,
@@ -1353,6 +1537,7 @@ class FilesContextOption {
         if (handler.downloadedFiles().isNotEmpty)
           deleteLocalAll(context, handler, handler.downloadedFiles()),
         deleteAll(context, handler, clearSelection),
+        deleteCache(context, handler),
       ],
     ];
   }
@@ -1650,6 +1835,43 @@ class DirectoryContextOption {
     popOnInvoked: true,
   );
 
+  static DirectoryContextOption deleteCache(
+    BuildContext context,
+    DirectoryContextActionHandler handler,
+  ) => DirectoryContextOption(
+    title: 'Delete Cache',
+    subtitle: 'Delete cached copy of folder',
+    icon: Icons.delete_outline_rounded,
+    action: handler.deleteCache(true) == null
+        ? null
+        : () async {
+            final yes = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Delete Cache'),
+                content: Text(
+                  'Are you sure you want to delete the cached copy of ${p.basename(handler.file.key)}? This action cannot be undone.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+            if (yes ?? false) {
+              showSnackBar(
+                SnackBar(content: Text(await handler.deleteCache(true)!())),
+              );
+            }
+          },
+  );
+
   static List<List<DirectoryContextOption>> allOptions(
     BuildContext context,
     DirectoryContextActionHandler handler,
@@ -1668,6 +1890,7 @@ class DirectoryContextOption {
           deleteUploaded(context, handler, handler.removableFiles()),
         if (handler.localExists()) deleteLocal(context, handler),
         delete(context, handler),
+        deleteCache(context, handler),
       ],
     ];
   }
@@ -1993,6 +2216,68 @@ class DirectoriesContextOption {
     popOnInvoked: true,
   );
 
+  static DirectoriesContextOption deleteCache(
+    DirectoriesContextActionHandler handler,
+    BuildContext context,
+  ) => DirectoriesContextOption(
+    title: 'Delete Cache',
+    subtitle: 'Delete cached copies of folders',
+    icon: Icons.delete_outline_rounded,
+    action: handler.deleteCache(true, handler.directories) == null
+        ? null
+        : () async {
+            final yes = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Delete Cache'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Are you sure you want to delete the cached copies of ${handler.directories.length} selected folders? This action cannot be undone.',
+                    ),
+                    Container(
+                      height: 200,
+                      padding: EdgeInsets.only(top: 16),
+                      child: SingleChildScrollView(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final directory in handler.directories)
+                                Text(
+                                  Main.pathFromKey(directory.key) ??
+                                      directory.key,
+                                ),
+                              if (handler.directories.isEmpty)
+                                const Text('No directories to delete'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+            if (yes ?? false) {
+              await handler.deleteCache(true, handler.directories)?.call();
+              showSnackBar(SnackBar(content: Text('Cached copies deleted')));
+            }
+          },
+  );
+
   static List<List<DirectoriesContextOption>> allOptions(
     BuildContext context,
     DirectoriesContextActionHandler handler,
@@ -2009,6 +2294,7 @@ class DirectoriesContextOption {
         if (handler.localDirectories().isNotEmpty)
           deleteLocal(handler, context, handler.localDirectories()),
         deleteAll(handler, context, clearSelection),
+        deleteCache(handler, context),
       ],
     ];
   }
@@ -2397,6 +2683,69 @@ class BulkContextOption {
     popOnInvoked: true,
   );
 
+  static BulkContextOption deleteCache(
+    DirectoriesContextActionHandler directoriesHandler,
+    FilesContextActionHandler filesHandler,
+    BuildContext context,
+  ) => BulkContextOption(
+    title: 'Delete Cache',
+    subtitle: 'Delete cached copies of folders',
+    icon: Icons.delete_outline_rounded,
+    action: (BuildContext context) async {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Cache'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Are you sure you want to delete the cached copies of ${directoriesHandler.directories.length} selected folders and ${filesHandler.files.length} selected files? This action cannot be undone.',
+              ),
+              Container(
+                height: 200,
+                padding: EdgeInsets.only(top: 16),
+                child: SingleChildScrollView(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final directory in directoriesHandler.directories)
+                          Text(
+                            Main.pathFromKey(directory.key) ?? directory.key,
+                          ),
+                        if (directoriesHandler.directories.isEmpty)
+                          const Text('No directories to delete'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes ?? false) {
+        await directoriesHandler
+            .deleteCache(true, directoriesHandler.directories)
+            ?.call();
+        await filesHandler.deleteCache(true, filesHandler.files)?.call();
+        showSnackBar(SnackBar(content: Text('Cached copies deleted')));
+      }
+    },
+  );
+
   static List<List<BulkContextOption>> allOptions(
     Function(RemoteFile?)? cutKey,
     Function(RemoteFile?)? copyKey,
@@ -2419,6 +2768,7 @@ class BulkContextOption {
             filesHandler.downloadedFiles().isNotEmpty)
           deleteLocalAll(directoriesHandler, filesHandler, context),
         deleteAll(directoriesHandler, filesHandler, context, clearSelection),
+        deleteCache(directoriesHandler, filesHandler, context),
       ],
     ];
   }
@@ -2434,6 +2784,7 @@ Widget buildFileContextMenu(
   Function(RemoteFile)? copy,
   Future<void> Function(List<String>, List<String>)? moveFiles,
   Function(String)? deleteLocal,
+  Function(String)? deleteCache,
   Future<void> Function(List<String>)? deleteFiles,
   void Function()? onInvoked,
 ) {
@@ -2445,6 +2796,7 @@ Widget buildFileContextMenu(
     saveFile: saveFile,
     moveFiles: moveFiles,
     deleteLocalFile: deleteLocal,
+    deleteCacheFile: deleteCache,
     deleteFiles: deleteFiles,
   );
   return Column(
@@ -2544,6 +2896,7 @@ Widget buildFilesContextMenu(
   Function(RemoteFile?)? copy,
   Future<void> Function(List<String>, List<String>)? moveFiles,
   Function(String)? deleteLocal,
+  Function(String)? deleteCache,
   Future<void> Function(List<String>)? deleteFiles,
   Function() clearSelection,
   void Function()? onInvoked,
@@ -2555,6 +2908,7 @@ Widget buildFilesContextMenu(
     saveFile: saveFile,
     moveFiles: moveFiles,
     deleteLocalFile: deleteLocal,
+    deleteCacheFile: deleteCache,
     deleteFiles: deleteFiles,
   );
   return Column(
@@ -2618,6 +2972,7 @@ Widget buildDirectoryContextMenu(
   Function(RemoteFile)? copy,
   Future<void> Function(List<String>, List<String>)? moveDirectories,
   Function(String)? deleteLocal,
+  Function(String)? deleteCache,
   Future<void> Function(List<String>)? deleteDirectories,
   void Function()? onInvoked,
 ) {
@@ -2627,6 +2982,7 @@ Widget buildDirectoryContextMenu(
     saveDirectory: saveDirectory,
     moveDirectories: moveDirectories,
     deleteLocalDirectory: deleteLocal,
+    deleteCacheDirectory: deleteCache,
     deleteDirectories: deleteDirectories,
   );
   return Column(
@@ -2746,6 +3102,7 @@ Widget buildDirectoriesContextMenu(
   Function(RemoteFile?)? copy,
   Future<void> Function(List<String>, List<String>)? moveDirectories,
   Function(String)? deleteLocal,
+  Function(String)? deleteCache,
   Future<void> Function(List<String>)? deleteDirectories,
   Function() clearSelection,
   void Function()? onInvoked,
@@ -2756,6 +3113,7 @@ Widget buildDirectoriesContextMenu(
     saveDirectory: saveDirectory,
     moveDirectories: moveDirectories,
     deleteLocalDirectory: deleteLocal,
+    deleteCacheDirectory: deleteCache,
     deleteDirectories: deleteDirectories,
   );
   return Column(
@@ -2816,6 +3174,7 @@ Widget buildBulkContextMenu(
   Function(RemoteFile?)? cut,
   Function(RemoteFile?)? copy,
   Function(String)? deleteLocal,
+  Function(String)? deleteCache,
   Future<void> Function(List<String>)? deleteFiles,
   Future<void> Function(List<String>)? deleteDirectories,
   Function() clearSelection,
@@ -2832,6 +3191,7 @@ Widget buildBulkContextMenu(
       copy,
       moveFiles,
       deleteLocal,
+      deleteCache,
       deleteFiles,
       clearSelection,
       onInvoked,
@@ -2846,6 +3206,7 @@ Widget buildBulkContextMenu(
       copy,
       moveDirectories,
       deleteLocal,
+      deleteCache,
       deleteDirectories,
       clearSelection,
       onInvoked,
@@ -2858,6 +3219,7 @@ Widget buildBulkContextMenu(
           saveDirectory: saveDirectory,
           moveDirectories: moveDirectories,
           deleteLocalDirectory: deleteLocal,
+          deleteCacheDirectory: deleteCache,
           deleteDirectories: deleteDirectories,
         );
     FilesContextActionHandler fileHandler = FilesContextActionHandler(
@@ -2867,6 +3229,7 @@ Widget buildBulkContextMenu(
       saveFile: saveFile,
       moveFiles: moveFiles,
       deleteLocalFile: deleteLocal,
+      deleteCacheFile: deleteCache,
       deleteFiles: deleteFiles,
     );
     return Column(

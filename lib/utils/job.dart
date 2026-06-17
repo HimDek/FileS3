@@ -135,16 +135,17 @@ abstract class Main {
   }
 
   static String cachePathFromKey(String key) {
-    return p.join(
+    return p.joinAll([
       _downloadCacheDir,
-      'app_${sha1.convert(utf8.encode(key)).toString()}.tmp',
-    );
+      for (String part in p.split(p.s3(key)))
+        sha1.convert(utf8.encode(part)).toString(),
+    ]);
   }
 
   static String tagPathFromKey(String key) {
     return p.join(
       _downloadCacheDir,
-      'app_${sha1.convert(utf8.encode(key)).toString()}.tag',
+      'file_${sha1.convert(utf8.encode(p.s3(key))).toString()}.tag',
     );
   }
 

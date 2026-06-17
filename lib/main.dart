@@ -266,8 +266,9 @@ class _HomeState extends State<Home> {
       downloadTo = p.isAbsolute(downloadTo)
           ? downloadTo
           : Main.cachePathFromKey(key);
-      if (!File(downloadTo).parent.existsSync()) {
-        File(downloadTo).parent.createSync(recursive: true);
+      File file = File(downloadTo);
+      if (!file.parent.existsSync()) {
+        file.parent.createSync(recursive: true);
       }
       // TODO: Download wait and Upload
       // Main.downloadFile(oldFile, localPath: downloadTo);
@@ -277,16 +278,21 @@ class _HomeState extends State<Home> {
 
     await Main.profileFromKey(key)!.fileManager!.copyFile(key, newKey);
 
-    if (File(Main.pathFromKey(key) ?? key).existsSync() &&
-        Main.pathFromKey(newKey) != null) {
-      if (!File(Main.pathFromKey(newKey) ?? newKey).parent.existsSync()) {
-        File(
-          Main.pathFromKey(newKey) ?? newKey,
-        ).parent.createSync(recursive: true);
+    final file = File(Main.pathFromKey(key) ?? key);
+    final cacheFile = File(Main.cachePathFromKey(key));
+
+    if (file.existsSync() && Main.pathFromKey(newKey) != null) {
+      if (!file.parent.existsSync()) {
+        file.parent.createSync(recursive: true);
       }
-      File(
-        Main.pathFromKey(key) ?? key,
-      ).copySync(Main.pathFromKey(newKey) ?? newKey);
+      file.copySync(Main.pathFromKey(newKey) ?? newKey);
+    }
+
+    if (cacheFile.existsSync() && Main.pathFromKey(newKey) != null) {
+      if (!cacheFile.parent.existsSync()) {
+        cacheFile.parent.createSync(recursive: true);
+      }
+      cacheFile.copySync(Main.pathFromKey(newKey) ?? newKey);
     }
 
     Main.remoteFilesAdd(newFile);
@@ -295,6 +301,7 @@ class _HomeState extends State<Home> {
     }
   }
 
+  // uses _copyFile
   Future<void> _copyDirectory(
     String dir,
     String newDir, {
@@ -329,7 +336,8 @@ class _HomeState extends State<Home> {
 
   void _deleteLocal(String key) {
     if (p.isDir(key)) {
-      if (Directory(Main.pathFromKey(key) ?? key).existsSync()) {
+      final dir = Directory(Main.pathFromKey(key) ?? key);
+      if (dir.existsSync()) {
         if (Main.backupModeFromKey(key) != BackupMode.upload) {
           ConfigManager.setBackupMode(
             key,
@@ -338,10 +346,15 @@ class _HomeState extends State<Home> {
                 : BackupMode.upload,
           );
         }
-        Directory(Main.pathFromKey(key) ?? key).deleteSync(recursive: true);
+        dir.deleteSync(recursive: true);
+      }
+      final cacheDir = Directory(Main.cachePathFromKey(key));
+      if (cacheDir.existsSync()) {
+        cacheDir.deleteSync(recursive: true);
       }
     } else {
-      if (File(Main.pathFromKey(key) ?? key).existsSync()) {
+      final file = File(Main.pathFromKey(key) ?? key);
+      if (file.existsSync()) {
         if (Main.backupModeFromKey(key) != BackupMode.upload) {
           ConfigManager.setBackupMode(
             key,
@@ -350,8 +363,21 @@ class _HomeState extends State<Home> {
                 : BackupMode.upload,
           );
         }
-        File(Main.pathFromKey(key) ?? key).deleteSync();
+        file.deleteSync();
       }
+      final cacheFile = File(Main.cachePathFromKey(key));
+      if (cacheFile.existsSync()) {
+        cacheFile.deleteSync();
+      }
+    }
+  }
+
+  void _deleteCache(String key) {
+    final FileSystemEntity e = p.isDir(key)
+        ? Directory(Main.cachePathFromKey(key))
+        : File(Main.cachePathFromKey(key));
+    if (e.existsSync()) {
+      e.deleteSync();
     }
   }
 
@@ -389,8 +415,13 @@ class _HomeState extends State<Home> {
         (preprogress ?? progress).value =
             progressCount / profileKeys.values.expand((e) => e).length;
         await profile.fileManager?.deleteFile(key);
-        if (File(Main.pathFromKey(key) ?? key).existsSync()) {
-          File(Main.pathFromKey(key) ?? key).deleteSync();
+        File file = File(Main.pathFromKey(key) ?? key);
+        File cacheFile = File(Main.cachePathFromKey(key));
+        if (file.existsSync()) {
+          file.deleteSync();
+        }
+        if (cacheFile.existsSync()) {
+          cacheFile.deleteSync();
         }
       }
 
@@ -478,6 +509,7 @@ class _HomeState extends State<Home> {
     }
   }
 
+  // uses _deleteS3
   Future<void> _deleteDirectories(
     List<String> dirs, {
     bool refresh = true,
@@ -487,11 +519,15 @@ class _HomeState extends State<Home> {
 
     await _deleteS3(dirs, refresh: false, preprogress: preprogress ?? progress);
 
-    for (final dir
-        in dirs
-            .map((dir) => Directory(Main.pathFromKey(dir) ?? dir))
-            .where((dir) => dir.existsSync())) {
-      dir.deleteSync(recursive: true);
+    for (final dirS in dirs) {
+      final dir = Directory(Main.pathFromKey(dirS) ?? dirS);
+      final cacheDir = Directory(Main.cachePathFromKey(dirS));
+      if (dir.existsSync()) {
+        dir.deleteSync(recursive: true);
+      }
+      if (cacheDir.existsSync()) {
+        cacheDir.deleteSync(recursive: true);
+      }
     }
 
     if (refresh) {
@@ -499,6 +535,7 @@ class _HomeState extends State<Home> {
     }
   }
 
+  // uses _copyFile
   Future<void> _moveFiles(
     List<String> keys,
     List<String> newKeys, {
@@ -508,10 +545,17 @@ class _HomeState extends State<Home> {
     for (int i = 0; i < keys.length; i++) {
       progress.value = (i + 1) * 0.5 / keys.length;
       await _copyFile(keys[i], newKeys[i], refresh: false);
-      renameOrCopyAndDelete(
-        File(Main.pathFromKey(keys[i]) ?? keys[i]),
-        Main.pathFromKey(newKeys[i]) ?? newKeys[i],
-      );
+      File file = File(Main.pathFromKey(keys[i]) ?? keys[i]);
+      if (file.existsSync()) {
+        renameOrCopyAndDelete(file, Main.pathFromKey(newKeys[i]) ?? newKeys[i]);
+      }
+      File cacheFile = File(Main.cachePathFromKey(keys[i]));
+      if (cacheFile.existsSync()) {
+        renameOrCopyAndDelete(
+          cacheFile,
+          Main.pathFromKey(newKeys[i]) ?? newKeys[i],
+        );
+      }
     }
     final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
     preprogress.addListener(() {
@@ -524,6 +568,7 @@ class _HomeState extends State<Home> {
     }
   }
 
+  // uses _copyDirectory and _deleteDirectories
   Future<void> _moveDirectories(
     List<String> dirs,
     List<String> newDirs, {
@@ -555,7 +600,10 @@ class _HomeState extends State<Home> {
   }
 
   void _downloadFile(RemoteFile file, {String? localPath}) {
-    if (!File(Main.pathFromKey(file.key) ?? file.key).existsSync()) {
+    final mfile = File(Main.pathFromKey(file.key) ?? file.key);
+    final cacheFile = File(Main.cachePathFromKey(file.key));
+
+    if (!mfile.existsSync()) {
       if (Main.backupModeFromKey(file.key) != BackupMode.sync &&
           (localPath ?? Main.pathFromKey(file.key)) ==
               Main.pathFromKey(file.key)) {
@@ -566,7 +614,14 @@ class _HomeState extends State<Home> {
               : BackupMode.sync,
         );
       }
-      Main.downloadFile(file, localPath: localPath);
+      if (cacheFile.existsSync()) {
+        renameOrCopyAndDelete(
+          cacheFile,
+          localPath ?? Main.pathFromKey(file.key) ?? file.key,
+        );
+      } else {
+        Main.downloadFile(file, localPath: localPath);
+      }
     }
   }
 
@@ -598,57 +653,65 @@ class _HomeState extends State<Home> {
         localPath ?? Main.pathFromKey(dir.key) ?? dir.key,
         relativePath,
       );
-      final localFileDir = p.s3(p.dirname(localFilePath));
-      if (!Directory(localFileDir).existsSync()) {
-        Directory(localFileDir).createSync(recursive: true);
+
+      final localFileDir = Directory(p.dirname(localFilePath));
+      if (!localFileDir.existsSync()) {
+        localFileDir.createSync(recursive: true);
       }
+
       if (!File(localFilePath).existsSync()) {
-        Main.downloadFile(file, localPath: localFilePath);
+        final cacheFile = File(Main.cachePathFromKey(file.key));
+        if (cacheFile.existsSync()) {
+          renameOrCopyAndDelete(cacheFile, localFilePath);
+        } else {
+          Main.downloadFile(file, localPath: localFilePath);
+        }
       }
     }
   }
 
   void _saveFile(RemoteFile file, String savePath) {
-    if (File(savePath).existsSync()) {
-      File(savePath).deleteSync();
+    final mFile = File(Main.pathFromKey(file.key) ?? file.key);
+    final cacheFile = File(Main.cachePathFromKey(file.key));
+    final saveFile = File(savePath);
+
+    if (saveFile.existsSync()) {
+      saveFile.deleteSync();
     }
-    if (File(Main.pathFromKey(file.key) ?? file.key).existsSync()) {
-      if (!File(savePath).parent.existsSync()) {
-        File(savePath).parent.createSync(recursive: true);
-      }
-      File(Main.pathFromKey(file.key) ?? file.key).copySync(savePath);
+    if (!saveFile.parent.existsSync()) {
+      saveFile.parent.createSync(recursive: true);
+    }
+
+    if (mFile.existsSync()) {
+      mFile.copySync(savePath);
+    } else if (cacheFile.existsSync()) {
+      cacheFile.copySync(savePath);
     } else {
       Main.downloadFile(file, localPath: savePath);
     }
   }
 
+  // uses _saveFile
   void _saveDirectory(RemoteFile dir, String savePath) {
-    if (Directory(savePath).existsSync()) {
-      Directory(savePath).deleteSync(recursive: true);
-    }
-    if (Directory(Main.pathFromKey(dir.key) ?? dir.key).existsSync()) {
-      final files = Directory(
-        Main.pathFromKey(dir.key) ?? dir.key,
-      ).listSync(recursive: true, followLinks: false);
-      int progressCount = 0;
-      final totalFiles = files.length;
-      for (final entity in files) {
-        progressCount += 1;
-        progress.value = progressCount / totalFiles;
-        if (entity is File) {
-          final relativePath = p.s3(
-            p.relative(entity.path, from: Main.pathFromKey(dir.key)),
-          );
-          final newFilePath = p.join(savePath, relativePath);
-          final newFileDir = p.s3(p.dirname(newFilePath));
-          if (!Directory(newFileDir).existsSync()) {
-            Directory(newFileDir).createSync(recursive: true);
-          }
-          entity.copySync(newFilePath);
-        }
-      }
-    } else {
-      _downloadDirectory(dir, localPath: savePath);
+    final files = Main.remoteFiles
+        .where(
+          (file) =>
+              p.isWithin(dir.key, file.key) &&
+              file.key != dir.key &&
+              !p.isDir(file.key),
+        )
+        .toList();
+
+    int progressCount = 0;
+    final totalFiles = files.length;
+
+    for (final file in files) {
+      progressCount += 1;
+      progress.value = progressCount / totalFiles;
+
+      final relativePath = p.s3(p.relative(file.key, from: dir.key));
+      final saveFilePath = p.join(savePath, relativePath);
+      _saveFile(file, saveFilePath);
     }
   }
 
@@ -878,6 +941,7 @@ class _HomeState extends State<Home> {
       moveDirectories: _moveDirectories,
       deleteLocal: _deleteLocal,
       deleteFiles: _deleteFiles,
+      deleteCache: _deleteCache,
       deleteDirectories: _deleteDirectories,
       createDirectory: _createDirectory,
       uploadDirectory: _uploadDirectory,

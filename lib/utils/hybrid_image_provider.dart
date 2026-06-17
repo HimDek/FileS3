@@ -17,6 +17,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
   final int? maxWidth;
   final int? maxHeight;
   final String? cacheKey;
+  final Function()? onCached;
 
   HybridImageProvider({
     this.url,
@@ -27,6 +28,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
     this.maxWidth,
     this.maxHeight,
     this.cacheKey,
+    this.onCached,
   });
 
   static final Map<String, Future<Codec>> _inflight = {};
@@ -76,8 +78,6 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
       bytes = File(path!).readAsBytesSync();
     } else if (cacheExists) {
       bytes = File(cachePath!).readAsBytesSync();
-    } else if (thumbExists) {
-      bytes = File(thumbPath!).readAsBytesSync();
     } else if (url != null) {
       bytes = await _download(
         onReceiveProgress: (received, total) {
@@ -171,6 +171,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
     final tmp = File('${file.path}.tmp');
     await tmp.writeAsBytes(bytes);
     await tmp.rename(file.path);
+    onCached?.call();
   }
 
   @override
