@@ -20,6 +20,7 @@ abstract class ContextActionHandler {
   void Function()? download();
   String Function()? saveAs(String? path);
   Future<String> Function()? delete(bool? yes);
+  Future<String> Function()? deleteCache(bool? yes);
 }
 
 class FileContextActionHandler extends ContextActionHandler {
@@ -167,6 +168,7 @@ class FileContextActionHandler extends ContextActionHandler {
         : null;
   }
 
+  @override
   Future<String> Function()? deleteCache(bool? yes) {
     return (yes ?? false) && deleteCacheFile != null && cacheExists()
         ? () async {
@@ -210,6 +212,16 @@ class FilesContextActionHandler extends ContextActionHandler {
           (f) =>
               !p.isDir(f.key) &&
               File(Main.pathFromKey(f.key) ?? f.key).existsSync(),
+        )
+        .toList();
+  }
+
+  List<RemoteFile> cachedFiles() {
+    return files
+        .where(
+          (f) =>
+              !p.isDir(f.key) &&
+              File(Main.cachePathFromKey(f.key)).existsSync(),
         )
         .toList();
   }
@@ -355,16 +367,17 @@ class FilesContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  Future<String> Function()? deleteCache(
-    bool? yes,
-    List<RemoteFile> cacheFiles,
-  ) {
-    return (yes ?? false) && deleteCacheFile != null && cacheFiles.isNotEmpty
+  @override
+  Future<String> Function()? deleteCache(bool? yes) {
+    final cacheFilesList = cachedFiles();
+    return (yes ?? false) &&
+            deleteCacheFile != null &&
+            cacheFilesList.isNotEmpty
         ? () async {
-            for (final file in cacheFiles) {
+            for (final file in cacheFilesList) {
               await deleteCacheFile!(file.key);
             }
-            return 'Deleted cache of ${cacheFiles.length} files';
+            return 'Deleted cache of ${cacheFilesList.length} files';
           }
         : null;
   }
@@ -405,6 +418,10 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     return files
         .where((f) => File(Main.pathFromKey(f.key) ?? f.key).existsSync())
         .toList();
+  }
+
+  bool cacheExist() {
+    return Directory(Main.cachePathFromKey(file.key)).existsSync();
   }
 
   List<RemoteFile> activeFiles() {
@@ -526,7 +543,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   }
 
   Future<String> Function()? deleteCache(bool? yes) {
-    return (yes ?? false) && deleteCacheDirectory != null
+    return (yes ?? false) && deleteCacheDirectory != null && cacheExist()
         ? () async {
             final key = file.key;
             deleteCacheDirectory!(key);
@@ -580,6 +597,12 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   List<RemoteFile> downloadedFiles() {
     return files
         .where((f) => File(Main.pathFromKey(f.key) ?? f.key).existsSync())
+        .toList();
+  }
+
+  List<RemoteFile> cachedDirectories() {
+    return directories
+        .where((dir) => Directory(Main.cachePathFromKey(dir.key)).existsSync())
         .toList();
   }
 
@@ -710,10 +733,9 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  Future<String> Function()? deleteCache(
-    bool? yes,
-    List<RemoteFile> cacheDirs,
-  ) {
+  @override
+  Future<String> Function()? deleteCache(bool? yes) {
+    final cacheDirs = cachedDirectories();
     return (yes ?? false) &&
             deleteCacheDirectory != null &&
             cacheDirs.isNotEmpty
@@ -1466,9 +1488,10 @@ class FilesContextOption {
     title: 'Delete Cache',
     subtitle: 'Delete cached copies of files',
     icon: Icons.delete_outline_rounded,
-    action: handler.deleteCache(true, handler.files) == null
+    action: handler.deleteCache(true) == null
         ? null
         : () async {
+            final cacheFiles = handler.cachedFiles();
             final yes = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
@@ -1477,7 +1500,7 @@ class FilesContextOption {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Are you sure you want to delete the cached copies of ${handler.files.length} selected files? This action cannot be undone.',
+                      'Are you sure you want to delete the cached copies of the following ${cacheFiles.length} selected files? This action cannot be undone.',
                     ),
                     Container(
                       height: 200,
@@ -1488,10 +1511,10 @@ class FilesContextOption {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              for (final file in handler.files)
+                              for (final file in cacheFiles)
                                 Text(Main.pathFromKey(file.key) ?? file.key),
-                              if (handler.files.isEmpty)
-                                const Text('No files to delete'),
+                              if (cacheFiles.isEmpty)
+                                const Text('No cached files to delete'),
                             ],
                           ),
                         ),
@@ -1512,7 +1535,7 @@ class FilesContextOption {
               ),
             );
             if (yes ?? false) {
-              await handler.deleteCache(true, handler.files)!.call();
+              await handler.deleteCache(true)!.call();
               showSnackBar(
                 const SnackBar(content: Text('Cached copies deleted')),
               );
@@ -2223,9 +2246,10 @@ class DirectoriesContextOption {
     title: 'Delete Cache',
     subtitle: 'Delete cached copies of folders',
     icon: Icons.delete_outline_rounded,
-    action: handler.deleteCache(true, handler.directories) == null
+    action: handler.deleteCache(true) == null
         ? null
         : () async {
+            final cachedDirectories = handler.cachedDirectories();
             final yes = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
@@ -2234,7 +2258,7 @@ class DirectoriesContextOption {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Are you sure you want to delete the cached copies of ${handler.directories.length} selected folders? This action cannot be undone.',
+                      'Are you sure you want to delete the cached copies of the following ${cachedDirectories.length} selected folders? This action cannot be undone.',
                     ),
                     Container(
                       height: 200,
@@ -2245,13 +2269,13 @@ class DirectoriesContextOption {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              for (final directory in handler.directories)
+                              for (final directory in cachedDirectories)
                                 Text(
                                   Main.pathFromKey(directory.key) ??
                                       directory.key,
                                 ),
-                              if (handler.directories.isEmpty)
-                                const Text('No directories to delete'),
+                              if (cachedDirectories.isEmpty)
+                                const Text('No cached directories to delete'),
                             ],
                           ),
                         ),
@@ -2272,7 +2296,7 @@ class DirectoriesContextOption {
               ),
             );
             if (yes ?? false) {
-              await handler.deleteCache(true, handler.directories)?.call();
+              await handler.deleteCache(true)?.call();
               showSnackBar(SnackBar(content: Text('Cached copies deleted')));
             }
           },
@@ -2691,59 +2715,63 @@ class BulkContextOption {
     title: 'Delete Cache',
     subtitle: 'Delete cached copies of folders',
     icon: Icons.delete_outline_rounded,
-    action: (BuildContext context) async {
-      final yes = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Delete Cache'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Are you sure you want to delete the cached copies of ${directoriesHandler.directories.length} selected folders and ${filesHandler.files.length} selected files? This action cannot be undone.',
-              ),
-              Container(
-                height: 200,
-                padding: EdgeInsets.only(top: 16),
-                child: SingleChildScrollView(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (final directory in directoriesHandler.directories)
-                          Text(
-                            Main.pathFromKey(directory.key) ?? directory.key,
-                          ),
-                        if (directoriesHandler.directories.isEmpty)
-                          const Text('No directories to delete'),
-                      ],
+    action:
+        filesHandler.deleteCache(true) == null &&
+            directoriesHandler.deleteCache(true) == null
+        ? null
+        : (BuildContext context) async {
+            final cacheFiles = filesHandler.cachedFiles();
+            final cachedDirectories = directoriesHandler.cachedDirectories();
+            final yes = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Delete Cache'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Are you sure you want to delete the cached copies of ${cachedDirectories.length} selected folders and ${cacheFiles.length} selected files? This action cannot be undone.',
                     ),
-                  ),
+                    Container(
+                      height: 200,
+                      padding: EdgeInsets.only(top: 16),
+                      child: SingleChildScrollView(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final directory in cachedDirectories)
+                                Text(directory.key),
+                              for (final file in cacheFiles) Text(file.key),
+                              if (cachedDirectories.isEmpty &&
+                                  cacheFiles.isEmpty)
+                                const Text('Nothing to delete'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Delete'),
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Delete'),
-            ),
-          ],
-        ),
-      );
-      if (yes ?? false) {
-        await directoriesHandler
-            .deleteCache(true, directoriesHandler.directories)
-            ?.call();
-        await filesHandler.deleteCache(true, filesHandler.files)?.call();
-        showSnackBar(SnackBar(content: Text('Cached copies deleted')));
-      }
-    },
+            );
+            if (yes ?? false) {
+              await directoriesHandler.deleteCache(true)?.call();
+              await filesHandler.deleteCache(true)?.call();
+              showSnackBar(SnackBar(content: Text('Cached copies deleted')));
+            }
+          },
   );
 
   static List<List<BulkContextOption>> allOptions(
