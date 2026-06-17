@@ -226,14 +226,7 @@ class _HomeState extends State<Home> {
     loading.value = true;
     try {
       await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
-      Main.remoteFilesAdd(
-        RemoteFile(
-          key: p.asDir(dir),
-          size: 0,
-          etag: '',
-          lastModified: DateTime.now(),
-        ),
-      );
+      Main.remoteFilesAdd(RemoteFile(key: p.asDir(dir), etag: ''));
       if (p.split(dir).length == 1) {
         await Main.addWatcher(dir);
       }

@@ -222,13 +222,7 @@ abstract class Main {
         final dirPath = p.asDir(current);
 
         if (!existingPaths.contains(dirPath)) {
-          final dirObject = RemoteFile(
-            key: dirPath,
-            size: 0,
-            etag: '',
-            lastModified: DateTime.now(),
-          );
-
+          final dirObject = RemoteFile(key: dirPath, etag: '');
           _remoteFiles.add(dirObject);
           existingPaths.add(dirPath);
         }

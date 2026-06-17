@@ -475,8 +475,7 @@ class MyBrowserState extends BrowserState {
                   _controlsVisible.value = true;
                   _driveDir.value = Main.remoteFiles.firstWhere(
                     (file) => file.key == pinned.value,
-                    orElse: () =>
-                        RemoteFile(key: pinned.value, size: 0, etag: ''),
+                    orElse: () => RemoteFile(key: pinned.value, etag: ''),
                   );
                 },
               ),
@@ -1500,7 +1499,7 @@ class BrowserState extends State<Browser> {
           }
           if (_driveDir.value.key.isNotEmpty) {
             final newKey = p.s3(p.dirname(_driveDir.value.key));
-            _changeDirectory(RemoteFile(key: newKey, size: 0, etag: ''));
+            _changeDirectory(RemoteFile(key: newKey, etag: ''));
             return;
           }
         },
@@ -2047,7 +2046,6 @@ class BrowserState extends State<Browser> {
                                                   onTap: () => _changeDirectory(
                                                     RemoteFile(
                                                       key: '',
-                                                      size: 0,
                                                       etag: '',
                                                     ),
                                                   ),

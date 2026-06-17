@@ -182,8 +182,10 @@ class RemoteFile {
         latest = file.lastModified!;
       }
     }
-    _lastModified = latest;
-    return latest == DateTime.fromMillisecondsSinceEpoch(0) ? null : latest;
+    _lastModified = latest == DateTime.fromMillisecondsSinceEpoch(0)
+        ? null
+        : latest;
+    return _lastModified;
   }
 
   Future<(int, int)> getCount({bool recursive = false}) async {

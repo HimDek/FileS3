@@ -48,7 +48,7 @@ class Profile {
           !Main.remoteFiles.any(
             (file) => p.isWithin(dir, file.key) || p.equals(file.key, dir),
           )) {
-        Main.remoteFilesAdd(RemoteFile(key: "$name/", etag: "", size: 0));
+        Main.remoteFilesAdd(RemoteFile(key: "$name/", etag: ""));
       }
       if (kDebugMode) {
         debugPrint("Error refreshing remote files: $e");
