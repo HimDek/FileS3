@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:ui';
 import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:pool/pool.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
@@ -32,6 +34,10 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
   });
 
   static final Map<String, Future<Codec>> _inflight = {};
+  static final Set<String> _thumbInflight = {};
+  static final Pool _readPool = Pool(5);
+  static final _thumbQueue = Pool(1);
+
   bool pathExists = false;
   bool cacheExists = false;
   bool thumbExists = false;
@@ -66,80 +72,94 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
     StreamController<ImageChunkEvent> chunkEvents, {
     required _SimpleDecoderCallback decode,
   }) async {
-    Uint8List bytes;
+    Uint8List? bytes;
 
-    pathExists = path != null && File(path!).existsSync();
-    cacheExists = cachePath != null && File(cachePath!).existsSync();
-    thumbExists = thumbPath != null && File(thumbPath!).existsSync();
+    final results = await _readPool.withResource(
+      () => Future.wait([
+        thumbPath != null ? File(thumbPath!).exists() : Future.value(false),
+        path != null ? File(path!).exists() : Future.value(false),
+        cachePath != null ? File(cachePath!).exists() : Future.value(false),
+      ]),
+    );
 
-    if (thumbnail && thumbExists) {
-      bytes = File(thumbPath!).readAsBytesSync();
-    } else if (pathExists) {
-      bytes = File(path!).readAsBytesSync();
-    } else if (cacheExists) {
-      bytes = File(cachePath!).readAsBytesSync();
-    } else if (url != null) {
-      bytes = await _download(
-        onReceiveProgress: (received, total) {
-          chunkEvents.add(
-            ImageChunkEvent(
-              cumulativeBytesLoaded: received,
-              expectedTotalBytes: total,
+    thumbExists = results[0];
+    pathExists = results[1];
+    cacheExists = results[2];
+
+    try {
+      if (thumbnail && thumbExists) {
+        bytes = await _readPool.withResource(
+          () => File(thumbPath!).readAsBytes(),
+        );
+      } else if (pathExists) {
+        bytes = await _readPool.withResource(() => File(path!).readAsBytes());
+      } else if (cacheExists) {
+        bytes = await _readPool.withResource(
+          () => File(cachePath!).readAsBytes(),
+        );
+      } else if (url != null) {
+        bytes = await _download(
+          onReceiveProgress: (received, total) {
+            chunkEvents.add(
+              ImageChunkEvent(
+                cumulativeBytesLoaded: received,
+                expectedTotalBytes: total,
+              ),
+            );
+          },
+        );
+      }
+      if (bytes == null) {
+        throw StateError("No image source");
+      }
+    } catch (e, s) {
+      Error.throwWithStackTrace(StateError('Failed to load image: $e'), s);
+    } finally {
+      unawaited(
+        chunkEvents.close().catchError((Object error, StackTrace stack) {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stack,
+              library: 'painting library',
+              context: ErrorDescription(
+                'while closing chunkEvents stream in NetworkImage.load',
+              ),
             ),
           );
-        },
+        }),
       );
-    } else {
-      throw StateError("No image source");
+    }
+
+    if (thumbnail && thumbPath != null && !thumbExists) {
+      unawaited(
+        _writeThumbnail(bytes, maxWidth ?? 200, maxHeight ?? 200, thumbPath!),
+      );
+    }
+    if (cachePath != null && !thumbnail && !cacheExists && !pathExists) {
+      unawaited(_writeOriginal(bytes));
     }
 
     final ImmutableBuffer buffer = await ImmutableBuffer.fromUint8List(bytes);
-    final ImageDescriptor descriptor = await ImageDescriptor.encoded(buffer);
 
+    if (maxWidth == null && maxHeight == null) {
+      return decode(buffer);
+    }
+
+    final ImageDescriptor descriptor = await ImageDescriptor.encoded(buffer);
     final bool needsResize =
         (maxWidth != null || maxHeight != null) &&
         (descriptor.width > (maxWidth ?? descriptor.width) ||
             descriptor.height > (maxHeight ?? descriptor.height));
 
     if (needsResize) {
-      final Codec codec = await descriptor.instantiateCodec(
-        targetWidth: descriptor.width < descriptor.height ? maxWidth : null,
-        targetHeight: descriptor.height < descriptor.width ? maxHeight : null,
+      return descriptor.instantiateCodec(
+        targetWidth: descriptor.width >= descriptor.height ? maxWidth : null,
+        targetHeight: descriptor.width <= descriptor.height ? maxHeight : null,
       );
-
-      final FrameInfo frame = await codec.getNextFrame();
-      final Image image = frame.image;
-
-      final Uint8List? png = (await image.toByteData(
-        format: ImageByteFormat.png,
-      ))?.buffer.asUint8List();
-      final ImmutableBuffer resultBuffer = await ImmutableBuffer.fromUint8List(
-        png!,
-      );
-
-      if (thumbnail && thumbPath != null && !thumbExists) {
-        _writeThumbnail(png);
-      }
-
-      return await decode(resultBuffer);
-    } else if (cachePath != null && !thumbnail && !cacheExists && !pathExists) {
-      _writeOriginal(bytes);
     }
 
-    chunkEvents.close().catchError((Object error, StackTrace stack) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stack,
-          library: 'painting library',
-          context: ErrorDescription(
-            'while closing chunkEvents stream in NetworkImage.load',
-          ),
-        ),
-      );
-    });
-
-    return await descriptor.instantiateCodec();
+    return decode(buffer);
   }
 
   Future<Uint8List> _download({Function(int, int)? onReceiveProgress}) async {
@@ -152,16 +172,48 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
     return Uint8List.fromList(response.data!);
   }
 
-  Future<void> _writeThumbnail(Uint8List png) async {
+  static Future<void> _writeThumbnail(
+    Uint8List png,
+    int maxWidth,
+    int maxHeight,
+    String thumbPath,
+  ) async {
+    if (_thumbInflight.add(thumbPath)) {
+      final thumb = await _thumbQueue.withResource<TransferableTypedData>(
+        () => compute<(TransferableTypedData, int, int), TransferableTypedData>(
+          _genThumb,
+          (TransferableTypedData.fromList([png]), maxWidth, maxHeight),
+        ),
+      );
+
+      final file = File(thumbPath);
+      await file.parent.create(recursive: true);
+
+      final tmp = File('${file.path}.tmp');
+      await tmp.writeAsBytes(thumb.materialize().asUint8List());
+      await tmp.rename(file.path);
+      _thumbInflight.remove(thumbPath);
+    }
+  }
+
+  static Future<TransferableTypedData> _genThumb(
+    (TransferableTypedData, int, int) args,
+  ) async {
+    final png = args.$1.materialize().asUint8List();
+    final maxWidth = args.$2;
+    final maxHeight = args.$3;
+
     img.Image? ima = img.decodeImage(png);
-    if (ima == null) return;
+    if (ima == null) throw StateError('Failed to decode image');
 
-    final file = File(thumbPath!);
-    await file.parent.create(recursive: true);
+    final thumb = img.copyResize(
+      ima,
+      width: ima.width >= ima.height ? maxWidth : null,
+      height: ima.width <= ima.height ? maxHeight : null,
+      maintainAspect: true,
+    );
 
-    final tmp = File('${file.path}.tmp');
-    await tmp.writeAsBytes(img.encodeJpg(ima, quality: 40));
-    await tmp.rename(file.path);
+    return TransferableTypedData.fromList([img.encodeJpg(thumb, quality: 40)]);
   }
 
   Future<void> _writeOriginal(Uint8List bytes) async {
