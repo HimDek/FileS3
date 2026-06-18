@@ -545,7 +545,14 @@ abstract class Main {
           "File copied to monitored directory: ${pathFromKey(newKey) ?? newKey}",
         );
       }
-      unawaited(watcherFromKey(newKey)?.scan());
+      UploadJob(
+        localFile: File(pathFromKey(newKey) ?? newKey),
+        remoteKey: key,
+        bytes: file.lengthSync(),
+        onStatus: onJobStatus,
+        md5: await HashUtil(file).md5Hash(),
+        profile: profileFromKey(key),
+      ).add();
     } else {
       final newKey = () {
         String base = p.basenameWithoutExtension(key);
