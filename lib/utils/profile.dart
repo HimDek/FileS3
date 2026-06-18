@@ -11,14 +11,13 @@ class Profile {
   String name;
 
   ValueNotifier<bool> accessible = ValueNotifier<bool>(true);
-  http.Client httpClient = http.Client();
 
   late S3Config cfg;
   late S3FileManager? fileManager;
   late DeletionRegistrar deletionRegistrar;
 
   Profile({required this.name, required this.cfg}) {
-    fileManager = S3FileManager.create(this, httpClient, cfg);
+    fileManager = S3FileManager.create(this, http.Client(), cfg);
     if (fileManager == null) {
       accessible.value = false;
     }
@@ -27,10 +26,15 @@ class Profile {
 
   void updateConfig(S3Config newCfg) {
     cfg = newCfg;
-    fileManager = S3FileManager.create(this, httpClient, cfg);
+    fileManager?.dispose();
+    fileManager = S3FileManager.create(this, http.Client(), cfg);
     if (fileManager == null) {
       accessible.value = false;
     }
+  }
+
+  void dispose() {
+    fileManager?.dispose();
   }
 
   Future<void> refreshRemote({required String dir}) async {

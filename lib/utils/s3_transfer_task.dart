@@ -23,6 +23,16 @@ class S3TransferTask {
   final void Function(String status)? onStatus;
   final void Function(int bytesTransferred, int? totalBytes)? onProgress;
 
+  Timer? watchdog;
+
+  void resetWatchdog() {
+    watchdog?.cancel();
+    watchdog = Timer(
+      const Duration(minutes: 1),
+      () => cancel(reason: 'Watchdog timeout'),
+    );
+  }
+
   bool _isCancelled = false;
   DateTime lastCallbackTime = DateTime.fromMicrosecondsSinceEpoch(0);
   String? _cachedSha256;
@@ -71,12 +81,14 @@ class S3TransferTask {
   }
 
   /// Cancel transfer
-  void cancel() {
+  void cancel({String? reason}) {
     if (_isCancelled) return;
     _isCancelled = true;
 
     if (task == TransferTask.upload) {
-      onStatus?.call('Upload cancelled');
+      onStatus?.call('Upload cancelled! $reason');
+    } else {
+      onStatus?.call('Download cancelled! $reason');
     }
   }
 
@@ -92,7 +104,8 @@ class S3TransferTask {
       throw Exception('Multipart upload required for files > 5GB');
     }
 
-    final contentHash = _cachedSha256 ??= await _sha256OfFile(localFile);
+    // final contentHash = _cachedSha256 ??= await _sha256OfFile(localFile);
+    final contentHash = 'UNSIGNED-PAYLOAD';
     final contentMD5 = base64.encode(md5.bytes);
     final now = DateTime.now().toUtc();
 
@@ -127,6 +140,7 @@ class S3TransferTask {
 
         if (DateTime.now().difference(lastCallbackTime).inMilliseconds >= 100 ||
             uploaded >= totalBytes) {
+          resetWatchdog();
           lastCallbackTime = DateTime.now();
           onProgress?.call(uploaded, totalBytes);
 
@@ -183,24 +197,24 @@ class S3TransferTask {
     String localEtag = remoteEtag;
 
     int offset = 0;
-    if (tempFile.existsSync() && tagFile.existsSync()) {
-      offset = tempFile.lengthSync();
+    if ((await tempFile.exists()) && (await tagFile.exists())) {
+      offset = await tempFile.length();
       if (offset >= total) {
         offset = 0;
-        tempFile.deleteSync();
-        tagFile.deleteSync();
-        tempFile.createSync(recursive: true);
-        tagFile.createSync(recursive: true);
-        tagFile.writeAsStringSync(remoteEtag, flush: true);
+        await tempFile.delete();
+        await tagFile.delete();
+        await tempFile.create(recursive: true);
+        await tagFile.create(recursive: true);
+        await tagFile.writeAsString(remoteEtag, flush: true);
       } else {
-        localEtag = tagFile.readAsStringSync();
+        localEtag = await tagFile.readAsString();
       }
     } else {
-      if (tempFile.existsSync()) tempFile.deleteSync();
-      tempFile.createSync(recursive: true);
-      if (tagFile.existsSync()) tagFile.deleteSync();
-      tagFile.createSync(recursive: true);
-      tagFile.writeAsStringSync(remoteEtag, flush: true);
+      if (await tempFile.exists()) await tempFile.delete();
+      await tempFile.create(recursive: true);
+      if (await tagFile.exists()) await tagFile.delete();
+      await tagFile.create(recursive: true);
+      await tagFile.writeAsString(remoteEtag, flush: true);
     }
 
     if (_isCancelled) {
@@ -211,7 +225,7 @@ class S3TransferTask {
       onStatus?.call('Resuming download...');
     } else {
       offset = 0;
-      if (tempFile.existsSync()) tempFile.deleteSync();
+      if (await tempFile.exists()) await tempFile.delete();
     }
 
     final headers = profile!.fileManager!.buildSignedHeaders(
@@ -243,8 +257,8 @@ class S3TransferTask {
     }
 
     if (offset > 0 && res.statusCode != 206) {
-      if (tempFile.existsSync()) tempFile.deleteSync();
-      tagFile.writeAsStringSync(remoteEtag, flush: true);
+      if (await tempFile.exists()) await tempFile.delete();
+      await tagFile.writeAsString(remoteEtag, flush: true);
       return await _download(httpClient);
     } else {
       if (offset > 0 && offset < total && localEtag == remoteEtag) {
@@ -272,12 +286,13 @@ class S3TransferTask {
         if (_isCancelled) {
           throw TransferPaused();
         }
-
         sink.add(chunk);
+
         received += chunk.length;
 
         if (DateTime.now().difference(lastCallbackTime).inMilliseconds >= 100 ||
             received >= (total)) {
+          resetWatchdog();
           lastCallbackTime = DateTime.now();
           onProgress?.call(received, total);
           if (received >= (total)) {
@@ -305,25 +320,25 @@ class S3TransferTask {
     }
 
     if (fileMd5 != md5) {
-      tempFile.deleteSync();
+      await tempFile.delete();
       throw Exception(
         'Download failed: MD5 mismatch! expected $md5, got $fileMd5',
       );
     }
 
-    if (localFile.existsSync()) {
-      localFile.deleteSync();
+    if (await localFile.exists()) {
+      await localFile.delete();
     }
 
     try {
-      tempFile.renameSync(localFile.path);
-      tagFile.deleteSync();
+      await tempFile.rename(localFile.path);
+      await tagFile.delete();
       onStatus?.call('Download complete');
     } on FileSystemException catch (e) {
       if (e.osError?.errorCode == 18) {
         await tempFile.copy(localFile.path);
-        tempFile.deleteSync();
-        tagFile.deleteSync();
+        await tempFile.delete();
+        await tagFile.delete();
         onStatus?.call('Download complete');
       } else {
         throw Exception('Storage write failed: $e');
@@ -342,10 +357,10 @@ class S3TransferTask {
       } catch (e) {
         if (e is TransferPaused) rethrow;
 
-        if (task == TransferTask.download) {
-          File(Main.cachePathFromKey(key)).deleteSync();
-          File(Main.tagPathFromKey(key)).deleteSync();
-        }
+        // if (task == TransferTask.download) {
+        //   await File(Main.cachePathFromKey(key)).delete();
+        //   await File(Main.tagPathFromKey(key)).delete();
+        // }
 
         if (i == attempts - 1) rethrow;
         await Future.delayed(Duration(seconds: 1 << i));
@@ -356,6 +371,7 @@ class S3TransferTask {
 
   Future<String> _sha256OfFile(File file) async {
     final digest = await sha256.bind(file.openRead()).first;
-    return digest.toString();
+    _cachedSha256 = digest.toString();
+    return _cachedSha256!;
   }
 }

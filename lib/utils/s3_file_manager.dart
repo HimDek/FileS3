@@ -80,7 +80,15 @@ class S3FileManager {
 
     final request = http.Request('PUT', getUri(key))..headers.addAll(headers);
 
-    final response = await _client.send(request);
+    final response = await _client
+        .send(request)
+        .timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('Request timed out');
+          },
+        );
+    ;
 
     if (response.statusCode != 200) {
       final body = await response.stream.bytesToString();
@@ -146,7 +154,15 @@ class S3FileManager {
     final request = http.Request('PUT', getUri(destinationKey))
       ..headers.addAll(headers);
 
-    final response = await _client.send(request);
+    final response = await _client
+        .send(request)
+        .timeout(
+          const Duration(minutes: 1),
+          onTimeout: () {
+            throw TimeoutException('Request timed out');
+          },
+        );
+    ;
 
     if (response.statusCode != 200) {
       final body = await response.stream.bytesToString();
@@ -173,7 +189,15 @@ class S3FileManager {
     final request = http.Request('DELETE', getUri(key))
       ..headers.addAll(headers);
 
-    final response = await _client.send(request);
+    final response = await _client
+        .send(request)
+        .timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('Request timed out');
+          },
+        );
+    ;
 
     if (response.statusCode != 204) {
       final body = await response.stream.bytesToString();
@@ -340,16 +364,35 @@ class S3FileManager {
   static List<int> _sign(List<int> key, String data) =>
       Hmac(sha256, key).convert(utf8.encode(data)).bytes;
 
-  static List<int> getSigningKey(
+  (List<int>, String, String, String, String)? _signingKey;
+
+  List<int> getSigningKey(
     String secret,
     String date,
     String region,
     String service,
   ) {
+    if (_signingKey != null &&
+        _signingKey!.$2 == secret &&
+        _signingKey!.$3 == date &&
+        _signingKey!.$4 == region &&
+        _signingKey!.$5 == service) {
+      return _signingKey!.$1;
+    }
+
     final kDate = _sign(utf8.encode('AWS4$secret'), date);
     final kRegion = _sign(kDate, region);
     final kService = _sign(kRegion, service);
-    return _sign(kService, 'aws4_request');
+
+    _signingKey = (
+      _sign(kService, 'aws4_request'),
+      secret,
+      date,
+      region,
+      service,
+    );
+
+    return _signingKey!.$1;
   }
 
   static String formatAmzDate(DateTime time) =>
@@ -387,7 +430,14 @@ class S3FileManager {
     );
 
     final uri = getUri(key);
-    final res = await _client.head(uri, headers: headers);
+    final res = await _client
+        .head(uri, headers: headers)
+        .timeout(
+          const Duration(minutes: 1),
+          onTimeout: () {
+            throw TimeoutException('Request timed out');
+          },
+        );
 
     if (res.statusCode != 200) {
       throw Exception('HEAD failed: ${res.statusCode}');
@@ -432,5 +482,9 @@ class S3FileManager {
     }
 
     return buffer.toString();
+  }
+
+  void dispose() {
+    _client.close();
   }
 }

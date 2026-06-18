@@ -23,6 +23,9 @@ Future<File> uriToFile(
   File file;
   Uint8List? bytes;
 
+  final HttpClient httpClient = HttpClient();
+  final UriContent uriContent = UriContent(httpClient: httpClient);
+
   try {
     final uri = Uri.parse(uriString);
 
@@ -49,6 +52,8 @@ Future<File> uriToFile(
     }
     showSnackBar(SnackBar(content: Text('Failed to read file bytes: $e')));
     bytes = null;
+  } finally {
+    httpClient.close();
   }
 
   FileMagicNumberType type = FileMagicNumber.detectFileTypeFromBytes(

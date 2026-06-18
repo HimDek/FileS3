@@ -58,10 +58,8 @@ class FileContextActionHandler extends ContextActionHandler {
   }
 
   bool active() {
-    return Job.jobs.value.any(
-      (job) =>
-          job.localFile.path == Main.pathFromKey(file.key) &&
-          ![JobStatus.completed, JobStatus.failed].contains(job.status.value),
+    return Job.activeJobs.any(
+      (job) => job.localFile.path == Main.pathFromKey(file.key),
     );
   }
 
@@ -229,14 +227,10 @@ class FilesContextActionHandler extends ContextActionHandler {
   List<RemoteFile> activeFiles() {
     return files
         .where(
-          (f) => Job.jobs.value.any(
+          (f) => Job.activeJobs.any(
             (job) =>
                 !p.isDir(f.key) &&
-                job.localFile.path == Main.pathFromKey(f.key) &&
-                ![
-                  JobStatus.completed,
-                  JobStatus.failed,
-                ].contains(job.status.value),
+                job.localFile.path == Main.pathFromKey(f.key),
           ),
         )
         .toList();
@@ -427,14 +421,10 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   List<RemoteFile> activeFiles() {
     return files
         .where(
-          (f) => Job.jobs.value.any(
+          (f) => Job.activeJobs.any(
             (job) =>
                 !p.isDir(f.key) &&
-                job.localFile.path == Main.pathFromKey(f.key) &&
-                ![
-                  JobStatus.completed,
-                  JobStatus.failed,
-                ].contains(job.status.value),
+                job.localFile.path == Main.pathFromKey(f.key),
           ),
         )
         .toList();
@@ -610,14 +600,10 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   List<RemoteFile> activeFiles() {
     return files
         .where(
-          (f) => Job.jobs.value.any(
+          (f) => Job.activeJobs.any(
             (job) =>
                 !p.isDir(f.key) &&
-                job.localFile.path == Main.pathFromKey(f.key) &&
-                ![
-                  JobStatus.completed,
-                  JobStatus.failed,
-                ].contains(job.status.value),
+                job.localFile.path == Main.pathFromKey(f.key),
           ),
         )
         .toList();

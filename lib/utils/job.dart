@@ -1,18 +1,193 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'package:pool/pool.dart';
 import 'package:crypto/crypto.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:files3/utils/s3_transfer_task.dart';
 import 'package:files3/utils/path_utils.dart' as p;
-import 'package:files3/utils/sync_analyzer.dart';
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
 import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
+
+enum _FileSyncStatus {
+  uploaded,
+  modifiedLocally,
+  modifiedRemotely,
+  newFile,
+  remoteOnly,
+}
+
+Pool _syncPool = Pool(1);
+
+Future<_FileSyncStatus?> _fileSyncCompare({
+  required File localFile,
+  required RemoteFile? remote,
+}) async {
+  final localExists = localFile.existsSync();
+  if (remote == null) {
+    if (localExists) {
+      return _FileSyncStatus.newFile;
+    } else {
+      return null;
+    }
+  }
+  if (!localExists) return _FileSyncStatus.remoteOnly;
+
+  final localHash = (await HashUtil(localFile).md5Hash()).toString();
+
+  return localHash == remote.etag
+      ? _FileSyncStatus.uploaded
+      : remote.lastModified!.isAfter(localFile.lastModifiedSync())
+      ? _FileSyncStatus.modifiedRemotely
+      : _FileSyncStatus.modifiedLocally;
+}
+
+class _SyncAnalysisResult {
+  final List<String> newFile;
+  final List<String> modifiedLocally;
+  final List<String> modifiedRemotely;
+  final List<String> uploaded;
+  final List<String> remoteOnly;
+
+  _SyncAnalysisResult({
+    required this.newFile,
+    required this.modifiedLocally,
+    required this.modifiedRemotely,
+    required this.uploaded,
+    required this.remoteOnly,
+  });
+}
+
+Future<_SyncAnalysisResult> _syncAnalyze(
+  String localRootPath,
+  List<RemoteFile> remoteFiles,
+) async {
+  final localMap = <String, String>{};
+
+  final files = await _syncPool.withResource(() {
+    return compute<String, Iterable<String>>((String path) {
+      return Directory(
+        path,
+      ).listSync(recursive: true).whereType<File>().map((f) => f.path);
+    }, localRootPath);
+  });
+
+  for (var path in files) {
+    final rel = p
+        .relative(path, from: localRootPath)
+        .replaceAll('\\', p.separator);
+    localMap[p.join(Main.keyFromPath(localRootPath) ?? '', rel)] = path;
+  }
+  final remoteMap = {
+    for (var f in remoteFiles.where((f) => p.basename(f.key).isNotEmpty))
+      f.key: f,
+  };
+
+  if (kDebugMode) {
+    debugPrint(
+      "Starting sync analysis at $localRootPath: Local files count: ${localMap.length}, Remote files count: ${remoteMap.length}",
+    );
+  }
+
+  return await _syncPool.withResource(() async {
+    return await compute<(Map, Map), _SyncAnalysisResult>((maps) async {
+      final localMap = maps.$1;
+      final remoteMap = maps.$2;
+
+      final newFile = <String>[];
+      final modifiedLocally = <String>[];
+      final modifiedRemotely = <String>[];
+      final already = <String>[];
+
+      for (var path in localMap.entries) {
+        final remote = remoteMap[path.key];
+        final status = await _fileSyncCompare(
+          localFile: File(path.value),
+          remote: remote,
+        );
+        switch (status) {
+          case _FileSyncStatus.newFile:
+            newFile.add(path.value);
+            break;
+          case _FileSyncStatus.modifiedLocally:
+            modifiedLocally.add(path.value);
+            break;
+          case _FileSyncStatus.modifiedRemotely:
+            modifiedRemotely.add(path.key);
+            break;
+          case _FileSyncStatus.uploaded:
+            already.add(path.value);
+            break;
+          case _FileSyncStatus.remoteOnly:
+            break;
+          default:
+            break;
+        }
+      }
+
+      final remoteOnly = remoteFiles
+          .where(
+            (r) => !localMap.containsKey(r.key) && p.basename(r.key).isNotEmpty,
+          )
+          .map((r) => r.key)
+          .toList();
+
+      return _SyncAnalysisResult(
+        newFile: newFile,
+        modifiedLocally: modifiedLocally,
+        modifiedRemotely: modifiedRemotely,
+        uploaded: already,
+        remoteOnly: remoteOnly,
+      );
+    }, (localMap, remoteMap));
+  });
+
+  // for (var path in localMap.entries) {
+  //   final remote = remoteMap[path.key];
+  //   final status = await _fileSyncCompare(
+  //     localFile: File(path.value),
+  //     remote: remote,
+  //   );
+  //   switch (status) {
+  //     case _FileSyncStatus.newFile:
+  //       newFile.add(path.value);
+  //       break;
+  //     case _FileSyncStatus.modifiedLocally:
+  //       modifiedLocally.add(path.value);
+  //       break;
+  //     case _FileSyncStatus.modifiedRemotely:
+  //       modifiedRemotely.add(path.key);
+  //       break;
+  //     case _FileSyncStatus.uploaded:
+  //       already.add(path.value);
+  //       break;
+  //     case _FileSyncStatus.remoteOnly:
+  //       break;
+  //     default:
+  //       break;
+  //   }
+  // }
+
+  // final remoteOnly = remoteFiles
+  //     .where(
+  //       (r) => !localMap.containsKey(r.key) && p.basename(r.key).isNotEmpty,
+  //     )
+  //     .map((r) => r.key)
+  //     .toList();
+
+  // return _SyncAnalysisResult(
+  //   newFile: newFile,
+  //   modifiedLocally: modifiedLocally,
+  //   modifiedRemotely: modifiedRemotely,
+  //   uploaded: already,
+  //   remoteOnly: remoteOnly,
+  // );
+}
 
 abstract class Main {
   static String _documentsDir = '';
@@ -252,6 +427,7 @@ abstract class Main {
     final entries = (await ConfigManager.loadS3Config()).entries;
     for (final profile in _profiles.toList()) {
       if (entries.map((e) => e.key).contains(profile.name) == false) {
+        profile.dispose();
         _profiles.remove(profile);
         remoteFilesRemoveWhere(
           (file) => p.split(file.key).firstOrNull == profile.name,
@@ -369,7 +545,7 @@ abstract class Main {
           "File copied to monitored directory: ${pathFromKey(newKey) ?? newKey}",
         );
       }
-      watcherFromKey(newKey)?.scan();
+      unawaited(watcherFromKey(newKey)?.scan());
     } else {
       final newKey = () {
         String base = p.basenameWithoutExtension(key);
@@ -438,6 +614,19 @@ abstract class Job {
   static final ValueNotifier<List<Job>> jobs = ValueNotifier<List<Job>>(
     <Job>[],
   );
+  static Iterable<Job> get runningJobs =>
+      jobs.value.where((job) => job.status.value == JobStatus.running);
+  static Iterable<Job> get pendingJobs =>
+      jobs.value.where((job) => job.status.value == JobStatus.initialized);
+  static Iterable<Job> get activeJobs =>
+      jobs.value.where((job) => job.status.value != JobStatus.completed);
+  static Iterable<Job> get unInitializedJobs => jobs.value.where(
+    (job) =>
+        job.status.value == JobStatus.failed ||
+        job.status.value == JobStatus.stopped,
+  );
+  static Iterable<Job> get completedJobs =>
+      jobs.value.where((job) => job.status.value == JobStatus.completed);
   static final ManualNotifier onProgressUpdate = ManualNotifier();
 
   final ValueNotifier<JobStatus> status = ValueNotifier<JobStatus>(
@@ -595,11 +784,7 @@ abstract class Job {
   }
 
   static void continueAll() {
-    for (var job in jobs.value.where(
-      (job) =>
-          job.status.value == JobStatus.stopped ||
-          job.status.value == JobStatus.failed,
-    )) {
+    for (var job in unInitializedJobs) {
       job.status.value = JobStatus.initialized;
     }
     startall();
@@ -613,37 +798,34 @@ abstract class Job {
       return;
     }
 
-    scheduled = true;
-
     try {
+      scheduled = true;
+
       if (kDebugMode) {
         debugPrint(
-          "Starting jobs: Running ${Job.jobs.value.where((job) => job.status.value == JobStatus.running).length}, Max Run $maxrun, Pending ${Job.jobs.value.where((job) => job.status.value == JobStatus.initialized).length}",
+          "Starting jobs: Running ${runningJobs.length}, Max Run $maxrun, Pending ${pendingJobs.length}",
         );
       }
 
-      while (Job.jobs.value
-                  .where((job) => job.status.value == JobStatus.running)
-                  .length <
-              maxrun &&
-          Job.jobs.value.any(
-            (job) => job.status.value == JobStatus.initialized,
-          )) {
-        Job job = jobs.value.firstWhere(
+      while (runningJobs.length < maxrun && pendingJobs.isNotEmpty) {
+        Job? job = jobs.value.firstWhereOrNull(
           (job) => job.status.value == JobStatus.initialized,
         );
+        if (job == null) {
+          break;
+        }
         job.start();
       }
 
       if (kDebugMode) {
         debugPrint(
-          "Job scheduling completed: Running ${Job.jobs.value.where((job) => job.status.value == JobStatus.running).length}, Max Run $maxrun, Pending ${Job.jobs.value.where((job) => job.status.value == JobStatus.initialized).length}",
+          "Job scheduling completed: Running ${runningJobs.length}, Max Run $maxrun, Pending ${pendingJobs.length}",
         );
       }
     } finally {
       scheduled = false;
+      onProgressUpdate.notifyListeners();
     }
-    onProgressUpdate.notifyListeners();
   }
 
   static void stopall() {
@@ -654,9 +836,7 @@ abstract class Job {
   }
 
   static void clearCompleted() {
-    jobs.value = jobs.value
-        .where((job) => job.status.value != JobStatus.completed)
-        .toList();
+    jobs.value = activeJobs.toList();
   }
 
   static void clear() {
@@ -777,112 +957,121 @@ class Watcher {
       debugPrint("Starting scan for ${localDir.path}");
     }
 
-    scanning = true;
-
-    if (!localDir.existsSync()) {
-      if (kDebugMode) {
-        debugPrint("Local directory does not exist: ${localDir.path}");
-      }
-      scanning = false;
-      return;
-    }
-
-    if (Main.remoteFiles
-        .where((file) => p.isWithin(remoteDir, file.key))
-        .isEmpty) {
-      if (kDebugMode) {
-        debugPrint("Remote files list is empty, skipping refresh.");
-      }
-      return;
-    }
-
-    if (kDebugMode) {
-      debugPrint("Analyzing sync status.value for ${localDir.path}");
-    }
-    final analyzer = SyncAnalyzer(
-      localRoot: localDir,
-      remoteFiles: Main.remoteFiles
-          .where(
-            (file) =>
-                p.isWithin(
-                  localDir.path,
-                  Main.pathFromKey(file.key) ?? file.key,
-                ) &&
-                !p.isDir(file.key),
-          )
-          .toList(),
-    );
-    final result = await analyzer.analyze();
-    if (kDebugMode) {
-      debugPrint(
-        "Sync analysis completed for ${localDir.path}: New Files: ${result.newFile.length}, Modified Locally: ${result.modifiedLocally.length}, Modified Remotely: ${result.modifiedRemotely.length}, Remote Only: ${result.remoteOnly.length}",
-      );
-    }
     try {
-      throw Exception("Debug Exception");
-    } catch (e) {
+      scanning = true;
+
+      if (!localDir.existsSync()) {
+        if (kDebugMode) {
+          debugPrint("Local directory does not exist: ${localDir.path}");
+        }
+        scanning = false;
+        return;
+      }
+
+      if (Main.remoteFiles
+          .where((file) => p.isWithin(remoteDir, file.key))
+          .isEmpty) {
+        if (kDebugMode) {
+          debugPrint("Remote files list is empty, skipping refresh.");
+        }
+        scanning = false;
+        return;
+      }
+
       if (kDebugMode) {
-        debugPrint("Debug Exception caught: $e");
+        debugPrint("Analyzing sync status.value for ${localDir.path}");
       }
-    }
-
-    for (File file in [...result.newFile, ...result.modifiedLocally]) {
-      final key = Main.keyFromPath(file.path) ?? '';
-      if (Job.jobs.value.any(
-            (job) =>
-                job.localFile.path == file.path &&
-                job.remoteKey == key &&
-                job.status.value != JobStatus.completed,
-          ) ||
-          Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(key))) {
-        continue;
-      }
-      BackupMode mode = Main.backupModeFromKey(
-        Main.keyFromPath(file.path) ?? '',
+      final result = await _syncAnalyze(
+        localDir.path,
+        Main.remoteFiles
+            .where(
+              (file) =>
+                  p.isWithin(
+                    localDir.path,
+                    Main.pathFromKey(file.key) ?? file.key,
+                  ) &&
+                  !p.isDir(file.key),
+            )
+            .toList(),
       );
-      if (mode == BackupMode.sync || mode == BackupMode.upload) {
-        Main.uploadFile(key, file);
+      if (kDebugMode) {
+        debugPrint(
+          "Sync analysis completed for ${localDir.path}: "
+          "New Files: ${result.newFile.length} "
+          "Modified Locally: ${result.modifiedLocally.length} "
+          "Modified Remotely: ${result.modifiedRemotely.length} "
+          "Remote Only: ${result.remoteOnly.length} "
+          "Uploaded: ${result.uploaded.length} ",
+        );
       }
-    }
-
-    for (RemoteFile file in result.modifiedRemotely) {
-      if (Job.jobs.value.any(
-            (job) =>
-                job.remoteKey == file.key &&
-                job.status.value != JobStatus.completed,
-          ) ||
-          Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(file.key))) {
-        continue;
+      try {
+        throw Exception("Debug Exception");
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint("Debug Exception caught: $e");
+        }
       }
-      BackupMode mode = Main.backupModeFromKey(file.key);
-      if (mode == BackupMode.sync || mode == BackupMode.upload) {
-        Main.downloadFile(file);
+
+      for (String path in [...result.newFile, ...result.modifiedLocally]) {
+        final file = File(path);
+        final key = Main.keyFromPath(file.path) ?? '';
+        if (Job.pendingJobs.any(
+              (job) => job.localFile.path == file.path && job.remoteKey == key,
+            ) ||
+            Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(key))) {
+          continue;
+        }
+        BackupMode mode = Main.backupModeFromKey(
+          Main.keyFromPath(file.path) ?? '',
+        );
+        if (mode == BackupMode.sync || mode == BackupMode.upload) {
+          Main.uploadFile(key, file);
+        }
       }
-    }
 
-    for (RemoteFile file in result.remoteOnly) {
-      if (Job.jobs.value.any(
-            (job) =>
-                job.remoteKey == file.key &&
-                job.status.value != JobStatus.completed,
-          ) ||
-          Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(file.key))) {
-        continue;
+      for (String key in result.modifiedRemotely) {
+        if (Job.pendingJobs.any((job) => job.remoteKey == key) ||
+            Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(key))) {
+          continue;
+        }
+        BackupMode mode = Main.backupModeFromKey(key);
+        if (mode == BackupMode.sync || mode == BackupMode.upload) {
+          final file = Main.remoteFiles.firstWhereOrNull(
+            (file) => file.key == key,
+          );
+          if (file != null) {
+            Main.downloadFile(file);
+          }
+        }
       }
-      if (Main.backupModeFromKey(file.key) == BackupMode.sync) {
-        Main.downloadFile(file);
+
+      for (String key in result.remoteOnly) {
+        if (Job.pendingJobs.any((job) => job.remoteKey == key) ||
+            Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(key))) {
+          continue;
+        }
+        if (Main.backupModeFromKey(key) == BackupMode.sync) {
+          final file = Main.remoteFiles.firstWhereOrNull(
+            (file) => file.key == key,
+          );
+          if (file != null) {
+            Main.downloadFile(file);
+          }
+        }
       }
-    }
 
-    if (kDebugMode) {
-      debugPrint("Scan completed for ${localDir.path}");
-    }
+      if (kDebugMode) {
+        debugPrint("Scan completed for ${localDir.path}");
+      }
 
-    scanning = false;
+      scanning = false;
 
-    if (_rescanQueued) {
-      _rescanQueued = false;
-      scan();
+      if (_rescanQueued) {
+        _rescanQueued = false;
+        unawaited(scan());
+      }
+    } finally {
+      scanning = false;
     }
   }
 
@@ -908,7 +1097,7 @@ class Watcher {
               "File system event detected: ${event.type} - ${event.path}",
             );
           }
-          scan();
+          unawaited(scan());
         }
       });
     } else {
@@ -916,7 +1105,7 @@ class Watcher {
         if (kDebugMode) {
           debugPrint("Periodic scan triggered for ${localDir.path}");
         }
-        scan();
+        unawaited(scan());
       });
     }
   }

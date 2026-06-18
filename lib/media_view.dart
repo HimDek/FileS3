@@ -1073,7 +1073,7 @@ class GalleryState extends State<Gallery> {
       child: Scaffold(
         body: Stack(
           children: [
-            MyListenableBuilder(
+            ListenableBuilder(
               listenable: Listenable.merge([
                 _allowPaging,
                 _chromeVisible,
@@ -1149,7 +1149,7 @@ class GalleryState extends State<Gallery> {
                 ),
               ),
             ),
-            MyListenableBuilder(
+            ListenableBuilder(
               listenable: _chromeVisible,
               builder: (context, _) => SizedBox(
                 height: kToolbarHeight + MediaQuery.of(context).padding.top,
@@ -1441,7 +1441,7 @@ class ExternalFileViewState extends State<ExternalFileView> {
     return Scaffold(
       body: Stack(
         children: [
-          MyListenableBuilder(
+          ListenableBuilder(
             listenable: Listenable.merge([
               _allowPaging,
               _chromeVisible,
@@ -1482,7 +1482,7 @@ class ExternalFileViewState extends State<ExternalFileView> {
               ),
             ),
           ),
-          MyListenableBuilder(
+          ListenableBuilder(
             listenable: Listenable.merge([_chromeVisible, _path]),
             builder: (context, _) => SizedBox(
               height: kToolbarHeight + MediaQuery.of(context).padding.top,
@@ -1522,7 +1522,7 @@ class ExternalFileViewState extends State<ExternalFileView> {
             snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
             snapAnimationDuration: const Duration(milliseconds: 100),
             builder: (context, scrollController) {
-              return MyListenableBuilder(
+              return ListenableBuilder(
                 listenable: _path,
                 builder: (context, _) => Container(
                   clipBehavior: Clip.hardEdge,

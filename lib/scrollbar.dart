@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:files3/helpers.dart';
 
 class CustomThumbScrollbar extends StatefulWidget {
   final ScrollController controller;
@@ -78,7 +77,7 @@ class _CustomThumbScrollbarState extends State<CustomThumbScrollbar> {
             padding: widget.padding,
             child: Align(
               alignment: Alignment.topRight,
-              child: MyListenableBuilder(
+              child: ListenableBuilder(
                 listenable: widget.controller,
                 builder: (context, _) {
                   if (!widget.controller.hasClients) {
@@ -140,7 +139,7 @@ class _CustomThumbScrollbarState extends State<CustomThumbScrollbar> {
                             children: [
                               if (widget.popup != null)
                                 RepaintBoundary(
-                                  child: MyListenableBuilder(
+                                  child: ListenableBuilder(
                                     listenable: _popupVisible,
                                     builder: (context, _) {
                                       return Transform.translate(

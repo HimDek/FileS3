@@ -26,20 +26,17 @@ Future<void> runJob({
 }) async {
   await Main.init(background: true);
   Job.onProgressUpdate.addListener(() {
-    final runningJobs = Job.jobs.value
-        .where((job) => job.status.value == JobStatus.running)
-        .toList();
-    if (runningJobs.isEmpty) {
+    if (Job.runningJobs.isEmpty) {
       onProgress(1.0);
       return;
     }
     double totalProgress = 0.0;
-    for (final job in runningJobs) {
+    for (final job in Job.runningJobs) {
       totalProgress += job.bytesCompleted.value / job.bytes;
     }
-    onProgress(totalProgress / runningJobs.length);
+    onProgress(totalProgress / Job.runningJobs.length);
   });
-  if (Job.jobs.value.any((job) => job.status.value == JobStatus.initialized)) {
+  if (Job.pendingJobs.isNotEmpty) {
     await Future.delayed(const Duration(seconds: 2), () {
       // TODO: Run Jobs?
     });
