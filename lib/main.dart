@@ -10,7 +10,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:receive_intent/receive_intent.dart' as receive_intent;
 import 'package:files3/utils/path_utils.dart' as p;
-import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
@@ -233,97 +232,6 @@ class _HomeState extends State<Home> {
     loading.value = false;
   }
 
-  Future<void> _copyFile(
-    String key,
-    String newKey, {
-    bool refresh = true,
-  }) async {
-    loading.value = true;
-
-    RemoteFile oldFile = Main.remoteFiles.firstWhere((file) => file.key == key);
-    RemoteFile newFile = RemoteFile(
-      key: newKey,
-      size: oldFile.size,
-      etag: oldFile.etag,
-      lastModified: oldFile.lastModified,
-    );
-
-    final Profile? profile = Main.profileFromKey(key);
-    final Profile? newProfile = Main.profileFromKey(newKey);
-
-    if (profile != newProfile) {
-      String downloadTo = Main.pathFromKey(key) ?? key;
-      downloadTo = p.isAbsolute(downloadTo)
-          ? downloadTo
-          : Main.cachePathFromKey(key);
-      File file = File(downloadTo);
-      if (!file.parent.existsSync()) {
-        file.parent.createSync(recursive: true);
-      }
-      // TODO: Download wait and Upload
-      // Main.downloadFile(oldFile, localPath: downloadTo);
-      // Main.uploadFile(newKey, File(downloadTo));
-      return;
-    }
-
-    await Main.profileFromKey(key)!.fileManager!.copyFile(key, newKey);
-
-    final file = File(Main.pathFromKey(key) ?? key);
-    final cacheFile = File(Main.cachePathFromKey(key));
-
-    if (file.existsSync() && Main.pathFromKey(newKey) != null) {
-      if (!file.parent.existsSync()) {
-        file.parent.createSync(recursive: true);
-      }
-      file.copySync(Main.pathFromKey(newKey) ?? newKey);
-    }
-
-    if (cacheFile.existsSync() && Main.pathFromKey(newKey) != null) {
-      if (!cacheFile.parent.existsSync()) {
-        cacheFile.parent.createSync(recursive: true);
-      }
-      cacheFile.copySync(Main.pathFromKey(newKey) ?? newKey);
-    }
-
-    Main.remoteFilesAdd(newFile);
-    if (refresh) {
-      loading.value = false;
-    }
-  }
-
-  // uses _copyFile
-  Future<void> _copyDirectory(
-    String dir,
-    String newDir, {
-    bool refresh = true,
-    ValueNotifier<double>? preprogress,
-  }) async {
-    loading.value = true;
-    final files = Main.remoteFiles
-        .where(
-          (file) =>
-              p.isWithin(dir, file.key) &&
-              file.key != dir &&
-              !p.isDir(file.key),
-        )
-        .toList();
-    int progressCount = 0;
-    final totalFiles = files.length;
-    for (final file in files) {
-      progressCount += 1;
-      (preprogress ?? progress).value = progressCount / totalFiles;
-      await _copyFile(
-        file.key,
-        p.s3(p.join(newDir, p.relative(file.key, from: dir))),
-        refresh: false,
-      );
-    }
-
-    if (refresh) {
-      loading.value = false;
-    }
-  }
-
   void _deleteLocal(String key) {
     if (p.isDir(key)) {
       final dir = Directory(Main.pathFromKey(key) ?? key);
@@ -368,224 +276,6 @@ class _HomeState extends State<Home> {
         : File(Main.cachePathFromKey(key));
     if (e.existsSync()) {
       e.deleteSync(recursive: true);
-    }
-  }
-
-  Future<void> _deleteFiles(
-    List<String> keys, {
-    bool refresh = true,
-    ValueNotifier<double>? preprogress,
-  }) async {
-    loading.value = true;
-
-    final List<String> files = Main.remoteFiles
-        .where((file) => keys.contains(file.key) && !p.isDir(file.key))
-        .map((e) => e.key)
-        .toList();
-
-    final Map<Profile, List<String>> profileKeys = {};
-    for (final key in files) {
-      final profile = Main.profileFromKey(key);
-      if (profile != null) {
-        profileKeys.putIfAbsent(profile, () => []).add(key);
-      }
-    }
-
-    int progressCount = 0;
-    for (final entry in profileKeys.entries) {
-      final profile = entry.key;
-      final keysForProfile = entry.value;
-
-      await profile.deletionRegistrar.pullDeletions();
-      profile.deletionRegistrar.logDeletions(keysForProfile);
-      await profile.deletionRegistrar.pushDeletions();
-
-      for (final key in keysForProfile) {
-        progressCount += 1;
-        (preprogress ?? progress).value =
-            progressCount / profileKeys.values.expand((e) => e).length;
-        await profile.fileManager?.deleteFile(key);
-        File file = File(Main.pathFromKey(key) ?? key);
-        File cacheFile = File(Main.cachePathFromKey(key));
-        if (file.existsSync()) {
-          file.deleteSync();
-        }
-        if (cacheFile.existsSync()) {
-          cacheFile.deleteSync();
-        }
-      }
-
-      Main.remoteFilesRemoveWhere((file) => keysForProfile.contains(file.key));
-    }
-
-    if (refresh) {
-      loading.value = false;
-    }
-  }
-
-  Future<void> _deleteS3(
-    List<String> keys, {
-    bool refresh = true,
-    ValueNotifier<double>? preprogress,
-  }) async {
-    loading.value = true;
-
-    final List<RemoteFile> files = Main.remoteFiles
-        .where(
-          (file) => keys.contains(file.key) || !p.isDir(file.key)
-              ? keys.any((d) => p.isWithin(d, file.key))
-              : false,
-        )
-        .toList();
-
-    final Map<Profile, List<RemoteFile>> profileFiles = {};
-    for (final file in files) {
-      final profile = Main.profileFromKey(file.key);
-      if (profile != null) {
-        profileFiles.putIfAbsent(profile, () => []).add(file);
-      }
-    }
-
-    int progressCount = 0;
-    for (final entry in profileFiles.entries) {
-      final profile = entry.key;
-      final filesForProfile = entry.value;
-
-      await profile.deletionRegistrar.pullDeletions();
-      profile.deletionRegistrar.logDeletions(
-        filesForProfile.map((e) => e.key).toList(),
-      );
-      await profile.deletionRegistrar.pushDeletions();
-
-      for (final file
-          in filesForProfile.where((file) => !p.isDir(file.key)).toList()) {
-        progressCount += 1;
-        (preprogress ?? progress).value =
-            progressCount / profileFiles.values.expand((e) => e).length;
-        await profile.fileManager?.deleteFile(file.key);
-      }
-
-      Main.remoteFilesRemoveWhere(
-        (file) =>
-            filesForProfile.map((e) => e.key).contains(file.key) &&
-            !p.isDir(file.key),
-      );
-
-      final dirsForProfile = Main.remoteFiles
-          .where(
-            (file) =>
-                filesForProfile.map((e) => e.key).contains(file.key) &&
-                p.isDir(file.key),
-          )
-          .toList();
-      dirsForProfile.sort((a, b) => b.key.length.compareTo(a.key.length));
-
-      for (final dir in dirsForProfile) {
-        progressCount += 1;
-        (preprogress ?? progress).value =
-            progressCount / profileFiles.values.expand((e) => e).length;
-        await profile.fileManager?.deleteFile(dir.key);
-      }
-
-      Main.remoteFilesRemoveWhere(
-        (file) => dirsForProfile.map((e) => e.key).contains(file.key),
-      );
-
-      await profile.refreshRemote(dir: profile.name);
-    }
-
-    if (refresh) {
-      loading.value = false;
-    }
-  }
-
-  // uses _deleteS3
-  Future<void> _deleteDirectories(
-    List<String> dirs, {
-    bool refresh = true,
-    ValueNotifier<double>? preprogress,
-  }) async {
-    loading.value = true;
-
-    await _deleteS3(dirs, refresh: false, preprogress: preprogress ?? progress);
-
-    for (final dirS in dirs) {
-      final dir = Directory(Main.pathFromKey(dirS) ?? dirS);
-      final cacheDir = Directory(Main.cachePathFromKey(dirS));
-      if (dir.existsSync()) {
-        dir.deleteSync(recursive: true);
-      }
-      if (cacheDir.existsSync()) {
-        cacheDir.deleteSync(recursive: true);
-      }
-    }
-
-    if (refresh) {
-      loading.value = false;
-    }
-  }
-
-  // uses _copyFile
-  Future<void> _moveFiles(
-    List<String> keys,
-    List<String> newKeys, {
-    bool refresh = true,
-  }) async {
-    loading.value = true;
-    for (int i = 0; i < keys.length; i++) {
-      progress.value = (i + 1) * 0.5 / keys.length;
-      await _copyFile(keys[i], newKeys[i], refresh: false);
-      File file = File(Main.pathFromKey(keys[i]) ?? keys[i]);
-      if (file.existsSync()) {
-        renameOrCopyAndDelete(file, Main.pathFromKey(newKeys[i]) ?? newKeys[i]);
-      }
-      File cacheFile = File(Main.cachePathFromKey(keys[i]));
-      if (cacheFile.existsSync()) {
-        renameOrCopyAndDelete(
-          cacheFile,
-          Main.pathFromKey(newKeys[i]) ?? newKeys[i],
-        );
-      }
-    }
-    final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
-    preprogress.addListener(() {
-      progress.value = 0.5 + 0.5 * preprogress.value;
-    });
-    await _deleteFiles(keys, refresh: false, preprogress: preprogress);
-    preprogress.dispose();
-    if (refresh) {
-      loading.value = false;
-    }
-  }
-
-  // uses _copyDirectory and _deleteDirectories
-  Future<void> _moveDirectories(
-    List<String> dirs,
-    List<String> newDirs, {
-    bool refresh = true,
-  }) async {
-    loading.value = true;
-    for (int i = 0; i < dirs.length; i++) {
-      final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
-      preprogress.addListener(() {
-        progress.value = (i + 1) * 0.5 * preprogress.value / dirs.length;
-      });
-      await _copyDirectory(
-        dirs[i],
-        newDirs[i],
-        refresh: false,
-        preprogress: preprogress,
-      );
-      preprogress.dispose();
-    }
-    final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
-    preprogress.addListener(() {
-      progress.value = 0.5 + 0.5 * preprogress.value;
-    });
-    await _deleteDirectories(dirs, refresh: false, preprogress: preprogress);
-    preprogress.dispose();
-    if (refresh) {
-      loading.value = false;
     }
   }
 
@@ -925,14 +615,14 @@ class _HomeState extends State<Home> {
       downloadDirectory: _downloadDirectory,
       saveFile: _saveFile,
       saveDirectory: _saveDirectory,
-      copyFile: _copyFile,
-      copyDirectory: _copyDirectory,
-      moveFiles: _moveFiles,
-      moveDirectories: _moveDirectories,
+      copyFile: Main.copyFile,
+      copyDirectory: Main.copyDirectory,
+      moveFiles: Main.moveFiles,
+      moveDirectories: Main.moveDirectories,
       deleteLocal: _deleteLocal,
-      deleteFiles: _deleteFiles,
+      deleteFiles: Main.deleteFiles,
       deleteCache: _deleteCache,
-      deleteDirectories: _deleteDirectories,
+      deleteDirectories: Main.deleteDirectories,
       createDirectory: _createDirectory,
       uploadDirectory: _uploadDirectory,
     );

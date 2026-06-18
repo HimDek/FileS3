@@ -35,7 +35,7 @@ class S3TransferTask {
 
   bool _isCancelled = false;
   DateTime lastCallbackTime = DateTime.fromMicrosecondsSinceEpoch(0);
-  String? _cachedSha256;
+  // String? _cachedSha256;
 
   S3TransferTask({
     required this.key,
@@ -369,9 +369,9 @@ class S3TransferTask {
     throw StateError('unreachable');
   }
 
-  Future<String> _sha256OfFile(File file) async {
-    final digest = await sha256.bind(file.openRead()).first;
-    _cachedSha256 = digest.toString();
-    return _cachedSha256!;
-  }
+  // Future<String> _sha256OfFile(File file) async {
+  //   final digest = await sha256.bind(file.openRead()).first;
+  //   _cachedSha256 = digest.toString();
+  //   return _cachedSha256!;
+  // }
 }

@@ -22,11 +22,18 @@ enum _FileSyncStatus {
   remoteOnly,
 }
 
+typedef _RemoteFileForComparator = ({
+  String key,
+  String localPath,
+  String etag,
+  DateTime? lastModified,
+});
+
 Pool _syncPool = Pool(1);
 
 Future<_FileSyncStatus?> _fileSyncCompare({
   required File localFile,
-  required RemoteFile? remote,
+  required _RemoteFileForComparator? remote,
 }) async {
   final localExists = localFile.existsSync();
   if (remote == null) {
@@ -65,63 +72,68 @@ class _SyncAnalysisResult {
 
 Future<_SyncAnalysisResult> _syncAnalyze(
   String localRootPath,
-  List<RemoteFile> remoteFiles,
-) async {
-  final localMap = <String, String>{};
-
-  final files = await _syncPool.withResource(() {
-    return compute<String, Iterable<String>>((String path) {
+  List<RemoteFile> remoteFiles, {
+  bool recursive = true,
+}) async {
+  final files = (await _syncPool.withResource(() {
+    return compute((({String path, bool recursive}) arg) {
       return Directory(
-        path,
-      ).listSync(recursive: true).whereType<File>().map((f) => f.path);
-    }, localRootPath);
-  });
+        arg.path,
+      ).listSync(recursive: arg.recursive).whereType<File>().map((f) => f.path);
+    }, (path: localRootPath, recursive: recursive));
+  })).toList();
 
-  for (var path in files) {
-    final rel = p
-        .relative(path, from: localRootPath)
-        .replaceAll('\\', p.separator);
-    localMap[p.join(Main.keyFromPath(localRootPath) ?? '', rel)] = path;
-  }
-  final remoteMap = {
-    for (var f in remoteFiles.where((f) => p.basename(f.key).isNotEmpty))
-      f.key: f,
-  };
-
-  if (kDebugMode) {
-    debugPrint(
-      "Starting sync analysis at $localRootPath: Local files count: ${localMap.length}, Remote files count: ${remoteMap.length}",
-    );
-  }
+  final remoteFilesForComparator = remoteFiles
+      .map(
+        (f) => (
+          key: f.key,
+          localPath: Main.pathFromKey(f.key)!,
+          etag: f.etag,
+          lastModified: f.lastModified,
+        ),
+      )
+      .toList();
 
   return await _syncPool.withResource(() async {
-    return await compute<(Map, Map), _SyncAnalysisResult>((maps) async {
-      final localMap = maps.$1;
-      final remoteMap = maps.$2;
+    return await compute<
+      ({List<String> localFiles, List<_RemoteFileForComparator> remoteFiles}),
+      _SyncAnalysisResult
+    >((args) async {
+      final localFiles = args.localFiles;
+      final remoteFiles = args.remoteFiles;
+
+      if (kDebugMode) {
+        debugPrint(
+          "Local files count: ${localFiles.length}, "
+          "Remote files count: ${remoteFiles.length}",
+        );
+      }
 
       final newFile = <String>[];
       final modifiedLocally = <String>[];
       final modifiedRemotely = <String>[];
       final already = <String>[];
 
-      for (var path in localMap.entries) {
-        final remote = remoteMap[path.key];
+      for (var path in localFiles) {
+        final remote = remoteFiles.firstWhereOrNull(
+          (r) => p.absolute(r.localPath) == path,
+        );
         final status = await _fileSyncCompare(
-          localFile: File(path.value),
+          localFile: File(path),
           remote: remote,
         );
         switch (status) {
           case _FileSyncStatus.newFile:
-            newFile.add(path.value);
+            newFile.add(path);
             break;
           case _FileSyncStatus.modifiedLocally:
-            modifiedLocally.add(path.value);
+            modifiedLocally.add(path);
             break;
           case _FileSyncStatus.modifiedRemotely:
-            modifiedRemotely.add(path.key);
+            modifiedRemotely.add(remote!.key);
             break;
           case _FileSyncStatus.uploaded:
-            already.add(path.value);
+            already.add(path);
             break;
           case _FileSyncStatus.remoteOnly:
             break;
@@ -132,10 +144,21 @@ Future<_SyncAnalysisResult> _syncAnalyze(
 
       final remoteOnly = remoteFiles
           .where(
-            (r) => !localMap.containsKey(r.key) && p.basename(r.key).isNotEmpty,
+            (r) => !files.contains(r.localPath) && p.basename(r.key).isNotEmpty,
           )
           .map((r) => r.key)
           .toList();
+
+      if (kDebugMode) {
+        debugPrint(
+          "Sync analysis completed for $localRootPath: "
+          "New Files: ${newFile.length} "
+          "Modified Locally: ${modifiedLocally.length} "
+          "Modified Remotely: ${modifiedRemotely.length} "
+          "Remote Only: ${remoteOnly.length} "
+          "Uploaded: ${already.length} ",
+        );
+      }
 
       return _SyncAnalysisResult(
         newFile: newFile,
@@ -144,49 +167,8 @@ Future<_SyncAnalysisResult> _syncAnalyze(
         uploaded: already,
         remoteOnly: remoteOnly,
       );
-    }, (localMap, remoteMap));
+    }, (localFiles: files, remoteFiles: remoteFilesForComparator));
   });
-
-  // for (var path in localMap.entries) {
-  //   final remote = remoteMap[path.key];
-  //   final status = await _fileSyncCompare(
-  //     localFile: File(path.value),
-  //     remote: remote,
-  //   );
-  //   switch (status) {
-  //     case _FileSyncStatus.newFile:
-  //       newFile.add(path.value);
-  //       break;
-  //     case _FileSyncStatus.modifiedLocally:
-  //       modifiedLocally.add(path.value);
-  //       break;
-  //     case _FileSyncStatus.modifiedRemotely:
-  //       modifiedRemotely.add(path.key);
-  //       break;
-  //     case _FileSyncStatus.uploaded:
-  //       already.add(path.value);
-  //       break;
-  //     case _FileSyncStatus.remoteOnly:
-  //       break;
-  //     default:
-  //       break;
-  //   }
-  // }
-
-  // final remoteOnly = remoteFiles
-  //     .where(
-  //       (r) => !localMap.containsKey(r.key) && p.basename(r.key).isNotEmpty,
-  //     )
-  //     .map((r) => r.key)
-  //     .toList();
-
-  // return _SyncAnalysisResult(
-  //   newFile: newFile,
-  //   modifiedLocally: modifiedLocally,
-  //   modifiedRemotely: modifiedRemotely,
-  //   uploaded: already,
-  //   remoteOnly: remoteOnly,
-  // );
 }
 
 abstract class Main {
@@ -579,6 +561,312 @@ abstract class Main {
     }
   }
 
+  static Future<void> copyFile(
+    String key,
+    String newKey, {
+    bool refresh = true,
+  }) async {
+    loading.value = true;
+
+    RemoteFile oldFile = remoteFiles.firstWhere((file) => file.key == key);
+    RemoteFile newFile = RemoteFile(
+      key: newKey,
+      size: oldFile.size,
+      etag: oldFile.etag,
+      lastModified: oldFile.lastModified,
+    );
+
+    final Profile? profile = profileFromKey(key);
+    final Profile? newProfile = profileFromKey(newKey);
+
+    if (profile != newProfile) {
+      String downloadTo = pathFromKey(key) ?? key;
+      downloadTo = p.isAbsolute(downloadTo)
+          ? downloadTo
+          : cachePathFromKey(key);
+      File file = File(downloadTo);
+      if (!file.parent.existsSync()) {
+        file.parent.createSync(recursive: true);
+      }
+      // TODO: Download wait and Upload
+      // downloadFile(oldFile, localPath: downloadTo);
+      // uploadFile(newKey, File(downloadTo));
+      return;
+    }
+
+    await profileFromKey(key)!.fileManager!.copyFile(key, newKey);
+
+    final file = File(pathFromKey(key) ?? key);
+    final cacheFile = File(cachePathFromKey(key));
+
+    if (file.existsSync() && pathFromKey(newKey) != null) {
+      if (!file.parent.existsSync()) {
+        file.parent.createSync(recursive: true);
+      }
+      file.copySync(pathFromKey(newKey) ?? newKey);
+    }
+
+    if (cacheFile.existsSync() && pathFromKey(newKey) != null) {
+      if (!cacheFile.parent.existsSync()) {
+        cacheFile.parent.createSync(recursive: true);
+      }
+      cacheFile.copySync(pathFromKey(newKey) ?? newKey);
+    }
+
+    remoteFilesAdd(newFile);
+    if (refresh) {
+      loading.value = false;
+    }
+  }
+
+  // uses copyFile
+  static Future<void> copyDirectory(
+    String dir,
+    String newDir, {
+    bool refresh = true,
+    ValueNotifier<double>? preprogress,
+  }) async {
+    loading.value = true;
+    final files = remoteFiles
+        .where(
+          (file) =>
+              p.isWithin(dir, file.key) &&
+              file.key != dir &&
+              !p.isDir(file.key),
+        )
+        .toList();
+    int progressCount = 0;
+    final totalFiles = files.length;
+    for (final file in files) {
+      progressCount += 1;
+      (preprogress ?? progress).value = progressCount / totalFiles;
+      await copyFile(
+        file.key,
+        p.s3(p.join(newDir, p.relative(file.key, from: dir))),
+        refresh: false,
+      );
+    }
+
+    if (refresh) {
+      loading.value = false;
+    }
+  }
+
+  static Future<void> deleteFiles(
+    List<String> keys, {
+    bool refresh = true,
+    ValueNotifier<double>? preprogress,
+  }) async {
+    loading.value = true;
+
+    final List<String> files = remoteFiles
+        .where((file) => keys.contains(file.key) && !p.isDir(file.key))
+        .map((e) => e.key)
+        .toList();
+
+    final Map<Profile, List<String>> profileKeys = {};
+    for (final key in files) {
+      final profile = profileFromKey(key);
+      if (profile != null) {
+        profileKeys.putIfAbsent(profile, () => []).add(key);
+      }
+    }
+
+    int progressCount = 0;
+    for (final entry in profileKeys.entries) {
+      final profile = entry.key;
+      final keysForProfile = entry.value;
+
+      await profile.deletionRegistrar.pullDeletions();
+      profile.deletionRegistrar.logDeletions(keysForProfile);
+      await profile.deletionRegistrar.pushDeletions();
+
+      for (final key in keysForProfile) {
+        progressCount += 1;
+        (preprogress ?? progress).value =
+            progressCount / profileKeys.values.expand((e) => e).length;
+        await profile.fileManager?.deleteFile(key);
+        File file = File(pathFromKey(key) ?? key);
+        File cacheFile = File(cachePathFromKey(key));
+        if (file.existsSync()) {
+          file.deleteSync();
+        }
+        if (cacheFile.existsSync()) {
+          cacheFile.deleteSync();
+        }
+      }
+
+      remoteFilesRemoveWhere((file) => keysForProfile.contains(file.key));
+    }
+
+    if (refresh) {
+      loading.value = false;
+    }
+  }
+
+  static Future<void> deleteS3(
+    List<String> keys, {
+    bool refresh = true,
+    ValueNotifier<double>? preprogress,
+  }) async {
+    loading.value = true;
+
+    final List<RemoteFile> files = remoteFiles
+        .where(
+          (file) => keys.contains(file.key) || !p.isDir(file.key)
+              ? keys.any((d) => p.isWithin(d, file.key))
+              : false,
+        )
+        .toList();
+
+    final Map<Profile, List<RemoteFile>> profileFiles = {};
+    for (final file in files) {
+      final profile = profileFromKey(file.key);
+      if (profile != null) {
+        profileFiles.putIfAbsent(profile, () => []).add(file);
+      }
+    }
+
+    int progressCount = 0;
+    for (final entry in profileFiles.entries) {
+      final profile = entry.key;
+      final filesForProfile = entry.value;
+
+      await profile.deletionRegistrar.pullDeletions();
+      profile.deletionRegistrar.logDeletions(
+        filesForProfile.map((e) => e.key).toList(),
+      );
+      await profile.deletionRegistrar.pushDeletions();
+
+      for (final file
+          in filesForProfile.where((file) => !p.isDir(file.key)).toList()) {
+        progressCount += 1;
+        (preprogress ?? progress).value =
+            progressCount / profileFiles.values.expand((e) => e).length;
+        await profile.fileManager?.deleteFile(file.key);
+      }
+
+      remoteFilesRemoveWhere(
+        (file) =>
+            filesForProfile.map((e) => e.key).contains(file.key) &&
+            !p.isDir(file.key),
+      );
+
+      final dirsForProfile = remoteFiles
+          .where(
+            (file) =>
+                filesForProfile.map((e) => e.key).contains(file.key) &&
+                p.isDir(file.key),
+          )
+          .toList();
+      dirsForProfile.sort((a, b) => b.key.length.compareTo(a.key.length));
+
+      for (final dir in dirsForProfile) {
+        progressCount += 1;
+        (preprogress ?? progress).value =
+            progressCount / profileFiles.values.expand((e) => e).length;
+        await profile.fileManager?.deleteFile(dir.key);
+      }
+
+      remoteFilesRemoveWhere(
+        (file) => dirsForProfile.map((e) => e.key).contains(file.key),
+      );
+
+      await profile.refreshRemote(dir: profile.name);
+    }
+
+    if (refresh) {
+      loading.value = false;
+    }
+  }
+
+  // uses deleteS3
+  static Future<void> deleteDirectories(
+    List<String> dirs, {
+    bool refresh = true,
+    ValueNotifier<double>? preprogress,
+  }) async {
+    loading.value = true;
+
+    await deleteS3(dirs, refresh: false, preprogress: preprogress ?? progress);
+
+    for (final dirS in dirs) {
+      final dir = Directory(pathFromKey(dirS) ?? dirS);
+      final cacheDir = Directory(cachePathFromKey(dirS));
+      if (dir.existsSync()) {
+        dir.deleteSync(recursive: true);
+      }
+      if (cacheDir.existsSync()) {
+        cacheDir.deleteSync(recursive: true);
+      }
+    }
+
+    if (refresh) {
+      loading.value = false;
+    }
+  }
+
+  // uses copyFile and deleteFiles
+  static Future<void> moveFiles(
+    List<String> keys,
+    List<String> newKeys, {
+    bool refresh = true,
+  }) async {
+    loading.value = true;
+    for (int i = 0; i < keys.length; i++) {
+      progress.value = (i + 1) * 0.5 / keys.length;
+      await copyFile(keys[i], newKeys[i], refresh: false);
+      File file = File(pathFromKey(keys[i]) ?? keys[i]);
+      if (file.existsSync()) {
+        renameOrCopyAndDelete(file, pathFromKey(newKeys[i]) ?? newKeys[i]);
+      }
+      File cacheFile = File(cachePathFromKey(keys[i]));
+      if (cacheFile.existsSync()) {
+        renameOrCopyAndDelete(cacheFile, pathFromKey(newKeys[i]) ?? newKeys[i]);
+      }
+    }
+    final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
+    preprogress.addListener(() {
+      progress.value = 0.5 + 0.5 * preprogress.value;
+    });
+    await deleteFiles(keys, refresh: false, preprogress: preprogress);
+    preprogress.dispose();
+    if (refresh) {
+      loading.value = false;
+    }
+  }
+
+  // uses copyDirectory and deleteDirectories
+  static Future<void> moveDirectories(
+    List<String> dirs,
+    List<String> newDirs, {
+    bool refresh = true,
+  }) async {
+    loading.value = true;
+    for (int i = 0; i < dirs.length; i++) {
+      final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
+      preprogress.addListener(() {
+        progress.value = (i + 1) * 0.5 * preprogress.value / dirs.length;
+      });
+      await copyDirectory(
+        dirs[i],
+        newDirs[i],
+        refresh: false,
+        preprogress: preprogress,
+      );
+      preprogress.dispose();
+    }
+    final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
+    preprogress.addListener(() {
+      progress.value = 0.5 + 0.5 * preprogress.value;
+    });
+    await deleteDirectories(dirs, refresh: false, preprogress: preprogress);
+    preprogress.dispose();
+    if (refresh) {
+      loading.value = false;
+    }
+  }
+
   static Future<void> init({bool background = false}) async {
     if (_cacheDir.isEmpty) {
       final directory = await getApplicationCacheDirectory();
@@ -941,8 +1229,10 @@ class Watcher {
 
   Watcher({required this.remoteDir});
 
-  Future<void> scan() async {
-    final localDir = Directory(Main.pathFromKey(remoteDir) ?? remoteDir);
+  Future<void> scan({String? dirKey, bool recursive = true}) async {
+    final localDir = Directory(
+      Main.pathFromKey(dirKey ?? remoteDir) ?? dirKey ?? remoteDir,
+    );
 
     if (scanning) {
       if (_rescanQueued) {
@@ -975,9 +1265,13 @@ class Watcher {
         return;
       }
 
-      if (Main.remoteFiles
-          .where((file) => p.isWithin(remoteDir, file.key))
-          .isEmpty) {
+      final remoteFiles = Main.remoteFiles
+          .where(
+            (file) => p.isWithin(remoteDir, file.key) && !p.isDir(file.key),
+          )
+          .toList();
+
+      if (remoteFiles.isEmpty) {
         if (kDebugMode) {
           debugPrint("Remote files list is empty, skipping refresh.");
         }
@@ -986,31 +1280,14 @@ class Watcher {
       }
 
       if (kDebugMode) {
-        debugPrint("Analyzing sync status.value for ${localDir.path}");
+        debugPrint("Analyzing Sync for ${localDir.path}");
       }
       final result = await _syncAnalyze(
         localDir.path,
-        Main.remoteFiles
-            .where(
-              (file) =>
-                  p.isWithin(
-                    localDir.path,
-                    Main.pathFromKey(file.key) ?? file.key,
-                  ) &&
-                  !p.isDir(file.key),
-            )
-            .toList(),
+        remoteFiles,
+        recursive: recursive,
       );
-      if (kDebugMode) {
-        debugPrint(
-          "Sync analysis completed for ${localDir.path}: "
-          "New Files: ${result.newFile.length} "
-          "Modified Locally: ${result.modifiedLocally.length} "
-          "Modified Remotely: ${result.modifiedRemotely.length} "
-          "Remote Only: ${result.remoteOnly.length} "
-          "Uploaded: ${result.uploaded.length} ",
-        );
-      }
+
       try {
         throw Exception("Debug Exception");
       } catch (e) {
@@ -1020,25 +1297,20 @@ class Watcher {
       }
 
       for (String path in [...result.newFile, ...result.modifiedLocally]) {
-        final file = File(path);
-        final key = Main.keyFromPath(file.path) ?? '';
+        final key = Main.keyFromPath(path) ?? '';
         if (Job.pendingJobs.any(
-              (job) => job.localFile.path == file.path && job.remoteKey == key,
-            ) ||
-            Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(key))) {
+          (job) => job.localFile.path == path && job.remoteKey == key,
+        )) {
           continue;
         }
-        BackupMode mode = Main.backupModeFromKey(
-          Main.keyFromPath(file.path) ?? '',
-        );
+        BackupMode mode = Main.backupModeFromKey(Main.keyFromPath(path) ?? '');
         if (mode == BackupMode.sync || mode == BackupMode.upload) {
-          Main.uploadFile(key, file);
+          Main.uploadFile(key, File(path));
         }
       }
 
       for (String key in result.modifiedRemotely) {
-        if (Job.pendingJobs.any((job) => job.remoteKey == key) ||
-            Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(key))) {
+        if (Job.pendingJobs.any((job) => job.remoteKey == key)) {
           continue;
         }
         BackupMode mode = Main.backupModeFromKey(key);
@@ -1053,8 +1325,7 @@ class Watcher {
       }
 
       for (String key in result.remoteOnly) {
-        if (Job.pendingJobs.any((job) => job.remoteKey == key) ||
-            Main.ignoreKeyRegexps.any((regexp) => regexp.hasMatch(key))) {
+        if (Job.pendingJobs.any((job) => job.remoteKey == key)) {
           continue;
         }
         if (Main.backupModeFromKey(key) == BackupMode.sync) {
@@ -1096,7 +1367,57 @@ class Watcher {
     await scan();
 
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      subscription = localDir.watch(recursive: true).listen((event) {
+      subscription = localDir.watch(recursive: true).listen((event) async {
+        switch (event) {
+          case FileSystemCreateEvent e:
+            if (e.isDirectory) {
+              break;
+            }
+            Main.uploadFile(Main.keyFromPath(e.path) ?? '', File(e.path));
+            break;
+          case FileSystemModifyEvent e:
+            if (e.isDirectory) {
+              if (e.contentChanged) {
+                unawaited(scan(dirKey: Main.keyFromPath(e.path)));
+              }
+              break;
+            }
+            Main.uploadFile(Main.keyFromPath(e.path) ?? '', File(e.path));
+            break;
+          case FileSystemDeleteEvent e:
+            final key = Main.keyFromPath(e.path);
+            if (key == null) {
+              break;
+            }
+            if (p.isDir(e.path)) {
+              await Main.deleteDirectories([key], refresh: false);
+              break;
+            }
+            await Main.deleteFiles([key], refresh: false);
+            break;
+          case FileSystemMoveEvent e:
+            final srcKey = Main.keyFromPath(e.path);
+            final destKey = e.destination != null
+                ? Main.keyFromPath(e.destination!)
+                : null;
+            if (srcKey == null) {
+              break;
+            }
+            if (destKey == null) {
+              if (p.isDir(e.path)) {
+                await Main.deleteDirectories([srcKey], refresh: false);
+              } else {
+                await Main.deleteFiles([srcKey], refresh: false);
+              }
+              break;
+            }
+            if (e.isDirectory) {
+              await Main.moveDirectories([srcKey], [destKey], refresh: false);
+              break;
+            }
+            await Main.moveFiles([srcKey], [destKey], refresh: false);
+            break;
+        }
         final file = File(event.path);
         if (file.existsSync()) {
           if (kDebugMode) {
@@ -1104,7 +1425,7 @@ class Watcher {
               "File system event detected: ${event.type} - ${event.path}",
             );
           }
-          unawaited(scan());
+          // unawaited(scan());
         }
       });
     } else {
