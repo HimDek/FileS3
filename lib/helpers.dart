@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:ini/ini.dart';
@@ -1136,7 +1137,7 @@ class MyListenableBuilder<T> extends ListenableBuilder {
   final String? name;
   final bool Function(T?)? shouldRebuild;
   final ManualNotifier _manualNotifier = ManualNotifier();
-  final T? Function()? valueToStore;
+  final FutureOr<T?> Function()? valueToStore;
   final ValueNotifier<T?> _old = ValueNotifier(null);
 
   MyListenableBuilder({
@@ -1149,10 +1150,11 @@ class MyListenableBuilder<T> extends ListenableBuilder {
     this.valueToStore,
   });
 
-  void checkAndNotify() {
+  void checkAndNotify() async {
     if (shouldRebuild == null || shouldRebuild!(_old.value)) {
       _manualNotifier.notifyListeners();
     }
+    _old.value = await valueToStore?.call();
   }
 
   @override
@@ -1164,7 +1166,6 @@ class MyListenableBuilder<T> extends ListenableBuilder {
 
   @override
   Widget build(BuildContext context) {
-    _old.value = valueToStore?.call();
     if (kDebugMode && name != null) {
       debugPrint('Building MyListenableBuilder $name');
     }

@@ -17,6 +17,8 @@ class MyGridTile extends StatelessWidget {
   final bool selected;
   final Widget? topLeftBadge;
   final Widget? topRightBadge;
+  final Widget? bottomLeftBadge;
+  final Widget? bottomRightBadge;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
@@ -27,6 +29,8 @@ class MyGridTile extends StatelessWidget {
     this.selected = false,
     this.topLeftBadge,
     this.topRightBadge,
+    this.bottomLeftBadge,
+    this.bottomRightBadge,
     this.onTap,
     this.onLongPress,
   });
@@ -53,15 +57,28 @@ class MyGridTile extends StatelessWidget {
                   ],
                 )
               : null,
-          footer: AnimatedContainer(
-            duration: Duration(milliseconds: 250),
-            decoration: BoxDecoration(
-              color: selected
-                  ? Theme.of(context).colorScheme.secondaryContainer
-                  : Theme.of(context).colorScheme.surface,
-            ),
-            padding: EdgeInsets.all(8),
-            child: footer,
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (bottomLeftBadge != null || bottomRightBadge != null)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      bottomLeftBadge ?? SizedBox.shrink(),
+                      bottomRightBadge ?? SizedBox.shrink(),
+                    ],
+                  ),
+                ),
+              AnimatedPadding(
+                duration: Duration(milliseconds: 250),
+                padding: EdgeInsets.all(8),
+                child: footer,
+              ),
+            ],
           ),
           child: AnimatedPadding(
             duration: const Duration(milliseconds: 250),
@@ -307,22 +324,31 @@ class ListFilesState extends State<ListFiles> {
             ]),
             valueToStore: () => widget.selection.value,
             shouldRebuild: (oldSelection) {
-              // return false if the change in selection does not affect this item’s inclusion in the selection
-              final inOld = (oldSelection as Set<RemoteFile>).any(
-                (file) =>
-                    file.key == item.key ||
-                    p.isWithin(file.key, item.key) ||
-                    (p.isWithin(item.key, file.key) && file.key != item.key),
-              );
+              final inOld =
+                  oldSelection?.any(
+                    (file) =>
+                        file.key == item.key ||
+                        p.isWithin(file.key, item.key) ||
+                        (p.isWithin(item.key, file.key) &&
+                            file.key != item.key),
+                  ) ??
+                  false;
               final inNew = widget.selection.value.any(
                 (file) =>
                     file.key == item.key ||
                     p.isWithin(file.key, item.key) ||
                     (p.isWithin(item.key, file.key) && file.key != item.key),
               );
-              return inOld != inNew ||
-                  (oldSelection.isEmpty && widget.selection.value.isNotEmpty) ||
-                  (oldSelection.isNotEmpty && widget.selection.value.isEmpty);
+
+              final sameLength =
+                  oldSelection?.length == widget.selection.value.length;
+              final empty = widget.selection.value.isEmpty;
+              final statusChanged = inOld != inNew;
+              final startSelection =
+                  (oldSelection?.isEmpty ?? true) &&
+                  widget.selection.value.isNotEmpty;
+
+              return sameLength || empty || statusChanged || startSelection;
             },
             builder: (context, child) {
               bool selectedExplicitly = false;
@@ -417,36 +443,41 @@ class ListFilesState extends State<ListFiles> {
                         ],
                       )
                     : null,
-                onTap: () => widget.changeDirectory(item.file!),
+                onTap:
+                    widget.selection.value.isNotEmpty &&
+                        widget.selectionAction.value == SelectionAction.none
+                    ? widget.getSelectAction(item.file!)
+                    : widget.showGallery != null
+                    ? () => widget.changeDirectory(item.file!)
+                    : null,
                 onLongPress: widget.getSelectAction(item.file!),
                 trailing: widget.selection.value.isNotEmpty
-                    ? widget.selectionAction.value == SelectionAction.none
-                          ? GestureDetector(
-                              onTap: widget.getSelectAction(item.file!),
-                              child: Icon(
-                                selectedExplicitly
-                                    ? Icons.check_circle
-                                    : Icons.circle_outlined,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSecondaryContainer,
-                              ),
-                            )
-                          : selectedExplicitly
-                          ? Icon(
-                              Icons.check_circle,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSecondaryContainer,
-                            )
-                          : selectedInherently
-                          ? Icon(
-                              Icons.check_circle_outline,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSecondaryContainer,
-                            )
-                          : null
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.selectionAction.value ==
+                              SelectionAction.none)
+                            IconButton(
+                              icon: Icon(Icons.zoom_out_map),
+                              onPressed: () =>
+                                  widget.changeDirectory(item.file!),
+                            ),
+                          Icon(
+                            selectedExplicitly
+                                ? Icons.check_circle
+                                : selectedInherently
+                                ? Icons.check_circle_outline
+                                : Icons.circle_outlined,
+                            color:
+                                widget.selectionAction.value ==
+                                    SelectionAction.none
+                                ? null
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant.withAlpha(100),
+                          ),
+                        ],
+                      )
                     : widget.showContextMenu != null
                     ? GestureDetector(
                         onTap: () async {
@@ -468,22 +499,31 @@ class ListFilesState extends State<ListFiles> {
             ]),
             valueToStore: () => widget.selection.value,
             shouldRebuild: (oldSelection) {
-              // return false if the change in selection does not affect this item’s inclusion in the selection
-              final inOld = (oldSelection as Set<RemoteFile>).any(
-                (file) =>
-                    file.key == item.key ||
-                    p.isWithin(file.key, item.key) ||
-                    (p.isWithin(item.key, file.key) && file.key != item.key),
-              );
+              final inOld =
+                  oldSelection?.any(
+                    (file) =>
+                        file.key == item.key ||
+                        p.isWithin(file.key, item.key) ||
+                        (p.isWithin(item.key, file.key) &&
+                            file.key != item.key),
+                  ) ??
+                  false;
               final inNew = widget.selection.value.any(
                 (file) =>
                     file.key == item.key ||
                     p.isWithin(file.key, item.key) ||
                     (p.isWithin(item.key, file.key) && file.key != item.key),
               );
-              return inOld != inNew ||
-                  (oldSelection.isEmpty && widget.selection.value.isNotEmpty) ||
-                  (oldSelection.isNotEmpty && widget.selection.value.isEmpty);
+
+              final sameLength =
+                  oldSelection?.length == widget.selection.value.length;
+              final empty = widget.selection.value.isEmpty;
+              final statusChanged = inOld != inNew;
+              final startSelection =
+                  (oldSelection?.isEmpty ?? true) &&
+                  widget.selection.value.isNotEmpty;
+
+              return sameLength || empty || statusChanged || startSelection;
             },
             builder: (context, child) {
               bool selectedExplicitly = false;
@@ -548,13 +588,32 @@ class ListFilesState extends State<ListFiles> {
                       )
                     : null,
                 trailing: widget.selection.value.isNotEmpty
-                    ? selectedExplicitly
-                          ? Icon(Icons.check_circle)
-                          : selectedInherently
-                          ? Icon(Icons.check_circle_outline)
-                          : widget.selectionAction.value == SelectionAction.none
-                          ? Icon(Icons.circle_outlined)
-                          : null
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.selectionAction.value ==
+                              SelectionAction.none)
+                            IconButton(
+                              icon: Icon(Icons.zoom_out_map),
+                              onPressed: () =>
+                                  widget.showGallery?.call(item.file!.key),
+                            ),
+                          Icon(
+                            selectedExplicitly
+                                ? Icons.check_circle
+                                : selectedInherently
+                                ? Icons.check_circle_outline
+                                : Icons.circle_outlined,
+                            color:
+                                widget.selectionAction.value ==
+                                    SelectionAction.none
+                                ? null
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant.withAlpha(100),
+                          ),
+                        ],
+                      )
                     : widget.showContextMenu != null
                     ? GestureDetector(
                         onTap: () async {
@@ -563,7 +622,9 @@ class ListFilesState extends State<ListFiles> {
                         child: Icon(Icons.more_vert),
                       )
                     : null,
-                onTap: widget.selection.value.isNotEmpty
+                onTap:
+                    widget.selection.value.isNotEmpty &&
+                        widget.selectionAction.value == SelectionAction.none
                     ? widget.getSelectAction(item.file!)
                     : widget.showGallery != null
                     ? () => widget.showGallery!(item.key)
@@ -599,22 +660,31 @@ class ListFilesState extends State<ListFiles> {
             ]),
             valueToStore: () => widget.selection.value,
             shouldRebuild: (oldSelection) {
-              // return false if the change in selection does not affect this item’s inclusion in the selection
-              final inOld = (oldSelection as Set<RemoteFile>).any(
-                (file) =>
-                    file.key == item.key ||
-                    p.isWithin(file.key, item.key) ||
-                    (p.isWithin(item.key, file.key) && file.key != item.key),
-              );
+              final inOld =
+                  oldSelection?.any(
+                    (file) =>
+                        file.key == item.key ||
+                        p.isWithin(file.key, item.key) ||
+                        (p.isWithin(item.key, file.key) &&
+                            file.key != item.key),
+                  ) ??
+                  false;
               final inNew = widget.selection.value.any(
                 (file) =>
                     file.key == item.key ||
                     p.isWithin(file.key, item.key) ||
                     (p.isWithin(item.key, file.key) && file.key != item.key),
               );
-              return inOld != inNew ||
-                  (oldSelection.isEmpty && widget.selection.value.isNotEmpty) ||
-                  (oldSelection.isNotEmpty && widget.selection.value.isEmpty);
+
+              final sameLength =
+                  oldSelection?.length == widget.selection.value.length;
+              final empty = widget.selection.value.isEmpty;
+              final statusChanged = inOld != inNew;
+              final startSelection =
+                  (oldSelection?.isEmpty ?? true) &&
+                  widget.selection.value.isNotEmpty;
+
+              return sameLength || empty || statusChanged || startSelection;
             },
             builder: (context, child) {
               bool selectedExplicitly = false;
@@ -663,47 +733,46 @@ class ListFilesState extends State<ListFiles> {
                     ),
                   ],
                 ),
-                onTap: () => widget.changeDirectory(item.file!),
+                onTap:
+                    widget.selection.value.isNotEmpty &&
+                        widget.selectionAction.value == SelectionAction.none
+                    ? widget.getSelectAction(item.file!)
+                    : widget.showGallery != null
+                    ? () => widget.changeDirectory(item.file!)
+                    : null,
                 onLongPress: widget.getSelectAction(item.file!),
                 topLeftBadge: uiConfigNotifier.showDownloadStatus.value
                     ? DownloadStatusIcon(file: item.file!)
                     : null,
                 topRightBadge: widget.selection.value.isNotEmpty
-                    ? widget.selectionAction.value == SelectionAction.none
-                          ? IconButton(
-                              icon: Icon(
-                                selectedExplicitly
-                                    ? Icons.check_circle
-                                    : Icons.circle_outlined,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              onPressed: widget.getSelectAction(item.file!),
-                            )
-                          : selectedExplicitly
-                          ? IconButton(
-                              icon: Icon(Icons.check_circle),
-                              onPressed: null,
-                              color: Theme.of(context).colorScheme.primary,
-                              disabledColor: Theme.of(
-                                context,
-                              ).colorScheme.primary,
-                            )
-                          : selectedInherently
-                          ? IconButton(
-                              icon: Icon(Icons.check_circle_outline),
-                              onPressed: null,
-                              color: Theme.of(context).colorScheme.primary,
-                              disabledColor: Theme.of(
-                                context,
-                              ).colorScheme.primary,
-                            )
-                          : null
+                    ? IconButton(
+                        icon: Icon(
+                          selectedExplicitly
+                              ? Icons.check_circle
+                              : selectedInherently
+                              ? Icons.check_circle_outline
+                              : Icons.circle_outlined,
+                        ),
+                        disabledColor:
+                            widget.selectionAction.value == SelectionAction.none
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                        onPressed: null,
+                      )
                     : widget.showContextMenu != null
                     ? IconButton(
                         onPressed: () async {
                           widget.showContextMenu!(item.file!);
                         },
                         icon: Icon(Icons.more_vert),
+                      )
+                    : null,
+                bottomLeftBadge:
+                    widget.selection.value.isNotEmpty &&
+                        widget.selectionAction.value == SelectionAction.none
+                    ? IconButton(
+                        icon: Icon(Icons.zoom_out_map),
+                        onPressed: () => widget.changeDirectory(item.file!),
                       )
                     : null,
                 child: child!,
@@ -725,22 +794,31 @@ class ListFilesState extends State<ListFiles> {
             ]),
             valueToStore: () => widget.selection.value,
             shouldRebuild: (oldSelection) {
-              // return false if the change in selection does not affect this item’s inclusion in the selection
-              final inOld = (oldSelection as Set<RemoteFile>).any(
-                (file) =>
-                    file.key == item.key ||
-                    p.isWithin(file.key, item.key) ||
-                    (p.isWithin(item.key, file.key) && file.key != item.key),
-              );
+              final inOld =
+                  oldSelection?.any(
+                    (file) =>
+                        file.key == item.key ||
+                        p.isWithin(file.key, item.key) ||
+                        (p.isWithin(item.key, file.key) &&
+                            file.key != item.key),
+                  ) ??
+                  false;
               final inNew = widget.selection.value.any(
                 (file) =>
                     file.key == item.key ||
                     p.isWithin(file.key, item.key) ||
                     (p.isWithin(item.key, file.key) && file.key != item.key),
               );
-              return inOld != inNew ||
-                  (oldSelection.isEmpty && widget.selection.value.isNotEmpty) ||
-                  (oldSelection.isNotEmpty && widget.selection.value.isEmpty);
+
+              final sameLength =
+                  oldSelection?.length == widget.selection.value.length;
+              final empty = widget.selection.value.isEmpty;
+              final statusChanged = inOld != inNew;
+              final startSelection =
+                  (oldSelection?.isEmpty ?? true) &&
+                  widget.selection.value.isNotEmpty;
+
+              return sameLength || empty || statusChanged || startSelection;
             },
             builder: (context, child) {
               bool selectedExplicitly = false;
@@ -787,6 +865,14 @@ class ListFilesState extends State<ListFiles> {
                     ),
                   ],
                 ),
+                onTap:
+                    widget.selection.value.isNotEmpty &&
+                        widget.selectionAction.value == SelectionAction.none
+                    ? widget.getSelectAction(item.file!)
+                    : widget.showGallery != null
+                    ? () => widget.showGallery!(item.key)
+                    : null,
+                onLongPress: widget.getSelectAction(item.file!),
                 topLeftBadge: uiConfigNotifier.showDownloadStatus.value
                     ? Padding(
                         padding: EdgeInsets.all(16),
@@ -794,35 +880,20 @@ class ListFilesState extends State<ListFiles> {
                       )
                     : null,
                 topRightBadge: widget.selection.value.isNotEmpty
-                    ? widget.selectionAction.value == SelectionAction.none
-                          ? IconButton(
-                              icon: Icon(
-                                selectedExplicitly
-                                    ? Icons.check_circle
-                                    : Icons.circle_outlined,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              onPressed: widget.getSelectAction(item.file!),
-                            )
-                          : selectedExplicitly
-                          ? IconButton(
-                              icon: Icon(Icons.check_circle),
-                              onPressed: null,
-                              color: Theme.of(context).colorScheme.primary,
-                              disabledColor: Theme.of(
-                                context,
-                              ).colorScheme.primary,
-                            )
-                          : selectedInherently
-                          ? IconButton(
-                              icon: Icon(Icons.check_circle_outline),
-                              onPressed: null,
-                              color: Theme.of(context).colorScheme.primary,
-                              disabledColor: Theme.of(
-                                context,
-                              ).colorScheme.primary,
-                            )
-                          : null
+                    ? IconButton(
+                        icon: Icon(
+                          selectedExplicitly
+                              ? Icons.check_circle
+                              : selectedInherently
+                              ? Icons.check_circle_outline
+                              : Icons.circle_outlined,
+                        ),
+                        disabledColor:
+                            widget.selectionAction.value == SelectionAction.none
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                        onPressed: null,
+                      )
                     : widget.showContextMenu != null
                     ? IconButton(
                         onPressed: () async {
@@ -831,10 +902,15 @@ class ListFilesState extends State<ListFiles> {
                         icon: Icon(Icons.more_vert),
                       )
                     : null,
-                onTap: widget.showGallery != null
-                    ? () => widget.showGallery!(item.key)
+                bottomLeftBadge:
+                    widget.selection.value.isNotEmpty &&
+                        widget.selectionAction.value == SelectionAction.none
+                    ? IconButton(
+                        icon: Icon(Icons.zoom_out_map),
+                        onPressed: () =>
+                            widget.showGallery?.call(item.file!.key),
+                      )
                     : null,
-                onLongPress: widget.getSelectAction(item.file!),
                 child: child!,
               );
             },
@@ -971,37 +1047,46 @@ class ListFilesState extends State<ListFiles> {
                               ),
                               MyListenableBuilder(
                                 name: 'list_files_header_${group.key}',
-                                listenable: widget.selection,
+                                listenable: Listenable.merge([
+                                  widget.selection,
+                                  widget.selectionAction,
+                                ]),
                                 valueToStore: () => widget.selection.value,
                                 shouldRebuild: (oldSelection) {
                                   // return false if the change in selection does not affect this item’s inclusion in the selection
                                   final inOld =
-                                      (oldSelection as Set<RemoteFile>).where(
+                                      oldSelection?.where(
                                         (file) => group.value
                                             .map((f) => f.file)
                                             .contains(file),
-                                      );
+                                      ) ??
+                                      [];
                                   final inNew = widget.selection.value.where(
                                     (file) => group.value
                                         .map((f) => f.file)
                                         .contains(file),
                                   );
 
-                                  final oldNone = inOld.isEmpty;
-                                  final newNone = inNew.isEmpty;
                                   final oldAll =
                                       inOld.length == group.value.length;
                                   final newAll =
                                       inNew.length == group.value.length;
 
-                                  return (oldNone && !newNone) ||
-                                      (!oldNone && newNone) ||
-                                      (oldAll && !newAll) ||
-                                      (!oldAll && newAll) ||
-                                      (oldSelection.isEmpty &&
-                                          widget.selection.value.isNotEmpty) ||
-                                      (oldSelection.isNotEmpty &&
-                                          widget.selection.value.isEmpty);
+                                  final sameLength =
+                                      oldSelection?.length ==
+                                      widget.selection.value.length;
+                                  final empty = widget.selection.value.isEmpty;
+                                  final notAllNow = oldAll && !newAll;
+                                  final allNow = !oldAll && newAll;
+                                  final startSelection =
+                                      (oldSelection?.isEmpty ?? true) &&
+                                      widget.selection.value.isNotEmpty;
+
+                                  return sameLength ||
+                                      empty ||
+                                      notAllNow ||
+                                      allNow ||
+                                      startSelection;
                                 },
                                 builder: (context, _) =>
                                     widget.selection.value.isNotEmpty
@@ -1037,9 +1122,24 @@ class ListFilesState extends State<ListFiles> {
                                               )
                                               ? Icons.circle_outlined
                                               : Icons.check_circle,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSecondaryContainer,
+                                          color:
+                                              widget.selectionAction.value ==
+                                                  SelectionAction.none
+                                              ? widget
+                                                            .listOptions
+                                                            .value
+                                                            .viewMode ==
+                                                        ViewMode.grid
+                                                    ? Theme.of(
+                                                        context,
+                                                      ).colorScheme.primary
+                                                    : Theme.of(context)
+                                                          .colorScheme
+                                                          .onSecondaryContainer
+                                              : Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant
+                                                    .withAlpha(100),
                                         ),
                                       )
                                     : SizedBox.shrink(),

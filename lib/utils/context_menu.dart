@@ -2998,6 +2998,7 @@ class BulkContextOption {
 Widget buildFileContextMenu(
   BuildContext context,
   RemoteFile item,
+  bool allowModify,
   String? Function(RemoteFile, int?) getLink,
   Function(RemoteFile)? downloadFile,
   Function(RemoteFile, String)? saveFile,
@@ -3015,10 +3016,10 @@ Widget buildFileContextMenu(
     getLink: getLink,
     downloadFile: downloadFile,
     saveFile: saveFile,
-    moveFiles: moveFiles,
+    moveFiles: allowModify ? moveFiles : null,
     deleteLocalFile: deleteLocal,
     deleteCacheFile: deleteCache,
-    deleteFiles: deleteFiles,
+    deleteFiles: allowModify ? deleteFiles : null,
   );
   return Column(
     mainAxisSize: MainAxisSize.min,
@@ -3062,7 +3063,12 @@ Widget buildFileContextMenu(
           ),
         ),
       ),
-      ...(FileContextOption.allOptions(context, handler, cut, copy).map(
+      ...(FileContextOption.allOptions(
+        context,
+        handler,
+        allowModify ? cut : null,
+        allowModify ? copy : null,
+      ).map(
         (options) => M3ECardColumn(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           padding: EdgeInsets.zero,
@@ -3197,6 +3203,7 @@ Widget buildFilesContextMenu(
 Widget buildDirectoryContextMenu(
   BuildContext context,
   RemoteFile file,
+  bool allowModify,
   Function(RemoteFile)? downloadDirectory,
   Function(RemoteFile, String)? saveDirectory,
   Function(RemoteFile)? cut,
@@ -3211,10 +3218,10 @@ Widget buildDirectoryContextMenu(
     file: file,
     downloadDirectory: downloadDirectory,
     saveDirectory: saveDirectory,
-    moveDirectories: moveDirectories,
+    moveDirectories: allowModify ? moveDirectories : null,
     deleteLocalDirectory: deleteLocal,
     deleteCacheDirectory: deleteCache,
-    deleteDirectories: deleteDirectories,
+    deleteDirectories: allowModify ? deleteDirectories : null,
   );
   return Column(
     mainAxisSize: MainAxisSize.min,
@@ -3285,7 +3292,12 @@ Widget buildDirectoryContextMenu(
           visualDensity: VisualDensity.comfortable,
           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
         ),
-      ...(DirectoryContextOption.allOptions(context, handler, cut, copy).map(
+      ...(DirectoryContextOption.allOptions(
+        context,
+        handler,
+        allowModify ? cut : null,
+        allowModify ? copy : null,
+      ).map(
         (options) => M3ECardColumn(
           margin: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           padding: EdgeInsets.zero,

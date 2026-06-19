@@ -39,8 +39,7 @@ class PathPicker extends Browser {
 class PathPickerState extends BrowserState {
   @override
   Widget floatingActionButton(BuildContext context) {
-    return MyListenableBuilder(
-      name: 'path_picker_fab',
+    return ListenableBuilder(
       listenable: Listenable.merge([
         loading,
         _controlsVisible,
@@ -116,8 +115,7 @@ class MyBrowser extends Browser {
 class MyBrowserState extends BrowserState {
   @override
   Widget floatingActionButton(BuildContext context) {
-    return MyListenableBuilder(
-      name: 'my_browser_fab',
+    return ListenableBuilder(
       listenable: Listenable.merge([
         loading,
         _navIndex,
@@ -319,8 +317,7 @@ class MyBrowserState extends BrowserState {
 
   @override
   Widget drawer(BuildContext context) {
-    return MyListenableBuilder(
-      name: 'my_browser_drawer',
+    return ListenableBuilder(
       listenable: Listenable.merge([_navIndex, Job.jobs, Job.onProgressUpdate]),
       builder: (context, _) => NavigationDrawer(
         children: [
@@ -600,14 +597,16 @@ class BrowserState extends State<Browser> {
       ? null
       : () {
           if (p.isDir(item.key)) {
-            // Deselect all children
-            _selection.value = _selection.value
-                .where((selected) => !p.isWithin(item.key, selected.key))
-                .toSet();
+            if (_selection.value.any(
+              (selected) => p.isWithin(item.key, selected.key),
+            )) {
+              // Deselect all children
+              _selection.value = _selection.value
+                  .where((selected) => !p.isWithin(item.key, selected.key))
+                  .toSet();
+            }
           }
-          if (_selection.value.any((selected) {
-            return selected.key == item.key;
-          })) {
+          if (_selection.value.any((selected) => selected.key == item.key)) {
             _selection.value = _selection.value
                 .where((selected) => selected.key != item.key)
                 .toSet();
@@ -957,8 +956,7 @@ class BrowserState extends State<Browser> {
         };
 
   Widget _buildContextMenu(BuildContext context, RemoteFile? file) {
-    return MyListenableBuilder(
-      name: 'browser_context_menu',
+    return ListenableBuilder(
       listenable: Listenable.merge([
         loading,
         _rebuildContext,
@@ -1010,6 +1008,7 @@ class BrowserState extends State<Browser> {
             ? buildDirectoryContextMenu(
                 context,
                 file,
+                _selection.value.isEmpty,
                 loading.value ? null : widget.downloadDirectory,
                 loading.value ? null : widget.saveDirectory,
                 loading.value ? null : _cut,
@@ -1036,6 +1035,7 @@ class BrowserState extends State<Browser> {
             : buildFileContextMenu(
                 context,
                 file,
+                _selection.value.isEmpty,
                 _getLink,
                 loading.value ? null : widget.downloadFile,
                 loading.value ? null : widget.saveFile,
@@ -1094,8 +1094,7 @@ class BrowserState extends State<Browser> {
   }
 
   Widget _buildPopupMenu(BuildContext context) {
-    return MyListenableBuilder(
-      name: 'browser_popup_menu',
+    return ListenableBuilder(
       listenable: Listenable.merge([
         loading,
         _searching,
@@ -1422,8 +1421,7 @@ class BrowserState extends State<Browser> {
 
   @override
   Widget build(BuildContext context) {
-    return MyListenableBuilder(
-      name: 'browser_pop_scope',
+    return ListenableBuilder(
       listenable: Listenable.merge([
         _navIndex,
         _driveDir,
@@ -1442,14 +1440,14 @@ class BrowserState extends State<Browser> {
           if (didPop) {
             return;
           }
-          if (_selectionAction.value != SelectionAction.none) {
-            _selectionAction.value = SelectionAction.none;
-            return;
-          }
-          if (_selection.value.isNotEmpty) {
-            _selection.value = {};
-            return;
-          }
+          // if (_selectionAction.value != SelectionAction.none) {
+          //   _selectionAction.value = SelectionAction.none;
+          //   return;
+          // }
+          // if (_selection.value.isNotEmpty) {
+          //   _selection.value = {};
+          //   return;
+          // }
           if (_searching.value) {
             _selection.value = {};
             _searching.value = false;
@@ -1531,8 +1529,7 @@ class BrowserState extends State<Browser> {
               physics: const AlwaysScrollableScrollPhysics(),
               controller: _scrollController,
               slivers: [
-                MyListenableBuilder(
-                  name: 'browser_app_bar',
+                ListenableBuilder(
                   listenable: Listenable.merge([
                     _navIndex,
                     _driveDir,
@@ -1899,7 +1896,7 @@ class BrowserState extends State<Browser> {
                       progress,
                       loading,
                     ]),
-                    builder: (context, _) => Column(
+                    builder: (context, child) => Column(
                       mainAxisSize: MainAxisSize.max,
                       mainAxisAlignment: MainAxisAlignment.end,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1922,23 +1919,7 @@ class BrowserState extends State<Browser> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 if (uiConfigNotifier.showDirectorySummary.value)
-                                  SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: InfoRow(
-                                      file: _driveDir.value,
-                                      uiConfig: UiConfig(
-                                        showTime: true,
-                                        showSize: true,
-                                        showDownloadStatus: true,
-                                        showContent: true,
-                                      ),
-                                      spacing: 6,
-                                      iconSize: 14,
-                                      textStyle: Theme.of(
-                                        context,
-                                      ).textTheme.labelSmall,
-                                    ),
-                                  ),
+                                  child!,
                                 if (_driveDir.value.key != '')
                                   SingleChildScrollView(
                                     scrollDirection: Axis.horizontal,
@@ -2101,6 +2082,24 @@ class BrowserState extends State<Browser> {
                                 : progress.value,
                           ),
                       ],
+                    ),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: ListenableBuilder(
+                        listenable: _driveDir,
+                        builder: (context, child) => InfoRow(
+                          file: _driveDir.value,
+                          uiConfig: UiConfig(
+                            showTime: true,
+                            showSize: true,
+                            showDownloadStatus: true,
+                            showContent: true,
+                          ),
+                          spacing: 6,
+                          iconSize: 14,
+                          textStyle: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ),
                     ),
                   ),
                 ),
