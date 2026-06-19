@@ -236,7 +236,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   BackupMode _backupMode = BackupMode.sync;
 
   bool get _profileNameExists =>
-      Main.profiles.any((p) => p.name == _profileNameController.text);
+      Main.profiles.containsKey(_profileNameController.text);
 
   Future<void> _readConfig() async {
     setState(() {
@@ -244,9 +244,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
     });
     try {
       _profile = widget.profile;
-      _profile ??= Main.profiles.firstWhere(
-        (p) => p.name == _profileNameController.text,
-      );
+      _profile ??= Main.profiles[_profileNameController.text];
     } catch (e) {
       _profile = null;
     }

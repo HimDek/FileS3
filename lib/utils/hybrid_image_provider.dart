@@ -36,7 +36,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
   static final Map<String, Future<Codec>> _inflight = {};
   static final Set<String> _thumbInflight = {};
   static final Pool _readPool = Pool(5);
-  static final Pool _thumbQueue = Pool(3);
+  static final Pool _thumbQueue = Pool(1);
 
   bool pathExists = false;
   bool cacheExists = false;

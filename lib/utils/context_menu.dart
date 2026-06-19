@@ -32,6 +32,13 @@ class FileContextActionHandler extends ContextActionHandler {
   final Function(String)? deleteLocalFile;
   final Function(String)? deleteCacheFile;
   final Future<void> Function(List<String>)? deleteFiles;
+
+  bool? _rootExistsCache;
+  bool? _downloadedCache;
+  bool? _cacheExistsCache;
+  bool? _activeCache;
+  bool? _removableCache;
+
   FileContextActionHandler({
     required this.file,
     required this.getLink,
@@ -43,29 +50,49 @@ class FileContextActionHandler extends ContextActionHandler {
     required this.deleteFiles,
   });
 
-  bool rootExists() {
-    return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
+  void invalidateCache() {
+    _rootExistsCache = null;
+    _downloadedCache = null;
+    _cacheExistsCache = null;
+    _activeCache = null;
+    _removableCache = null;
   }
+
+  bool get rootExistsCached =>
+      _rootExistsCache ??= p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
+
+  bool rootExists() {
+    return rootExistsCached;
+  }
+
+  bool get downloadedCached => _downloadedCache ??=
+      !p.isDir(file.key) &&
+      File(Main.pathFromKey(file.key) ?? file.key).existsSync();
 
   bool downloaded() {
-    return !p.isDir(file.key) &&
-        File(Main.pathFromKey(file.key) ?? file.key).existsSync();
+    return downloadedCached;
   }
+
+  bool get cacheExistsCached => _cacheExistsCache ??=
+      !p.isDir(file.key) && File(Main.cachePathFromKey(file.key)).existsSync();
 
   bool cacheExists() {
-    return !p.isDir(file.key) &&
-        File(Main.cachePathFromKey(file.key)).existsSync();
+    return cacheExistsCached;
   }
+
+  bool get activeCached => _activeCache ??= Job.activeJobs.any(
+    (job) => job.localFile.path == Main.pathFromKey(file.key),
+  );
 
   bool active() {
-    return Job.activeJobs.any(
-      (job) => job.localFile.path == Main.pathFromKey(file.key),
-    );
+    return activeCached;
   }
 
+  bool get removableCached => _removableCache ??=
+      downloadedCached && Main.backupModeFromKey(file.key) == BackupMode.upload;
+
   bool removable() {
-    return downloaded() &&
-        Main.backupModeFromKey(file.key) == BackupMode.upload;
+    return removableCached;
   }
 
   dynamic Function()? open() {
@@ -90,7 +117,11 @@ class FileContextActionHandler extends ContextActionHandler {
     return !rootExists() || downloaded() || active() || downloadFile == null
         ? null
         : () {
-            downloadFile!(file);
+            try {
+              downloadFile!(file);
+            } finally {
+              invalidateCache();
+            }
           };
   }
 
@@ -98,7 +129,11 @@ class FileContextActionHandler extends ContextActionHandler {
   String Function()? saveAs(String? path) {
     return path != null && saveFile != null
         ? () {
-            saveFile!(file, path);
+            try {
+              saveFile!(file, path);
+            } finally {
+              invalidateCache();
+            }
             return 'Saving to $path';
           }
         : null;
@@ -126,20 +161,28 @@ class FileContextActionHandler extends ContextActionHandler {
     return moveFiles == null
         ? null
         : () async {
-            final newKey = p.join(
-              p.s3(p.dirname(file.key)),
-              newName.replaceAll('/', '_').replaceAll('\\', '_'),
-            );
-            await moveFiles!([file.key], [newKey]);
-            return 'Renamed ${p.basename(file.key)} to $newName';
+            try {
+              final newKey = p.join(
+                p.s3(p.dirname(file.key)),
+                newName.replaceAll('/', '_').replaceAll('\\', '_'),
+              );
+              await moveFiles!([file.key], [newKey]);
+              return 'Renamed ${p.basename(file.key)} to $newName';
+            } finally {
+              invalidateCache();
+            }
           };
   }
 
   Future<String> Function()? deleteUploaded(bool? yes) {
     return (yes ?? false) && deleteLocalFile != null && removable()
         ? () async {
-            await deleteLocalFile!(file.key);
-            return 'Deleted local copy of ${p.basename(file.key)}';
+            try {
+              await deleteLocalFile!(file.key);
+              return 'Deleted local copy of ${p.basename(file.key)}';
+            } finally {
+              invalidateCache();
+            }
           }
         : null;
   }
@@ -150,8 +193,12 @@ class FileContextActionHandler extends ContextActionHandler {
             !removable() &&
             downloaded()
         ? () async {
-            await deleteLocalFile!(file.key);
-            return 'Deleted local copy of ${p.basename(file.key)}';
+            try {
+              await deleteLocalFile!(file.key);
+              return 'Deleted local copy of ${p.basename(file.key)}';
+            } finally {
+              invalidateCache();
+            }
           }
         : null;
   }
@@ -160,8 +207,12 @@ class FileContextActionHandler extends ContextActionHandler {
   Future<String> Function()? delete(bool? yes) {
     return (yes ?? false) && deleteFiles != null
         ? () async {
-            await deleteFiles!([file.key]);
-            return 'Deleted ${p.basename(file.key)}';
+            try {
+              await deleteFiles!([file.key]);
+              return 'Deleted ${p.basename(file.key)}';
+            } finally {
+              invalidateCache();
+            }
           }
         : null;
   }
@@ -170,8 +221,12 @@ class FileContextActionHandler extends ContextActionHandler {
   Future<String> Function()? deleteCache(bool? yes) {
     return (yes ?? false) && deleteCacheFile != null && cacheExists()
         ? () async {
-            await deleteCacheFile!(file.key);
-            return 'Deleted cache of ${p.basename(file.key)}';
+            try {
+              await deleteCacheFile!(file.key);
+              return 'Deleted cache of ${p.basename(file.key)}';
+            } finally {
+              invalidateCache();
+            }
           }
         : null;
   }
@@ -186,6 +241,11 @@ class FilesContextActionHandler extends ContextActionHandler {
   final Function(String)? deleteLocalFile;
   final Function(String)? deleteCacheFile;
   final Future<void> Function(List<String>)? deleteFiles;
+  List<bool>? _rootExistsCache;
+  List<RemoteFile>? _downloadedFilesCache;
+  List<RemoteFile>? _cachedFilesCache;
+  List<RemoteFile>? _activeFilesCache;
+  List<RemoteFile>? _removableFilesCache;
 
   FilesContextActionHandler({
     required this.files,
@@ -198,53 +258,83 @@ class FilesContextActionHandler extends ContextActionHandler {
     required this.deleteFiles,
   });
 
-  List<bool> rootExists() {
-    return files
-        .map((file) => p.isAbsolute(Main.pathFromKey(file.key) ?? file.key))
-        .toList();
+  void invalidateCache() {
+    _rootExistsCache = null;
+    _downloadedFilesCache = null;
+    _cachedFilesCache = null;
+    _activeFilesCache = null;
+    _removableFilesCache = null;
   }
+
+  List<bool> get rootExistsCached => _rootExistsCache ??= files
+      .map((file) => p.isAbsolute(Main.pathFromKey(file.key) ?? file.key))
+      .toList();
+
+  List<bool> rootExists() {
+    return rootExistsCached;
+  }
+
+  List<RemoteFile> get downloadedFilesCached =>
+      _downloadedFilesCache ??= List.unmodifiable(
+        files
+            .where(
+              (f) =>
+                  !p.isDir(f.key) &&
+                  File(Main.pathFromKey(f.key) ?? f.key).existsSync(),
+            )
+            .toList(),
+      );
 
   List<RemoteFile> downloadedFiles() {
-    return files
-        .where(
-          (f) =>
-              !p.isDir(f.key) &&
-              File(Main.pathFromKey(f.key) ?? f.key).existsSync(),
-        )
-        .toList();
+    return downloadedFilesCached;
   }
+
+  List<RemoteFile> get cachedFilesCached =>
+      _cachedFilesCache ??= List.unmodifiable(
+        files
+            .where(
+              (f) =>
+                  !p.isDir(f.key) &&
+                  File(Main.cachePathFromKey(f.key)).existsSync(),
+            )
+            .toList(),
+      );
 
   List<RemoteFile> cachedFiles() {
-    return files
-        .where(
-          (f) =>
-              !p.isDir(f.key) &&
-              File(Main.cachePathFromKey(f.key)).existsSync(),
-        )
-        .toList();
+    return cachedFilesCached;
   }
+
+  List<RemoteFile> get activeFilesCached =>
+      _activeFilesCache ??= List.unmodifiable(
+        files
+            .where(
+              (f) => Job.activeJobs.any(
+                (job) =>
+                    !p.isDir(f.key) &&
+                    job.localFile.path == Main.pathFromKey(f.key),
+              ),
+            )
+            .toList(),
+      );
 
   List<RemoteFile> activeFiles() {
-    return files
-        .where(
-          (f) => Job.activeJobs.any(
-            (job) =>
-                !p.isDir(f.key) &&
-                job.localFile.path == Main.pathFromKey(f.key),
-          ),
-        )
-        .toList();
+    return activeFilesCached;
   }
 
+  List<RemoteFile> get removableFilesCached =>
+      _removableFilesCache ??= List.unmodifiable(
+        files
+            .where(
+              (f) =>
+                  !p.isDir(f.key) &&
+                  File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
+                  Main.backupModeFromKey(f.key) == BackupMode.upload,
+            )
+            .toList(),
+      );
+
   List<RemoteFile> removableFiles() {
-    return files
-        .where(
-          (f) =>
-              !p.isDir(f.key) &&
-              File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
-              Main.backupModeFromKey(f.key) == BackupMode.upload,
-        )
-        .toList();
+    return removableFilesCached;
   }
 
   @override
@@ -259,11 +349,15 @@ class FilesContextActionHandler extends ContextActionHandler {
             downloadFile == null
         ? null
         : () {
-            for (RemoteFile file in files.where(
-              (file) =>
-                  !File(Main.pathFromKey(file.key) ?? file.key).existsSync(),
-            )) {
-              downloadFile!(file);
+            try {
+              for (RemoteFile file in files.where(
+                (file) =>
+                    !File(Main.pathFromKey(file.key) ?? file.key).existsSync(),
+              )) {
+                downloadFile!(file);
+              }
+            } finally {
+              invalidateCache();
             }
           };
   }
@@ -272,8 +366,12 @@ class FilesContextActionHandler extends ContextActionHandler {
   String Function()? saveAs(String? path) {
     return path != null && saveFile != null
         ? () {
-            for (final file in files) {
-              saveFile!(file, p.join(path, p.basename(file.key)));
+            try {
+              for (final file in files) {
+                saveFile!(file, p.join(path, p.basename(file.key)));
+              }
+            } finally {
+              invalidateCache();
             }
             return 'Saving ${files.length} files to $path';
           }
@@ -311,11 +409,12 @@ class FilesContextActionHandler extends ContextActionHandler {
 
   String Function() getLinksToCopy(int? seconds) {
     return () {
-      String allLinks = '';
+      final buffer = StringBuffer();
       for (final file in files) {
-        allLinks += '${getLink(file, seconds)}\n\n';
+        buffer.writeln(getLink(file, seconds));
+        buffer.writeln();
       }
-      return allLinks;
+      return buffer.toString();
     };
   }
 
@@ -327,10 +426,14 @@ class FilesContextActionHandler extends ContextActionHandler {
             deleteLocalFile != null &&
             removableFiles.isNotEmpty
         ? () async {
-            for (final file in removableFiles) {
-              await deleteLocalFile!(file.key);
+            try {
+              for (final file in removableFiles) {
+                await deleteLocalFile!(file.key);
+              }
+              return 'Deleted local copies of ${removableFiles.length} uploaded files';
+            } finally {
+              invalidateCache();
             }
-            return 'Deleted local copies of ${removableFiles.length} uploaded files';
           }
         : null;
   }
@@ -343,10 +446,14 @@ class FilesContextActionHandler extends ContextActionHandler {
             deleteLocalFile != null &&
             downloadedFiles.isNotEmpty
         ? () async {
-            for (final file in downloadedFiles) {
-              await deleteLocalFile!(file.key);
+            try {
+              for (final file in downloadedFiles) {
+                await deleteLocalFile!(file.key);
+              }
+              return 'Deleted local copies of ${downloadedFiles.length} files';
+            } finally {
+              invalidateCache();
             }
-            return 'Deleted local copies of ${downloadedFiles.length} files';
           }
         : null;
   }
@@ -355,8 +462,12 @@ class FilesContextActionHandler extends ContextActionHandler {
   Future<String> Function()? delete(bool? yes) {
     return (yes ?? false) && deleteFiles != null
         ? () async {
-            await deleteFiles!(files.map((f) => f.key).toList());
-            return 'Deleted ${files.length} files';
+            try {
+              await deleteFiles!(files.map((f) => f.key).toList());
+              return 'Deleted ${files.length} files';
+            } finally {
+              invalidateCache();
+            }
           }
         : null;
   }
@@ -368,10 +479,14 @@ class FilesContextActionHandler extends ContextActionHandler {
             deleteCacheFile != null &&
             cacheFilesList.isNotEmpty
         ? () async {
-            for (final file in cacheFilesList) {
-              await deleteCacheFile!(file.key);
+            try {
+              for (final file in cacheFilesList) {
+                await deleteCacheFile!(file.key);
+              }
+              return 'Deleted cache of ${cacheFilesList.length} files';
+            } finally {
+              invalidateCache();
             }
-            return 'Deleted cache of ${cacheFilesList.length} files';
           }
         : null;
   }
@@ -386,6 +501,14 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   final Function(String)? deleteCacheDirectory;
   final Future<void> Function(List<String>)? deleteDirectories;
 
+  List<RemoteFile>? _filesCache;
+  bool? _rootExistsCache;
+  bool? _localExistsCache;
+  List<RemoteFile>? _downloadedFilesCache;
+  bool? _cacheExistCache;
+  List<RemoteFile>? _activeFilesCache;
+  List<RemoteFile>? _removableFilesCache;
+
   DirectoryContextActionHandler({
     required this.file,
     required this.downloadDirectory,
@@ -396,50 +519,94 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     required this.deleteDirectories,
   });
 
-  List<RemoteFile> get files => Main.remoteFiles
-      .where((f) => p.isWithin(file.key, f.key) && !p.isDir(f.key))
-      .toList();
+  void invalidateCache() {
+    _filesCache = null;
+    _rootExistsCache = null;
+    _localExistsCache = null;
+    _downloadedFilesCache = null;
+    _cacheExistCache = null;
+    _activeFilesCache = null;
+    _removableFilesCache = null;
+  }
+
+  List<RemoteFile> get filesCached => _filesCache ??= List.unmodifiable(
+    Main.remoteFiles
+        .where((f) => p.isWithin(file.key, f.key) && !p.isDir(f.key))
+        .toList(),
+  );
+
+  List<RemoteFile> get files => _filesCache ??= List.unmodifiable(
+    Main.remoteFiles
+        .where((f) => p.isWithin(file.key, f.key) && !p.isDir(f.key))
+        .toList(),
+  );
+
+  bool get rootExistsCached =>
+      _rootExistsCache ??= p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
 
   bool rootExists() {
-    return p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
+    return rootExistsCached;
   }
+
+  bool get localExistsCached => _localExistsCache ??= Directory(
+    Main.pathFromKey(file.key) ?? file.key,
+  ).existsSync();
 
   bool localExists() {
-    return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync();
+    return localExistsCached;
   }
+
+  List<RemoteFile> get downloadedFilesCached =>
+      _downloadedFilesCache ??= List.unmodifiable(
+        files
+            .where((f) => File(Main.pathFromKey(f.key) ?? f.key).existsSync())
+            .toList(),
+      );
 
   List<RemoteFile> downloadedFiles() {
-    return files
-        .where((f) => File(Main.pathFromKey(f.key) ?? f.key).existsSync())
-        .toList();
+    return downloadedFilesCached;
   }
+
+  bool get cacheExistCached => _cacheExistCache ??= Directory(
+    Main.cachePathFromKey(file.key),
+  ).existsSync();
 
   bool cacheExist() {
-    return Directory(Main.cachePathFromKey(file.key)).existsSync();
+    return cacheExistCached;
   }
+
+  List<RemoteFile> get activeFilesCached =>
+      _activeFilesCache ??= List.unmodifiable(
+        files
+            .where(
+              (f) => Job.activeJobs.any(
+                (job) =>
+                    !p.isDir(f.key) &&
+                    job.localFile.path == Main.pathFromKey(f.key),
+              ),
+            )
+            .toList(),
+      );
 
   List<RemoteFile> activeFiles() {
-    return files
-        .where(
-          (f) => Job.activeJobs.any(
-            (job) =>
-                !p.isDir(f.key) &&
-                job.localFile.path == Main.pathFromKey(f.key),
-          ),
-        )
-        .toList();
+    return activeFilesCached;
   }
 
+  List<RemoteFile> get removableFilesCached =>
+      _removableFilesCache ??= List.unmodifiable(
+        Main.remoteFiles
+            .where(
+              (f) =>
+                  p.isWithin(file.key, f.key) &&
+                  !p.isDir(f.key) &&
+                  File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
+                  Main.backupModeFromKey(f.key) == BackupMode.upload,
+            )
+            .toList(),
+      );
+
   List<RemoteFile> removableFiles() {
-    return Main.remoteFiles
-        .where(
-          (f) =>
-              p.isWithin(file.key, f.key) &&
-              !p.isDir(f.key) &&
-              File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
-              Main.backupModeFromKey(f.key) == BackupMode.upload,
-        )
-        .toList();
+    return removableFilesCached;
   }
 
   void Function()? open() {
@@ -463,7 +630,11 @@ class DirectoryContextActionHandler extends ContextActionHandler {
             downloadDirectory == null
         ? null
         : () {
-            downloadDirectory!(file);
+            try {
+              downloadDirectory!(file);
+            } finally {
+              invalidateCache();
+            }
           };
   }
 
@@ -472,7 +643,11 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     return path == null || saveDirectory == null
         ? null
         : () {
-            saveDirectory!(file, path);
+            try {
+              saveDirectory!(file, path);
+            } finally {
+              invalidateCache();
+            }
             return 'Saving ${p.basename(file.key)} to $path';
           };
   }
@@ -481,17 +656,21 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     return moveDirectories == null || p.s3(p.dirname(file.key)).isEmpty
         ? null
         : () async {
-            final key = file.key;
-            final newKey = p.s3(
-              p.asDir(
-                p.join(
-                  p.s3(p.dirname(key)),
-                  newName.replaceAll('/', '_').replaceAll('\\', '_'),
+            try {
+              final key = file.key;
+              final newKey = p.s3(
+                p.asDir(
+                  p.join(
+                    p.s3(p.dirname(key)),
+                    newName.replaceAll('/', '_').replaceAll('\\', '_'),
+                  ),
                 ),
-              ),
-            );
-            await moveDirectories!([key], [newKey]);
-            return 'Renamed ${p.basename(file.key)} to $newName';
+              );
+              await moveDirectories!([key], [newKey]);
+              return 'Renamed ${p.basename(file.key)} to $newName';
+            } finally {
+              invalidateCache();
+            }
           };
   }
 
@@ -503,10 +682,14 @@ class DirectoryContextActionHandler extends ContextActionHandler {
             deleteLocalDirectory != null &&
             removableFiles.isNotEmpty
         ? () async {
-            for (final file in removableFiles) {
-              deleteLocalDirectory!(file.key);
+            try {
+              for (final file in removableFiles) {
+                deleteLocalDirectory!(file.key);
+              }
+              return 'Deleted local copies of ${removableFiles.length} uploaded files in ${p.basename(file.key)}';
+            } finally {
+              invalidateCache();
             }
-            return 'Deleted local copies of ${removableFiles.length} uploaded files in ${p.basename(file.key)}';
           }
         : null;
   }
@@ -514,9 +697,13 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   Future<String> Function()? deleteLocal(bool? yes) {
     return (yes ?? false) && deleteLocalDirectory != null && localExists()
         ? () async {
-            final key = file.key;
-            deleteLocalDirectory!(key);
-            return 'Deleted local copy of ${p.basename(key)}';
+            try {
+              final key = file.key;
+              deleteLocalDirectory!(key);
+              return 'Deleted local copy of ${p.basename(key)}';
+            } finally {
+              invalidateCache();
+            }
           }
         : null;
   }
@@ -525,9 +712,13 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   Future<String> Function()? delete(bool? yes) {
     return (yes ?? false) && deleteDirectories != null
         ? () async {
-            final key = file.key;
-            deleteDirectories!([key]);
-            return 'Deleted ${p.basename(key)}';
+            try {
+              final key = file.key;
+              deleteDirectories!([key]);
+              return 'Deleted ${p.basename(key)}';
+            } finally {
+              invalidateCache();
+            }
           }
         : null;
   }
@@ -536,9 +727,13 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   Future<String> Function()? deleteCache(bool? yes) {
     return (yes ?? false) && deleteCacheDirectory != null && cacheExist()
         ? () async {
-            final key = file.key;
-            deleteCacheDirectory!(key);
-            return 'Deleted cache of ${p.basename(key)}';
+            try {
+              final key = file.key;
+              deleteCacheDirectory!(key);
+              return 'Deleted cache of ${p.basename(key)}';
+            } finally {
+              invalidateCache();
+            }
           }
         : null;
   }
@@ -553,6 +748,14 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   final Function(String)? deleteCacheDirectory;
   final Future<void> Function(List<String>)? deleteDirectories;
 
+  List<RemoteFile>? _filesCache;
+  List<bool>? _rootExistsCache;
+  List<RemoteFile>? _localDirectoriesCache;
+  List<RemoteFile>? _downloadedFilesCache;
+  List<RemoteFile>? _cachedDirectoriesCache;
+  List<RemoteFile>? _activeFilesCache;
+  List<RemoteFile>? _removableFilesCache;
+
   DirectoriesContextActionHandler({
     required this.directories,
     required this.downloadDirectory,
@@ -563,62 +766,116 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     required this.deleteDirectories,
   });
 
-  List<RemoteFile> get files => Main.remoteFiles
-      .where(
-        (f) =>
-            directories.any((dir) => p.isWithin(dir.key, f.key)) &&
-            !p.isDir(f.key),
-      )
-      .toList();
-
-  List<bool> rootExists() {
-    return directories
-        .map((dir) => p.isAbsolute(Main.pathFromKey(dir.key) ?? dir.key))
-        .toList();
+  void invalidateCache() {
+    _filesCache = null;
+    _rootExistsCache = null;
+    _localDirectoriesCache = null;
+    _downloadedFilesCache = null;
+    _cachedDirectoriesCache = null;
+    _activeFilesCache = null;
+    _removableFilesCache = null;
   }
 
-  List<RemoteFile> localDirectories() {
-    return directories
-        .where(
-          (dir) => Directory(Main.pathFromKey(dir.key) ?? dir.key).existsSync(),
-        )
-        .toList();
-  }
-
-  List<RemoteFile> downloadedFiles() {
-    return files
-        .where((f) => File(Main.pathFromKey(f.key) ?? f.key).existsSync())
-        .toList();
-  }
-
-  List<RemoteFile> cachedDirectories() {
-    return directories
-        .where((dir) => Directory(Main.cachePathFromKey(dir.key)).existsSync())
-        .toList();
-  }
-
-  List<RemoteFile> activeFiles() {
-    return files
-        .where(
-          (f) => Job.activeJobs.any(
-            (job) =>
-                !p.isDir(f.key) &&
-                job.localFile.path == Main.pathFromKey(f.key),
-          ),
-        )
-        .toList();
-  }
-
-  List<RemoteFile> removableFiles() {
-    return Main.remoteFiles
+  List<RemoteFile> get filesCached => _filesCache ??= List.unmodifiable(
+    Main.remoteFiles
         .where(
           (f) =>
               directories.any((dir) => p.isWithin(dir.key, f.key)) &&
-              !p.isDir(f.key) &&
-              File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
-              Main.backupModeFromKey(f.key) == BackupMode.upload,
+              !p.isDir(f.key),
         )
-        .toList();
+        .toList(),
+  );
+
+  List<RemoteFile> get files => _filesCache ??= List.unmodifiable(
+    Main.remoteFiles
+        .where(
+          (f) =>
+              directories.any((dir) => p.isWithin(dir.key, f.key)) &&
+              !p.isDir(f.key),
+        )
+        .toList(),
+  );
+
+  List<bool> get rootExistsCached => _rootExistsCache ??= List.unmodifiable(
+    directories
+        .map((dir) => p.isAbsolute(Main.pathFromKey(dir.key) ?? dir.key))
+        .toList(),
+  );
+
+  List<bool> rootExists() {
+    return rootExistsCached;
+  }
+
+  List<RemoteFile> get localDirectoriesCached =>
+      _localDirectoriesCache ??= List.unmodifiable(
+        directories
+            .where(
+              (dir) =>
+                  Directory(Main.pathFromKey(dir.key) ?? dir.key).existsSync(),
+            )
+            .toList(),
+      );
+
+  List<RemoteFile> localDirectories() {
+    return localDirectoriesCached;
+  }
+
+  List<RemoteFile> get downloadedFilesCached =>
+      _downloadedFilesCache ??= List.unmodifiable(
+        files
+            .where((f) => File(Main.pathFromKey(f.key) ?? f.key).existsSync())
+            .toList(),
+      );
+
+  List<RemoteFile> downloadedFiles() {
+    return downloadedFilesCached;
+  }
+
+  List<RemoteFile> get cachedDirectoriesCached =>
+      _cachedDirectoriesCache ??= List.unmodifiable(
+        directories
+            .where(
+              (dir) => Directory(Main.cachePathFromKey(dir.key)).existsSync(),
+            )
+            .toList(),
+      );
+
+  List<RemoteFile> cachedDirectories() {
+    return cachedDirectoriesCached;
+  }
+
+  List<RemoteFile> get activeFilesCached =>
+      _activeFilesCache ??= List.unmodifiable(
+        files
+            .where(
+              (f) => Job.activeJobs.any(
+                (job) =>
+                    !p.isDir(f.key) &&
+                    job.localFile.path == Main.pathFromKey(f.key),
+              ),
+            )
+            .toList(),
+      );
+
+  List<RemoteFile> activeFiles() {
+    return activeFilesCached;
+  }
+
+  List<RemoteFile> get removableFilesCached =>
+      _removableFilesCache ??= List.unmodifiable(
+        Main.remoteFiles
+            .where(
+              (f) =>
+                  directories.any((dir) => p.isWithin(dir.key, f.key)) &&
+                  !p.isDir(f.key) &&
+                  File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
+                  Main.backupModeFromKey(f.key) == BackupMode.upload,
+            )
+            .toList(),
+      );
+
+  List<RemoteFile> removableFiles() {
+    return removableFilesCached;
   }
 
   @override
@@ -651,13 +908,17 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
             downloadDirectory == null
         ? null
         : () {
-            directories
-                .where(
-                  (dir) => Directory(
-                    Main.pathFromKey(dir.key) ?? dir.key,
-                  ).existsSync(),
-                )
-                .map(downloadDirectory!);
+            try {
+              for (final dir in directories.where(
+                (dir) => Directory(
+                  Main.pathFromKey(dir.key) ?? dir.key,
+                ).existsSync(),
+              )) {
+                downloadDirectory!(dir);
+              }
+            } finally {
+              invalidateCache();
+            }
           };
   }
 
@@ -665,8 +926,12 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   String Function()? saveAs(String? path) {
     return path != null && saveDirectory != null
         ? () {
-            for (final dir in directories) {
-              saveDirectory!(dir, p.join(path, p.basename(dir.key)));
+            try {
+              for (final dir in directories) {
+                saveDirectory!(dir, p.join(path, p.basename(dir.key)));
+              }
+            } finally {
+              invalidateCache();
             }
             return 'Saving ${directories.length} folders to $path';
           }
@@ -679,15 +944,19 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   ) {
     return (yes ?? false) && deleteLocalDirectory != null
         ? () async {
-            for (final dir in directories) {
-              final key = dir.key;
-              for (final file in removableFiles) {
-                if (p.isWithin(key, file.key)) {
-                  deleteLocalDirectory!(file.key);
+            try {
+              for (final dir in directories) {
+                final key = dir.key;
+                for (final file in removableFiles) {
+                  if (p.isWithin(key, file.key)) {
+                    deleteLocalDirectory!(file.key);
+                  }
                 }
               }
+              return 'Deleted local copies of ${removableFiles.length} uploaded files in ${directories.length} directories';
+            } finally {
+              invalidateCache();
             }
-            return 'Deleted local copies of ${removableFiles.length} uploaded files in ${directories.length} directories';
           }
         : null;
   }
@@ -700,11 +969,15 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
             deleteLocalDirectory != null &&
             localDirs.isNotEmpty
         ? () async {
-            for (final dir in localDirs) {
-              final key = dir.key;
-              deleteLocalDirectory!(key);
+            try {
+              for (final dir in localDirs) {
+                final key = dir.key;
+                deleteLocalDirectory!(key);
+              }
+              return 'Deleted local copies of ${localDirs.length} folders';
+            } finally {
+              invalidateCache();
             }
-            return 'Deleted local copies of ${localDirs.length} folders';
           }
         : null;
   }
@@ -713,9 +986,13 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   Future<String> Function()? delete(bool? yes) {
     return (yes ?? false) && deleteDirectories != null
         ? () async {
-            final keys = directories.map((dir) => dir.key).toList();
-            await deleteDirectories!(keys);
-            return 'Deleted ${directories.length} folders';
+            try {
+              final keys = directories.map((dir) => dir.key).toList();
+              await deleteDirectories!(keys);
+              return 'Deleted ${directories.length} folders';
+            } finally {
+              invalidateCache();
+            }
           }
         : null;
   }
@@ -727,11 +1004,15 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
             deleteCacheDirectory != null &&
             cacheDirs.isNotEmpty
         ? () async {
-            for (final dir in cacheDirs) {
-              final key = dir.key;
-              deleteCacheDirectory!(key);
+            try {
+              for (final dir in cacheDirs) {
+                final key = dir.key;
+                deleteCacheDirectory!(key);
+              }
+              return 'Deleted cache of ${cacheDirs.length} folders';
+            } finally {
+              invalidateCache();
             }
-            return 'Deleted cache of ${cacheDirs.length} folders';
           }
         : null;
   }
@@ -756,46 +1037,51 @@ class FileContextOption {
     this.popOnInvoked = false,
   });
 
-  static FileContextOption open(FileContextActionHandler handler) =>
-      FileContextOption(
-        title:
-            File(
-              Main.pathFromKey(handler.file.key) ?? handler.file.key,
-            ).existsSync()
-            ? 'Open with...'
-            : handler.open() == null
-            ? 'Link Unavailable'
-            : 'Open Link',
-        subtitle: Main.pathFromKey(handler.file.key),
-        icon: Icons.open_in_new_rounded,
-        action: handler.open(),
-        popOnInvoked: false,
-      );
+  static FileContextOption open(FileContextActionHandler handler) => (() {
+    final openAction = handler.open();
+    final localExists = handler.downloadedCached;
+    return FileContextOption(
+      title: localExists
+          ? 'Open with...'
+          : openAction == null
+          ? 'Link Unavailable'
+          : 'Open Link',
+      subtitle: Main.pathFromKey(handler.file.key),
+      icon: Icons.open_in_new_rounded,
+      action: openAction,
+      popOnInvoked: false,
+    );
+  })();
 
-  static FileContextOption download(FileContextActionHandler handler) =>
-      FileContextOption(
-        title: handler.download() == null
-            ? handler.rootExists()
-                  ? handler.active()
-                        ? 'Active Job'
-                        : 'Downloaded'
-                  : 'Cannot Download'
-            : 'Download',
-        subtitle: handler.download() == null
-            ? handler.rootExists()
-                  ? handler.active()
-                        ? null
-                        : Main.pathFromKey(handler.file.key)
-                  : 'Set backup folder to enable downloads'
-            : Main.pathFromKey(handler.file.key),
-        icon: handler.download() == null && !handler.active()
-            ? handler.rootExists()
-                  ? Icons.file_download_done_rounded
-                  : Icons.file_download_off_rounded
-            : Icons.file_download_rounded,
-        action: handler.download(),
-        popOnInvoked: false,
-      );
+  static FileContextOption download(FileContextActionHandler handler) => (() {
+    final downloadAction = handler.download();
+    final rootExists = handler.rootExistsCached;
+    final active = handler.activeCached;
+    final localPath = Main.pathFromKey(handler.file.key);
+    return FileContextOption(
+      title: downloadAction == null
+          ? rootExists
+                ? active
+                      ? 'Active Job'
+                      : 'Downloaded'
+                : 'Cannot Download'
+          : 'Download',
+      subtitle: downloadAction == null
+          ? rootExists
+                ? active
+                      ? null
+                      : localPath
+                : 'Set backup folder to enable downloads'
+          : localPath,
+      icon: downloadAction == null && !active
+          ? rootExists
+                ? Icons.file_download_done_rounded
+                : Icons.file_download_off_rounded
+          : Icons.file_download_rounded,
+      action: downloadAction,
+      popOnInvoked: false,
+    );
+  })();
 
   static FileContextOption saveAs(
     FileContextActionHandler handler,
@@ -828,25 +1114,20 @@ class FileContextOption {
     popOnInvoked: false,
   );
 
-  static FileContextOption share(FileContextActionHandler handler) =>
-      FileContextOption(
-        title: handler.getXFile() == null ? 'Cannot Share' : 'Share',
-        icon: Icons.share_rounded,
-        subtitle: handler.getXFile() == null
-            ? 'Only downloaded files can be shared'
-            : null,
-        action: () {
-          final XFile Function()? handle = handler.getXFile();
-          return handle != null
-              ? () {
-                  SharePlus.instance.share(
-                    ShareParams(files: <XFile>[handle()]),
-                  );
-                }
-              : null;
-        }(),
-        popOnInvoked: false,
-      );
+  static FileContextOption share(FileContextActionHandler handler) => (() {
+    final getXFile = handler.getXFile();
+    return FileContextOption(
+      title: getXFile == null ? 'Cannot Share' : 'Share',
+      icon: Icons.share_rounded,
+      subtitle: getXFile == null ? 'Only downloaded files can be shared' : null,
+      action: getXFile != null
+          ? () {
+              SharePlus.instance.share(ShareParams(files: <XFile>[getXFile()]));
+            }
+          : null,
+      popOnInvoked: false,
+    );
+  })();
 
   static FileContextOption copyLink(
     FileContextActionHandler handler,
@@ -1099,9 +1380,9 @@ class FileContextOption {
       [share(handler), copyLink(handler, context)],
       [cut(handler, cutKey), copy(handler, copyKey), rename(handler, context)],
       [
-        if (handler.removable())
+        if (handler.removableCached)
           deleteUploaded(handler, context)
-        else if (handler.downloaded())
+        else if (handler.downloadedCached)
           deleteLocal(handler, context),
         delete(handler, context),
         deleteCache(handler, context),
@@ -1130,49 +1411,41 @@ class FilesContextOption {
   });
 
   static FilesContextOption downloadAll(FilesContextActionHandler handler) =>
-      FilesContextOption(
-        title: handler.download() != null
-            ? 'Download'
-            : handler.downloadedFiles().length == handler.files.length
-            ? 'Downloaded'
-            : handler
-                      .downloadedFiles()
-                      .map((f) => f.key)
-                      .toSet()
-                      .union(handler.activeFiles().map((f) => f.key).toSet())
-                      .length ==
-                  handler.files.length
-            ? 'Active Jobs'
-            : 'Cannot Download',
-        subtitle: handler.download() != null
-            ? "Only missing files with backup folder set will be downloaded"
-            : handler.downloadedFiles().length == handler.files.length
-            ? null
-            : handler
-                      .downloadedFiles()
-                      .map((f) => f.key)
-                      .toSet()
-                      .union(handler.activeFiles().map((f) => f.key).toSet())
-                      .length ==
-                  handler.files.length
-            ? null
-            : 'Set backup folder to enable downloads',
-        icon: handler.download() != null
-            ? Icons.file_download_rounded
-            : handler.downloadedFiles().length == handler.files.length
-            ? Icons.file_download_done_rounded
-            : handler
-                      .downloadedFiles()
-                      .map((f) => f.key)
-                      .toSet()
-                      .union(handler.activeFiles().map((f) => f.key).toSet())
-                      .length ==
-                  handler.files.length
-            ? Icons.file_download_rounded
-            : Icons.file_download_off_rounded,
-        action: handler.download(),
-        popOnInvoked: false,
-      );
+      (() {
+        final downloadAction = handler.download();
+        final downloadedCount = handler.downloadedFilesCached.length;
+        final totalCount = handler.files.length;
+        final handledCount = handler.downloadedFilesCached
+            .map((f) => f.key)
+            .toSet()
+            .union(handler.activeFilesCached.map((f) => f.key).toSet())
+            .length;
+        final allDownloaded = downloadedCount == totalCount;
+        final allHandled = handledCount == totalCount;
+        return FilesContextOption(
+          title: downloadAction != null
+              ? 'Download'
+              : allDownloaded
+              ? 'Downloaded'
+              : allHandled
+              ? 'Active Jobs'
+              : 'Cannot Download',
+          subtitle: downloadAction != null
+              ? "Only missing files with backup folder set will be downloaded"
+              : allDownloaded || allHandled
+              ? null
+              : 'Set backup folder to enable downloads',
+          icon: downloadAction != null
+              ? Icons.file_download_rounded
+              : allDownloaded
+              ? Icons.file_download_done_rounded
+              : allHandled
+              ? Icons.file_download_rounded
+              : Icons.file_download_off_rounded,
+          action: downloadAction,
+          popOnInvoked: false,
+        );
+      })();
 
   static FilesContextOption saveAllTo(
     BuildContext context,
@@ -1200,23 +1473,25 @@ class FilesContextOption {
     popOnInvoked: false,
   );
 
-  static FilesContextOption shareAll(FilesContextActionHandler handler) =>
-      FilesContextOption(
-        title: handler.getXFiles() == null ? 'Cannot Share' : 'Share All',
-        icon: Icons.share_rounded,
-        subtitle: handler.getXFiles() == null
-            ? 'No downloaded files to share'
-            : handler.downloadedFiles().length == handler.files.length
-            ? null
-            : 'Only downloaded files will be shared',
-        action: handler.getXFiles() != null
-            ? () {
-                SharePlus.instance.share(
-                  ShareParams(files: handler.getXFiles()!()),
-                );
-              }
-            : null,
-      );
+  static FilesContextOption shareAll(FilesContextActionHandler handler) => (() {
+    final getXFiles = handler.getXFiles();
+    final allDownloaded =
+        handler.downloadedFilesCached.length == handler.files.length;
+    return FilesContextOption(
+      title: getXFiles == null ? 'Cannot Share' : 'Share All',
+      icon: Icons.share_rounded,
+      subtitle: getXFiles == null
+          ? 'No downloaded files to share'
+          : allDownloaded
+          ? null
+          : 'Only downloaded files will be shared',
+      action: getXFiles != null
+          ? () {
+              SharePlus.instance.share(ShareParams(files: getXFiles()));
+            }
+          : null,
+    );
+  })();
 
   static FilesContextOption copyAllLinks(
     BuildContext context,
@@ -1277,7 +1552,7 @@ class FilesContextOption {
     FilesContextActionHandler handler,
     List<RemoteFile> removableFiles,
   ) => FilesContextOption(
-    title: 'Remover from Device',
+    title: 'Remove from Device',
     subtitle: 'Only uploaded files',
     icon: Icons.phonelink_off_rounded,
     action: handler.deleteUploaded(removableFiles, true) == null
@@ -1296,20 +1571,20 @@ class FilesContextOption {
                     Container(
                       height: 200,
                       padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final file in removableFiles)
-                                Text(Main.pathFromKey(file.key) ?? file.key),
-                              if (removableFiles.isEmpty)
-                                const Text('No files to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
+                      child: removableFiles.isEmpty
+                          ? const Text('No files to delete')
+                          : ListView.builder(
+                              itemCount: removableFiles.length,
+                              itemBuilder: (context, index) {
+                                final file = removableFiles[index];
+                                return SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Text(
+                                    Main.pathFromKey(file.key) ?? file.key,
+                                  ),
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),
@@ -1360,20 +1635,20 @@ class FilesContextOption {
                     Container(
                       height: 200,
                       padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final file in downloadedFiles)
-                                Text(Main.pathFromKey(file.key) ?? file.key),
-                              if (downloadedFiles.isEmpty)
-                                const Text('No files to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
+                      child: downloadedFiles.isEmpty
+                          ? const Text('No files to delete')
+                          : ListView.builder(
+                              itemCount: downloadedFiles.length,
+                              itemBuilder: (context, index) {
+                                final file = downloadedFiles[index];
+                                return SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Text(
+                                    Main.pathFromKey(file.key) ?? file.key,
+                                  ),
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),
@@ -1426,20 +1701,20 @@ class FilesContextOption {
                     Container(
                       height: 200,
                       padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final file in handler.files)
-                                Text(Main.pathFromKey(file.key) ?? file.key),
-                              if (handler.files.isEmpty)
-                                const Text('No files to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
+                      child: handler.files.isEmpty
+                          ? const Text('No files to delete')
+                          : ListView.builder(
+                              itemCount: handler.files.length,
+                              itemBuilder: (context, index) {
+                                final file = handler.files[index];
+                                return SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Text(
+                                    Main.pathFromKey(file.key) ?? file.key,
+                                  ),
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),
@@ -1478,7 +1753,7 @@ class FilesContextOption {
     action: handler.deleteCache(true) == null
         ? null
         : () async {
-            final cacheFiles = handler.cachedFiles();
+            final cacheFiles = handler.cachedFilesCached;
             final yes = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
@@ -1492,20 +1767,20 @@ class FilesContextOption {
                     Container(
                       height: 200,
                       padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final file in cacheFiles)
-                                Text(Main.pathFromKey(file.key) ?? file.key),
-                              if (cacheFiles.isEmpty)
-                                const Text('No cached files to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
+                      child: cacheFiles.isEmpty
+                          ? const Text('No cached files to delete')
+                          : ListView.builder(
+                              itemCount: cacheFiles.length,
+                              itemBuilder: (context, index) {
+                                final file = cacheFiles[index];
+                                return SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Text(
+                                    Main.pathFromKey(file.key) ?? file.key,
+                                  ),
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),
@@ -1542,10 +1817,10 @@ class FilesContextOption {
       [shareAll(handler), copyAllLinks(context, handler)],
       [cut(cutKey), copy(copyKey)],
       [
-        if (handler.removableFiles().isNotEmpty)
-          deleteUploaded(context, handler, handler.removableFiles()),
-        if (handler.downloadedFiles().isNotEmpty)
-          deleteLocalAll(context, handler, handler.downloadedFiles()),
+        if (handler.removableFilesCached.isNotEmpty)
+          deleteUploaded(context, handler, handler.removableFilesCached),
+        if (handler.downloadedFilesCached.isNotEmpty)
+          deleteLocalAll(context, handler, handler.downloadedFilesCached),
         deleteAll(context, handler, clearSelection),
         deleteCache(context, handler),
       ],
@@ -1569,61 +1844,54 @@ class DirectoryContextOption {
   });
 
   static DirectoryContextOption open(DirectoryContextActionHandler handler) =>
-      DirectoryContextOption(
-        title: handler.open() == null ? 'Cannot Open' : 'Open',
-        subtitle: handler.open() == null
-            ? 'Directory does not exist locally'
-            : Main.pathFromKey(handler.file.key),
-        icon: handler.open() == null
-            ? Icons.open_in_new_off
-            : Icons.open_in_new,
-        action: handler.open(),
-      );
+      (() {
+        final openAction = handler.open();
+        return DirectoryContextOption(
+          title: openAction == null ? 'Cannot Open' : 'Open',
+          subtitle: openAction == null
+              ? 'Directory does not exist locally'
+              : Main.pathFromKey(handler.file.key),
+          icon: openAction == null ? Icons.open_in_new_off : Icons.open_in_new,
+          action: openAction,
+        );
+      })();
 
   static DirectoryContextOption download(
     DirectoryContextActionHandler handler,
-  ) => DirectoryContextOption(
-    title: handler.download() != null
-        ? 'Download'
-        : handler.downloadedFiles().length == handler.files.length
-        ? 'Downloaded'
-        : handler
-                  .downloadedFiles()
-                  .map((f) => f.key)
-                  .toSet()
-                  .union(handler.activeFiles().map((f) => f.key).toSet())
-                  .length ==
-              handler.files.length
-        ? 'Active Jobs'
-        : 'Cannot Download',
-    subtitle: handler.download() != null
-        ? "Only missing files with backup folder set will be downloaded"
-        : handler.downloadedFiles().length == handler.files.length
-        ? null
-        : handler
-                  .downloadedFiles()
-                  .map((f) => f.key)
-                  .toSet()
-                  .union(handler.activeFiles().map((f) => f.key).toSet())
-                  .length ==
-              handler.files.length
-        ? null
-        : 'Set backup folder to enable downloads',
-    icon: handler.download() != null
-        ? Icons.file_download_rounded
-        : handler.downloadedFiles().length == handler.files.length
-        ? Icons.file_download_done_rounded
-        : handler
-                  .downloadedFiles()
-                  .map((f) => f.key)
-                  .toSet()
-                  .union(handler.activeFiles().map((f) => f.key).toSet())
-                  .length ==
-              handler.files.length
-        ? Icons.file_download_rounded
-        : Icons.file_download_off_rounded,
-    action: handler.download(),
-  );
+  ) => (() {
+    final downloadAction = handler.download();
+    final downloadedCount = handler.downloadedFilesCached.length;
+    final totalCount = handler.files.length;
+    final handledCount = handler.downloadedFilesCached
+        .map((f) => f.key)
+        .toSet()
+        .union(handler.activeFilesCached.map((f) => f.key).toSet())
+        .length;
+    final allDownloaded = downloadedCount == totalCount;
+    final allHandled = handledCount == totalCount;
+    return DirectoryContextOption(
+      title: downloadAction != null
+          ? 'Download'
+          : allDownloaded
+          ? 'Downloaded'
+          : allHandled
+          ? 'Active Jobs'
+          : 'Cannot Download',
+      subtitle: downloadAction != null
+          ? "Only missing files with backup folder set will be downloaded"
+          : allDownloaded || allHandled
+          ? null
+          : 'Set backup folder to enable downloads',
+      icon: downloadAction != null
+          ? Icons.file_download_rounded
+          : allDownloaded
+          ? Icons.file_download_done_rounded
+          : allHandled
+          ? Icons.file_download_rounded
+          : Icons.file_download_off_rounded,
+      action: downloadAction,
+    );
+  })();
 
   static DirectoryContextOption saveTo(
     DirectoryContextActionHandler handler,
@@ -1747,7 +2015,7 @@ class DirectoryContextOption {
                     child: const Text('Cancel'),
                   ),
                   TextButton(
-                    onPressed: handler.removableFiles().isNotEmpty
+                    onPressed: handler.removableFilesCached.isNotEmpty
                         ? () => Navigator.of(context).pop(true)
                         : null,
                     child: const Text('Delete'),
@@ -1760,7 +2028,7 @@ class DirectoryContextOption {
                 SnackBar(
                   content: Text(
                     await handler.deleteUploaded(
-                      handler.removableFiles(),
+                      handler.removableFilesCached,
                       true,
                     )!(),
                   ),
@@ -1896,9 +2164,9 @@ class DirectoryContextOption {
         if (handler.rename('any name') != null) rename(context, handler),
       ],
       [
-        if (handler.removableFiles().isNotEmpty)
-          deleteUploaded(context, handler, handler.removableFiles()),
-        if (handler.localExists()) deleteLocal(context, handler),
+        if (handler.removableFilesCached.isNotEmpty)
+          deleteUploaded(context, handler, handler.removableFilesCached),
+        if (handler.localExistsCached) deleteLocal(context, handler),
         delete(context, handler),
         deleteCache(context, handler),
       ],
@@ -1923,48 +2191,42 @@ class DirectoriesContextOption {
 
   static DirectoriesContextOption downloadAll(
     DirectoriesContextActionHandler handler,
-  ) => DirectoriesContextOption(
-    title: handler.download() != null
-        ? 'Download'
-        : handler.downloadedFiles().length == handler.files.length
-        ? 'Downloaded'
-        : handler
-                  .downloadedFiles()
-                  .map((f) => f.key)
-                  .toSet()
-                  .union(handler.activeFiles().map((f) => f.key).toSet())
-                  .length ==
-              handler.files.length
-        ? 'Active Jobs'
-        : 'Cannot Download',
-    subtitle: handler.download() != null
-        ? "Only missing files with backup folder set will be downloaded"
-        : handler.downloadedFiles().length == handler.files.length
-        ? AutofillHints.telephoneNumberLocalSuffix
-        : handler
-                  .downloadedFiles()
-                  .map((f) => f.key)
-                  .toSet()
-                  .union(handler.activeFiles().map((f) => f.key).toSet())
-                  .length ==
-              handler.files.length
-        ? AutofillHints.telephoneNumberLocal
-        : 'Set backup folder to enable downloads',
-    icon: handler.download() != null
-        ? Icons.file_download_rounded
-        : handler.downloadedFiles().length == handler.files.length
-        ? Icons.file_download_done_rounded
-        : handler
-                  .downloadedFiles()
-                  .map((f) => f.key)
-                  .toSet()
-                  .union(handler.activeFiles().map((f) => f.key).toSet())
-                  .length ==
-              handler.files.length
-        ? Icons.file_download_rounded
-        : Icons.file_download_off_rounded,
-    action: handler.download,
-  );
+  ) => (() {
+    final downloadAction = handler.download();
+    final downloadedCount = handler.downloadedFilesCached.length;
+    final totalCount = handler.files.length;
+    final handledCount = handler.downloadedFilesCached
+        .map((f) => f.key)
+        .toSet()
+        .union(handler.activeFilesCached.map((f) => f.key).toSet())
+        .length;
+    final allDownloaded = downloadedCount == totalCount;
+    final allHandled = handledCount == totalCount;
+    return DirectoriesContextOption(
+      title: downloadAction != null
+          ? 'Download'
+          : allDownloaded
+          ? 'Downloaded'
+          : allHandled
+          ? 'Active Jobs'
+          : 'Cannot Download',
+      subtitle: downloadAction != null
+          ? "Only missing files with backup folder set will be downloaded"
+          : allDownloaded
+          ? null
+          : allHandled
+          ? null
+          : 'Set backup folder to enable downloads',
+      icon: downloadAction != null
+          ? Icons.file_download_rounded
+          : allDownloaded
+          ? Icons.file_download_done_rounded
+          : allHandled
+          ? Icons.file_download_rounded
+          : Icons.file_download_off_rounded,
+      action: downloadAction,
+    );
+  })();
 
   static DirectoriesContextOption saveAllTo(
     DirectoriesContextActionHandler handler,
@@ -2025,7 +2287,8 @@ class DirectoriesContextOption {
     subtitle: 'Only uploaded files',
     icon: Icons.phonelink_off_rounded,
     action: handler.deleteUploaded(removableFiles, true) == null
-        ? () async {
+        ? null
+        : () async {
             bool? yes = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
@@ -2062,7 +2325,7 @@ class DirectoriesContextOption {
                     child: const Text('Cancel'),
                   ),
                   TextButton(
-                    onPressed: handler.removableFiles().isNotEmpty
+                    onPressed: handler.removableFilesCached.isNotEmpty
                         ? () => Navigator.of(context).pop(true)
                         : null,
                     child: const Text('Delete'),
@@ -2075,15 +2338,14 @@ class DirectoriesContextOption {
                 SnackBar(
                   content: Text(
                     await handler.deleteUploaded(
-                      handler.removableFiles(),
+                      handler.removableFilesCached,
                       true,
                     )!(),
                   ),
                 ),
               );
             }
-          }
-        : null,
+          },
   );
 
   static DirectoriesContextOption deleteLocal(
@@ -2236,7 +2498,7 @@ class DirectoriesContextOption {
     action: handler.deleteCache(true) == null
         ? null
         : () async {
-            final cachedDirectories = handler.cachedDirectories();
+            final cachedDirectories = handler.cachedDirectoriesCached;
             final yes = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
@@ -2300,10 +2562,10 @@ class DirectoriesContextOption {
       [downloadAll(handler), saveAllTo(handler, context)],
       [cut(cutKey), copy(copyKey)],
       [
-        if (handler.removableFiles().isNotEmpty)
-          deleteUploaded(handler, context, handler.removableFiles()),
-        if (handler.localDirectories().isNotEmpty)
-          deleteLocal(handler, context, handler.localDirectories()),
+        if (handler.removableFilesCached.isNotEmpty)
+          deleteUploaded(handler, context, handler.removableFilesCached),
+        if (handler.localDirectoriesCached.isNotEmpty)
+          deleteLocal(handler, context, handler.localDirectoriesCached),
         deleteAll(handler, context, clearSelection),
         deleteCache(handler, context),
       ],
@@ -2329,85 +2591,52 @@ class BulkContextOption {
   static BulkContextOption downloadAll(
     DirectoriesContextActionHandler directoriesHandler,
     FilesContextActionHandler filesHandler,
-  ) => BulkContextOption(
-    title:
-        directoriesHandler.download() != null || filesHandler.download() != null
-        ? 'Download'
-        : directoriesHandler.downloadedFiles().length ==
-                  directoriesHandler.files.length &&
-              filesHandler.downloadedFiles().length == filesHandler.files.length
-        ? 'Downloaded'
-        : directoriesHandler
-                  .downloadedFiles()
-                  .map((f) => f.key)
-                  .toSet()
-                  .union(
-                    directoriesHandler.activeFiles().map((f) => f.key).toSet(),
-                  )
-                  .union(
-                    filesHandler.downloadedFiles().map((f) => f.key).toSet(),
-                  )
-                  .union(filesHandler.activeFiles().map((f) => f.key).toSet())
-                  .length ==
-              directoriesHandler.files.length + filesHandler.files.length
-        ? 'Active Jobs'
-        : 'Cannot Download',
-    subtitle:
-        directoriesHandler.download() != null || filesHandler.download() != null
-        ? 'Only missing files with backup folder set will be downloaded'
-        : directoriesHandler.downloadedFiles().length ==
-                  directoriesHandler.files.length &&
-              filesHandler.downloadedFiles().length == filesHandler.files.length
-        ? null
-        : directoriesHandler
-                  .downloadedFiles()
-                  .map((f) => f.key)
-                  .toSet()
-                  .union(
-                    directoriesHandler.activeFiles().map((f) => f.key).toSet(),
-                  )
-                  .union(
-                    filesHandler.downloadedFiles().map((f) => f.key).toSet(),
-                  )
-                  .union(filesHandler.activeFiles().map((f) => f.key).toSet())
-                  .length ==
-              directoriesHandler.files.length + filesHandler.files.length
-        ? null
-        : 'Set backup folder to enable downloads',
-    icon:
-        directoriesHandler.download() != null || filesHandler.download() != null
-        ? Icons.file_download_rounded
-        : directoriesHandler.downloadedFiles().length ==
-                  directoriesHandler.files.length &&
-              filesHandler.downloadedFiles().length == filesHandler.files.length
-        ? Icons.file_download_done_rounded
-        : directoriesHandler
-                  .downloadedFiles()
-                  .map((f) => f.key)
-                  .toSet()
-                  .union(
-                    directoriesHandler.activeFiles().map((f) => f.key).toSet(),
-                  )
-                  .union(
-                    filesHandler.downloadedFiles().map((f) => f.key).toSet(),
-                  )
-                  .union(filesHandler.activeFiles().map((f) => f.key).toSet())
-                  .length ==
-              directoriesHandler.files.length + filesHandler.files.length
-        ? Icons.file_download_rounded
-        : Icons.file_download_off_rounded,
-    action:
-        directoriesHandler.download() != null || filesHandler.download() != null
-        ? (BuildContext context) {
-            if (directoriesHandler.download() != null) {
-              directoriesHandler.download()!();
-            }
-            if (filesHandler.download() != null) {
-              filesHandler.download()!();
-            }
-          }
-        : null,
-  );
+  ) => (() {
+    final directoryDownload = directoriesHandler.download();
+    final fileDownload = filesHandler.download();
+    final hasDownloadAction = directoryDownload != null || fileDownload != null;
+    final allDownloaded =
+        directoriesHandler.downloadedFilesCached.length ==
+            directoriesHandler.files.length &&
+        filesHandler.downloadedFilesCached.length == filesHandler.files.length;
+    final allItemsHandled =
+        <String>{
+          ...directoriesHandler.downloadedFilesCached.map((f) => f.key),
+          ...directoriesHandler.activeFilesCached.map((f) => f.key),
+          ...filesHandler.downloadedFilesCached.map((f) => f.key),
+          ...filesHandler.activeFilesCached.map((f) => f.key),
+        }.length ==
+        directoriesHandler.files.length + filesHandler.files.length;
+    return BulkContextOption(
+      title: hasDownloadAction
+          ? 'Download'
+          : allDownloaded
+          ? 'Downloaded'
+          : allItemsHandled
+          ? 'Active Jobs'
+          : 'Cannot Download',
+      subtitle: hasDownloadAction
+          ? 'Only missing files with backup folder set will be downloaded'
+          : allDownloaded
+          ? null
+          : allItemsHandled
+          ? null
+          : 'Set backup folder to enable downloads',
+      icon: hasDownloadAction
+          ? Icons.file_download_rounded
+          : allDownloaded
+          ? Icons.file_download_done_rounded
+          : allItemsHandled
+          ? Icons.file_download_rounded
+          : Icons.file_download_off_rounded,
+      action: directoryDownload == null && fileDownload == null
+          ? null
+          : (BuildContext context) {
+              directoryDownload?.call();
+              fileDownload?.call();
+            },
+    );
+  })();
 
   static BulkContextOption saveAllTo(
     DirectoriesContextActionHandler directoriesHandler,
@@ -2421,24 +2650,7 @@ class BulkContextOption {
       bool saved = false;
       for (final handler in [directoriesHandler, filesHandler]) {
         late String Function()? handle;
-        if (handler is FileContextActionHandler) {
-          handle = handler.saveAs(
-            directory == null
-                ? null
-                : p.join(directory, p.basename(handler.file.key)),
-          );
-        } else {
-          handle = handler.saveAs(
-            directory == null
-                ? null
-                : p.join(
-                    directory,
-                    p.basename(
-                      (handler as DirectoryContextActionHandler).file.key,
-                    ),
-                  ),
-          );
-        }
+        handle = handler.saveAs(directory);
         if (handle != null) {
           handle();
           saved = true;
@@ -2483,6 +2695,10 @@ class BulkContextOption {
     subtitle: 'Only uploaded files',
     icon: Icons.phonelink_off_rounded,
     action: (BuildContext context) async {
+      final removableFiles = [
+        ...directoriesHandler.removableFilesCached,
+        ...filesHandler.removableFilesCached,
+      ];
       final yes = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -2491,29 +2707,23 @@ class BulkContextOption {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Are you sure you want to delete the local copies of ${directoriesHandler.removableFiles().length + filesHandler.removableFiles().length} files? Only uploaded files will be deleted from the device and can be downloaded again later.',
+                'Are you sure you want to delete the local copies of ${removableFiles.length} files? Only uploaded files will be deleted from the device and can be downloaded again later.',
               ),
               Container(
                 height: 200,
-                padding: EdgeInsets.only(top: 16),
-                child: SingleChildScrollView(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (final file in [
-                          ...directoriesHandler.removableFiles(),
-                          ...filesHandler.removableFiles(),
-                        ])
-                          Text(Main.pathFromKey(file.key) ?? file.key),
-                        if (directoriesHandler.removableFiles().isEmpty &&
-                            filesHandler.removableFiles().isEmpty)
-                          const Text('No files to delete'),
-                      ],
-                    ),
-                  ),
-                ),
+                padding: const EdgeInsets.only(top: 16),
+                child: removableFiles.isEmpty
+                    ? const Text('No files to delete')
+                    : ListView.builder(
+                        itemCount: removableFiles.length,
+                        itemBuilder: (context, index) {
+                          final file = removableFiles[index];
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Text(Main.pathFromKey(file.key) ?? file.key),
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -2531,11 +2741,11 @@ class BulkContextOption {
       );
       if (yes ?? false) {
         await directoriesHandler
-            .deleteUploaded(directoriesHandler.removableFiles(), true)!
-            .call();
+            .deleteUploaded(directoriesHandler.removableFilesCached, true)
+            ?.call();
         await filesHandler
-            .deleteUploaded(filesHandler.removableFiles(), true)!
-            .call();
+            .deleteUploaded(filesHandler.removableFilesCached, true)
+            ?.call();
         showSnackBar(
           const SnackBar(
             content: Text('Local copies of uploaded items deleted'),
@@ -2554,6 +2764,8 @@ class BulkContextOption {
     subtitle: 'Delete from device',
     icon: Icons.folder_delete_rounded,
     action: (BuildContext context) async {
+      final localDirectories = directoriesHandler.localDirectoriesCached;
+      final downloadedFiles = filesHandler.downloadedFilesCached;
       final yes = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -2562,31 +2774,27 @@ class BulkContextOption {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Are you sure you want to delete the local copies of ${directoriesHandler.localDirectories().length + filesHandler.downloadedFiles().length} selected items? This action cannot be undone.',
+                'Are you sure you want to delete the local copies of ${localDirectories.length + downloadedFiles.length} selected items? This action cannot be undone.',
               ),
               Container(
                 height: 200,
-                padding: EdgeInsets.only(top: 16),
-                child: SingleChildScrollView(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (final directory
-                            in directoriesHandler.localDirectories())
-                          Text(
-                            Main.pathFromKey(directory.key) ?? directory.key,
-                          ),
-                        for (final file in filesHandler.downloadedFiles())
-                          Text(Main.pathFromKey(file.key) ?? file.key),
-                        if (directoriesHandler.localDirectories().isEmpty &&
-                            filesHandler.downloadedFiles().isEmpty)
-                          const Text('No items to delete'),
-                      ],
-                    ),
-                  ),
-                ),
+                padding: const EdgeInsets.only(top: 16),
+                child: localDirectories.isEmpty && downloadedFiles.isEmpty
+                    ? const Text('No items to delete')
+                    : ListView.builder(
+                        itemCount:
+                            localDirectories.length + downloadedFiles.length,
+                        itemBuilder: (context, index) {
+                          final file = index < localDirectories.length
+                              ? localDirectories[index]
+                              : downloadedFiles[index -
+                                    localDirectories.length];
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Text(Main.pathFromKey(file.key) ?? file.key),
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -2604,10 +2812,10 @@ class BulkContextOption {
       );
       if (yes ?? false) {
         await directoriesHandler
-            .deleteLocal(true, directoriesHandler.localDirectories())!
+            .deleteLocal(true, directoriesHandler.localDirectoriesCached)!
             .call();
         await filesHandler
-            .deleteLocal(true, filesHandler.downloadedFiles())!
+            .deleteLocal(true, filesHandler.downloadedFilesCached)!
             .call();
         showSnackBar(
           const SnackBar(
@@ -2628,6 +2836,8 @@ class BulkContextOption {
     subtitle: 'Delete from device as well as S3',
     icon: Icons.delete_forever_rounded,
     action: (BuildContext context) async {
+      final directories = directoriesHandler.directories;
+      final files = filesHandler.files;
       final yes =
           await showDialog<bool>(
             context: context,
@@ -2637,32 +2847,27 @@ class BulkContextOption {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Are you sure you want to permanently delete ${directoriesHandler.directories.length + filesHandler.files.length} selected items from your device and S3? This action cannot be undone.',
+                    'Are you sure you want to permanently delete ${directories.length + files.length} selected items from your device and S3? This action cannot be undone.',
                   ),
                   Container(
                     height: 200,
-                    padding: EdgeInsets.only(top: 16),
-                    child: SingleChildScrollView(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            for (final directory
-                                in directoriesHandler.directories)
-                              Text(
-                                Main.pathFromKey(directory.key) ??
-                                    directory.key,
-                              ),
-                            for (final file in filesHandler.files)
-                              Text(Main.pathFromKey(file.key) ?? file.key),
-                            if (directoriesHandler.directories.isEmpty &&
-                                filesHandler.files.isEmpty)
-                              const Text('No items to delete'),
-                          ],
-                        ),
-                      ),
-                    ),
+                    padding: const EdgeInsets.only(top: 16),
+                    child: directories.isEmpty && files.isEmpty
+                        ? const Text('No items to delete')
+                        : ListView.builder(
+                            itemCount: directories.length + files.length,
+                            itemBuilder: (context, index) {
+                              final file = index < directories.length
+                                  ? directories[index]
+                                  : files[index - directories.length];
+                              return SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(
+                                  Main.pathFromKey(file.key) ?? file.key,
+                                ),
+                              );
+                            },
+                          ),
                   ),
                 ],
               ),
@@ -2707,8 +2912,9 @@ class BulkContextOption {
             directoriesHandler.deleteCache(true) == null
         ? null
         : (BuildContext context) async {
-            final cacheFiles = filesHandler.cachedFiles();
-            final cachedDirectories = directoriesHandler.cachedDirectories();
+            final cacheFiles = filesHandler.cachedFilesCached;
+            final cachedDirectories =
+                directoriesHandler.cachedDirectoriesCached;
             final yes = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
@@ -2721,23 +2927,23 @@ class BulkContextOption {
                     ),
                     Container(
                       height: 200,
-                      padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final directory in cachedDirectories)
-                                Text(directory.key),
-                              for (final file in cacheFiles) Text(file.key),
-                              if (cachedDirectories.isEmpty &&
-                                  cacheFiles.isEmpty)
-                                const Text('Nothing to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
+                      padding: const EdgeInsets.only(top: 16),
+                      child: cachedDirectories.isEmpty && cacheFiles.isEmpty
+                          ? const Text('Nothing to delete')
+                          : ListView.builder(
+                              itemCount:
+                                  cachedDirectories.length + cacheFiles.length,
+                              itemBuilder: (context, index) {
+                                final file = index < cachedDirectories.length
+                                    ? cachedDirectories[index]
+                                    : cacheFiles[index -
+                                          cachedDirectories.length];
+                                return SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Text(file.key),
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),
@@ -2776,11 +2982,11 @@ class BulkContextOption {
       ],
       [cut(cutKey), copy(copyKey)],
       [
-        if (directoriesHandler.removableFiles().isNotEmpty ||
-            filesHandler.removableFiles().isNotEmpty)
+        if (directoriesHandler.removableFilesCached.isNotEmpty ||
+            filesHandler.removableFilesCached.isNotEmpty)
           deleteUploaded(directoriesHandler, filesHandler, context),
-        if (directoriesHandler.localDirectories().isNotEmpty ||
-            filesHandler.downloadedFiles().isNotEmpty)
+        if (directoriesHandler.localDirectoriesCached.isNotEmpty ||
+            filesHandler.downloadedFilesCached.isNotEmpty)
           deleteLocalAll(directoriesHandler, filesHandler, context),
         deleteAll(directoriesHandler, filesHandler, context, clearSelection),
         deleteCache(directoriesHandler, filesHandler, context),
@@ -2880,7 +3086,11 @@ Widget buildFileContextMenu(
                       : null,
                   trailing: option.secondaryAction != null
                       ? IconButton(
-                          onPressed: option.secondaryAction,
+                          onPressed: () async {
+                            await option.secondaryAction!();
+                            handler.invalidateCache();
+                            onInvoked?.call();
+                          },
                           icon: Icon(option.secondaryIcon),
                         )
                       : null,
@@ -2889,6 +3099,7 @@ Widget buildFileContextMenu(
                       : () async {
                           if (option.popOnInvoked) globalNavigator?.pop();
                           await option.action!();
+                          handler.invalidateCache();
                           onInvoked?.call();
                         },
                   enabled: option.action != null,
@@ -2957,7 +3168,11 @@ Widget buildFilesContextMenu(
                             : null,
                         trailing: option.secondaryAction != null
                             ? IconButton(
-                                onPressed: option.secondaryAction,
+                                onPressed: () async {
+                                  await option.secondaryAction!();
+                                  handler.invalidateCache();
+                                  onInvoked?.call();
+                                },
                                 icon: Icon(option.secondaryIcon),
                               )
                             : null,
@@ -2965,6 +3180,7 @@ Widget buildFilesContextMenu(
                             ? () async {
                                 if (option.popOnInvoked) globalNavigator?.pop();
                                 await option.action!();
+                                handler.invalidateCache();
                                 onInvoked?.call();
                               }
                             : null,
@@ -3095,6 +3311,7 @@ Widget buildDirectoryContextMenu(
                       ? () async {
                           if (option.popOnInvoked) globalNavigator?.pop();
                           await option.action!();
+                          handler.invalidateCache();
                           onInvoked?.call();
                         }
                       : null,
@@ -3163,6 +3380,7 @@ Widget buildDirectoriesContextMenu(
                             ? () async {
                                 if (option.popOnInvoked) globalNavigator?.pop();
                                 await option.action!();
+                                handler.invalidateCache();
                                 onInvoked?.call();
                               }
                             : null,
@@ -3198,7 +3416,7 @@ Widget buildBulkContextMenu(
   if (!items.any((item) => p.isDir(item.key))) {
     return buildFilesContextMenu(
       context,
-      items.cast<RemoteFile>(),
+      items,
       getLink,
       downloadFile,
       saveFile,
@@ -3282,6 +3500,8 @@ Widget buildBulkContextMenu(
                                     globalNavigator?.pop();
                                   }
                                   await option.action!(context);
+                                  dirHandler.invalidateCache();
+                                  fileHandler.invalidateCache();
                                   onInvoked?.call();
                                 }
                               : null,

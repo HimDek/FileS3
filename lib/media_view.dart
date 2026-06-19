@@ -934,22 +934,22 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
 }
 
 class Gallery extends StatefulWidget {
-  final List<GalleryProps> files;
-  final int initialIndex;
+  final Map<String, GalleryProps> files;
+  final String initialKey;
   final Map<String, double> keysOffsetMap;
   final ScrollController scrollController;
   final Widget Function(BuildContext, RemoteFile) buildContextMenu;
   final Function() rebuildContext;
 
-  const Gallery({
+  Gallery({
     super.key,
     required this.files,
-    this.initialIndex = 0,
+    initialKey,
     required this.keysOffsetMap,
     required this.scrollController,
     required this.buildContextMenu,
     required this.rebuildContext,
-  });
+  }) : initialKey = initialKey ?? files.keys.first;
 
   @override
   GalleryState createState() => GalleryState();
@@ -961,10 +961,13 @@ class GalleryState extends State<Gallery> {
   static const double _defaultBottomSheetSize = 0.13;
   static const double _maxBottomSheetSize = 0.7;
 
+  final Map<String, int> indexMap = {};
+  final Map<int, String> keyMap = {};
+
   late PageController _pageController;
   final DraggableScrollableController _contextMenuSheetController =
       DraggableScrollableController();
-  final ValueNotifier<int> _currentIndex = ValueNotifier<int>(0);
+  final ValueNotifier<String> _currentKey = ValueNotifier<String>('');
   final ValueNotifier<bool> _allowPaging = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _allowDragging = ValueNotifier<bool>(true);
@@ -1008,11 +1011,19 @@ class GalleryState extends State<Gallery> {
 
   @override
   void initState() {
-    _currentIndex.value = widget.initialIndex;
+    _currentKey.value = widget.initialKey;
+
+    final entries = widget.files.keys.toList();
+    for (int i = 0; i < entries.length; i++) {
+      indexMap[entries[i]] = i;
+      keyMap[i] = entries[i];
+    }
+
     _pageController = PageController(
-      initialPage: _currentIndex.value,
+      initialPage: indexMap[_currentKey.value] ?? 0,
       viewportFraction: 1,
     );
+
     super.initState();
 
     _chromeVisible.addListener(() {
@@ -1034,23 +1045,23 @@ class GalleryState extends State<Gallery> {
     });
   }
 
-  void popWithCurrentIndex() {
+  void popWithCurrentKey() {
     _chromeVisible.value = false;
     widget.scrollController.jumpTo(
       max(
         0,
-        widget.keysOffsetMap[widget.files[_currentIndex.value].file.key]! -
+        widget.keysOffsetMap[_currentKey.value]! -
             MediaQuery.of(context).size.height / 3,
       ),
     );
-    Navigator.of(context).pop(_currentIndex.value);
+    Navigator.of(context).pop(_currentKey.value);
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     _contextMenuSheetController.dispose();
-    _currentIndex.dispose();
+    _currentKey.dispose();
     _allowPaging.dispose();
     _chromeVisible.dispose();
     _allowDragging.dispose();
@@ -1059,12 +1070,12 @@ class GalleryState extends State<Gallery> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope<int>(
+    return PopScope<String>(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
           if (_contextMenuSheetController.size <= _defaultBottomSheetSize) {
-            popWithCurrentIndex();
+            popWithCurrentKey();
           } else {
             _chromeVisible.value = true;
           }
@@ -1099,7 +1110,10 @@ class GalleryState extends State<Gallery> {
                       : const NeverScrollableScrollPhysics(),
                   itemCount: widget.files.length,
                   onPageChanged: (i) {
-                    setState(() => _currentIndex.value = i);
+                    setState(
+                      () => _currentKey.value =
+                          keyMap[i] ?? widget.files.keys.first,
+                    );
                   },
                   itemBuilder: (context, index) => PointerGestureRouter(
                     allowTap: () => _allowPaging.value,
@@ -1116,7 +1130,7 @@ class GalleryState extends State<Gallery> {
                     onVerticalDragEnd: (totalDy) {
                       if (totalDy > 100) {
                         dismissOffset = 0;
-                        popWithCurrentIndex();
+                        popWithCurrentKey();
                       } else if (totalDy < -100) {
                         dismissOffset = 0;
                         _expandBottomSheet();
@@ -1130,17 +1144,15 @@ class GalleryState extends State<Gallery> {
                       child: Transform.scale(
                         scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
                         child: InteractiveMediaView(
-                          heroTag: widget.files[index].file.key,
-                          remoteKey: widget.files[index].file.key,
-                          url: widget.files[index].url,
-                          path: widget.files[index].path,
-                          cachePath: Main.cachePathFromKey(
-                            widget.files[index].file.key,
-                          ),
+                          heroTag: keyMap[index],
+                          remoteKey: keyMap[index],
+                          url: widget.files[keyMap[index]]!.url,
+                          path: widget.files[keyMap[index]]!.path,
+                          cachePath: Main.cachePathFromKey(keyMap[index]!),
                           showControls: _chromeVisible.value,
                           setPaging: _setPaging,
                           setDragging: _setDragging,
-                          isActive: index == _currentIndex.value,
+                          isActive: index == (indexMap[keyMap[index]] ?? 0),
                           onCached: widget.rebuildContext,
                         ),
                       ),
@@ -1164,7 +1176,7 @@ class GalleryState extends State<Gallery> {
                     child: AppBar(
                       backgroundColor: Colors.black,
                       title: Text(
-                        "${(_currentIndex.value) + 1} / ${widget.files.length}",
+                        "${(indexMap[_currentKey.value] ?? 0) + 1} / ${widget.files.length}",
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1226,7 +1238,7 @@ class GalleryState extends State<Gallery> {
                       SliverToBoxAdapter(
                         child: widget.buildContextMenu(
                           context,
-                          widget.files[_currentIndex.value].file,
+                          widget.files[_currentKey.value]!.file,
                         ),
                       ),
                     ],

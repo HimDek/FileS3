@@ -115,15 +115,15 @@ class FileRow extends GroupRow {
 
 class ListFiles extends StatefulWidget {
   final ValueNotifier<List<FileProps>> files;
-  final List<GalleryProps> galleryFiles;
-  final Future<void> Function(List<GalleryProps>)? setGalleryFiles;
+  final Map<String, GalleryProps> galleryFiles;
+  final Future<void> Function(Map<String, GalleryProps>)? setGalleryFiles;
   final ValueNotifier<ListOptions> listOptions;
   final ValueNotifier<RemoteFile> relativeto;
   final ValueNotifier<Set<RemoteFile>> selection;
   final ValueNotifier<SelectionAction> selectionAction;
   final ValueNotifier<Map<String, double>> keysOffsetMap;
   final Map<String, double> groupOffsetMap;
-  final void Function(int)? showGallery;
+  final void Function(String)? showGallery;
   final Function(RemoteFile) changeDirectory;
   final void Function()? Function(RemoteFile) getSelectAction;
   final Function(RemoteFile)? showContextMenu;
@@ -133,7 +133,7 @@ class ListFiles extends StatefulWidget {
   const ListFiles({
     super.key,
     required this.files,
-    this.galleryFiles = const [],
+    this.galleryFiles = const {},
     this.setGalleryFiles,
     this.groupOffsetMap = const {},
     required this.listOptions,
@@ -291,274 +291,207 @@ class ListFilesState extends State<ListFiles> {
 
   Widget listItemBuilder(BuildContext context, FileProps item) {
     return item.job != null
-        ? JobView(job: item.job!, relativeTo: widget.relativeto.value)
-        : p.isDir(item.key)
-        ? ListTile(
-            dense: MediaQuery.of(context).size.width < 600 ? true : false,
-            visualDensity: MediaQuery.of(context).size.width < 600
-                ? VisualDensity.compact
-                : VisualDensity.standard,
-            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-            selected: widget.selection.value.any(
-              (selected) =>
-                  selected.key == item.key ||
-                  p.isWithin(selected.key, item.key),
-            ),
-            selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-            selectedColor: Theme.of(context).colorScheme.onSecondaryContainer,
-            leading: SizedBox(
-              height: 32,
-              width: 32,
-              child: Icon(
-                p.split(item.key).length > 1
-                    ? Icons.folder
-                    : Icons.cloud_circle_rounded,
-              ),
-            ),
-            title: Text(
-              p.isWithin(widget.relativeto.value.key, item.key)
-                  ? p.s3(
-                      p.asDir(
-                        p.relative(item.key, from: widget.relativeto.value.key),
-                      ),
-                    )
-                  : item.key,
-            ),
-            subtitle:
-                uiConfigNotifier.dirListInfo ||
-                    p.s3(p.dirname(item.file!.key)).isEmpty
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (uiConfigNotifier.dirListInfo)
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: InfoRow(file: item.file!),
-                        ),
-                      if (p.s3(p.dirname(item.file!.key)).isEmpty)
-                        Row(
-                          children: [
-                            Text(
-                              '${Main.backupModeFromKey(item.file!.key).name}:',
-                            ),
-                            SizedBox(width: 4),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Text(
-                                Main.pathFromKey(item.file!.key) ?? 'Not set',
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  )
-                : null,
-            onTap: () => widget.changeDirectory(item.file!),
-            onLongPress: widget.getSelectAction(item.file!),
-            trailing: widget.selection.value.isNotEmpty
-                ? widget.selectionAction.value == SelectionAction.none
-                      ? GestureDetector(
-                          onTap: widget.getSelectAction(item.file!),
-                          child: Icon(
-                            widget.selection.value.isEmpty ||
-                                    widget.selection.value.any((selected) {
-                                      return selected.key == item.key;
-                                    })
-                                ? Icons.check_circle
-                                : Icons.circle_outlined,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSecondaryContainer,
-                          ),
-                        )
-                      : widget.selection.value.any(
-                          (selected) => selected.key == item.key,
-                        )
-                      ? Icon(
-                          Icons.check_circle,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSecondaryContainer,
-                        )
-                      : widget.selection.value.any(
-                          (selected) => p.isWithin(selected.key, item.key),
-                        )
-                      ? Icon(
-                          Icons.check_circle_outline,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSecondaryContainer,
-                        )
-                      : null
-                : widget.showContextMenu != null
-                ? GestureDetector(
-                    onTap: () async {
-                      widget.showContextMenu!(item.file!);
-                    },
-                    child: Icon(Icons.more_vert),
-                  )
-                : null,
+        ? ListenableBuilder(
+            listenable: widget.relativeto,
+            builder: (context, child) =>
+                JobView(job: item.job!, relativeTo: widget.relativeto.value),
           )
-        : ListTile(
-            dense: MediaQuery.of(context).size.width < 600 ? true : false,
-            visualDensity: MediaQuery.of(context).size.width < 600
-                ? VisualDensity.compact
-                : VisualDensity.standard,
-            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-            selected: widget.selection.value.any(
-              (selected) =>
-                  selected.key == item.key ||
-                  p.isWithin(selected.key, item.key),
-            ),
-            selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-            selectedColor: Theme.of(context).colorScheme.onSecondaryContainer,
-            leading: Hero(
-              tag: item.key,
-              child: SizedBox(height: 32, width: 32, child: preview(item)),
-            ),
-            title: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Text(
-                p.isWithin(widget.relativeto.value.key, item.key)
-                    ? p.s3(
-                        p.relative(item.key, from: widget.relativeto.value.key),
-                      )
-                    : item.file!.key,
-              ),
-            ),
-            subtitle: uiConfigNotifier.fileListInfo
-                ? SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: InfoRow(file: item.file!),
-                  )
-                : null,
-            trailing: widget.selection.value.isNotEmpty
-                ? widget.selection.value.any(
-                        (selected) => selected.key == item.key,
-                      )
-                      ? Icon(Icons.check_circle)
-                      : widget.selection.value.any(
-                          (selected) => p.isWithin(selected.key, item.key),
-                        )
-                      ? Icon(Icons.check_circle_outline)
-                      : widget.selectionAction.value == SelectionAction.none
-                      ? Icon(Icons.circle_outlined)
-                      : null
-                : widget.showContextMenu != null
-                ? GestureDetector(
-                    onTap: () async {
-                      widget.showContextMenu!(item.file!);
-                    },
-                    child: Icon(Icons.more_vert),
-                  )
-                : null,
-            onTap: widget.selection.value.isNotEmpty
-                ? widget.getSelectAction(item.file!)
-                : widget.showGallery != null
-                ? () => widget.showGallery!(
-                    widget.galleryFiles.indexWhere(
-                      (g) => g.file.key == item.key,
-                    ),
-                  )
-                : null,
-            onLongPress: widget.getSelectAction(item.file!),
-          );
-  }
+        : p.isDir(item.key)
+        ? ListenableBuilder(
+            listenable: Listenable.merge([
+              widget.selection,
+              widget.selectionAction,
+              widget.relativeto,
+              uiConfigNotifier,
+            ]),
+            builder: (context, child) {
+              bool selectedExplicitly = false;
+              bool selectedInherently = false;
+              bool selectedPartially = false;
+              for (final file in widget.selection.value.map((e) => e.key)) {
+                if (file == item.key) {
+                  selectedExplicitly = true;
+                }
+                if (p.isWithin(file, item.key)) {
+                  selectedInherently = true;
+                }
+                if (!p.isDir(item.key) &&
+                    p.isWithin(item.key, file) &&
+                    file != item.key) {
+                  selectedPartially = true;
+                }
+                if (selectedExplicitly &&
+                    selectedInherently &&
+                    selectedPartially) {
+                  break;
+                }
+              }
 
-  Widget gridItemBuilder(BuildContext context, FileProps item) {
-    return item.job != null
-        ? JobView(
-            job: item.job!,
-            relativeTo: widget.relativeto.value,
-            grid: true,
-          )
-        : p.isDir(item.key)
-        ? MyGridTile(
-            selected: widget.selection.value.any(
-              (selected) =>
-                  selected.key == item.key ||
-                  p.isWithin(selected.key, item.key),
-            ),
-            footer: Column(
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Text(
-                    p.isWithin(widget.relativeto.value.key, item.key)
-                        ? p.s3(
-                            p.asDir(
-                              p.relative(
-                                item.key,
-                                from: widget.relativeto.value.key,
-                              ),
-                            ),
-                          )
-                        : item.key,
+              final selected =
+                  selectedExplicitly || selectedInherently || selectedPartially;
+
+              return ListTile(
+                dense: MediaQuery.of(context).size.width < 600 ? true : false,
+                visualDensity: MediaQuery.of(context).size.width < 600
+                    ? VisualDensity.compact
+                    : VisualDensity.standard,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 0,
+                ),
+                selected: selected,
+                selectedTileColor: Theme.of(
+                  context,
+                ).colorScheme.secondaryContainer,
+                selectedColor: Theme.of(
+                  context,
+                ).colorScheme.onSecondaryContainer,
+                leading: SizedBox(
+                  height: 32,
+                  width: 32,
+                  child: Icon(
+                    p.split(item.key).length > 1
+                        ? Icons.folder
+                        : Icons.cloud_circle_rounded,
                   ),
                 ),
-              ],
-            ),
-            onTap: () => widget.changeDirectory(item.file!),
-            onLongPress: widget.getSelectAction(item.file!),
-            topLeftBadge: uiConfigNotifier.showDownloadStatus.value
-                ? DownloadStatusIcon(file: item.file!)
-                : null,
-            topRightBadge: widget.selection.value.isNotEmpty
-                ? widget.selectionAction.value == SelectionAction.none
-                      ? IconButton(
-                          icon: Icon(
-                            widget.selection.value.isEmpty ||
-                                    widget.selection.value.any((selected) {
-                                      return selected.key == item.key;
-                                    })
-                                ? Icons.check_circle
-                                : Icons.circle_outlined,
-                            color: Theme.of(context).colorScheme.primary,
+                title: Text(
+                  p.isWithin(widget.relativeto.value.key, item.key)
+                      ? p.s3(
+                          p.asDir(
+                            p.relative(
+                              item.key,
+                              from: widget.relativeto.value.key,
+                            ),
                           ),
-                          onPressed: widget.getSelectAction(item.file!),
                         )
-                      : widget.selection.value.any(
-                          (selected) => selected.key == item.key,
-                        )
-                      ? IconButton(
-                          icon: Icon(Icons.check_circle),
-                          onPressed: null,
-                          color: Theme.of(context).colorScheme.primary,
-                          disabledColor: Theme.of(context).colorScheme.primary,
-                        )
-                      : widget.selection.value.any(
-                          (selected) => p.isWithin(selected.key, item.key),
-                        )
-                      ? IconButton(
-                          icon: Icon(Icons.check_circle_outline),
-                          onPressed: null,
-                          color: Theme.of(context).colorScheme.primary,
-                          disabledColor: Theme.of(context).colorScheme.primary,
-                        )
-                      : null
-                : widget.showContextMenu != null
-                ? IconButton(
-                    onPressed: () async {
-                      widget.showContextMenu!(item.file!);
-                    },
-                    icon: Icon(Icons.more_vert),
-                  )
-                : null,
-            child: Icon(
-              p.split(item.key).length > 1
-                  ? Icons.folder
-                  : Icons.cloud_circle_rounded,
-            ),
+                      : item.key,
+                ),
+                subtitle:
+                    uiConfigNotifier.dirListInfo ||
+                        p.s3(p.dirname(item.file!.key)).isEmpty
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (uiConfigNotifier.dirListInfo)
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: InfoRow(file: item.file!),
+                            ),
+                          if (p.s3(p.dirname(item.file!.key)).isEmpty)
+                            Row(
+                              children: [
+                                Text(
+                                  '${Main.backupModeFromKey(item.file!.key).name}:',
+                                ),
+                                SizedBox(width: 4),
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Text(
+                                    Main.pathFromKey(item.file!.key) ??
+                                        'Not set',
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      )
+                    : null,
+                onTap: () => widget.changeDirectory(item.file!),
+                onLongPress: widget.getSelectAction(item.file!),
+                trailing: widget.selection.value.isNotEmpty
+                    ? widget.selectionAction.value == SelectionAction.none
+                          ? GestureDetector(
+                              onTap: widget.getSelectAction(item.file!),
+                              child: Icon(
+                                selectedExplicitly
+                                    ? Icons.check_circle
+                                    : Icons.circle_outlined,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSecondaryContainer,
+                              ),
+                            )
+                          : selectedExplicitly
+                          ? Icon(
+                              Icons.check_circle,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSecondaryContainer,
+                            )
+                          : selectedInherently
+                          ? Icon(
+                              Icons.check_circle_outline,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSecondaryContainer,
+                            )
+                          : null
+                    : widget.showContextMenu != null
+                    ? GestureDetector(
+                        onTap: () async {
+                          widget.showContextMenu!(item.file!);
+                        },
+                        child: Icon(Icons.more_vert),
+                      )
+                    : null,
+              );
+            },
           )
-        : MyGridTile(
-            selected: widget.selection.value.any(
-              (selected) =>
-                  selected.key == item.key ||
-                  p.isWithin(selected.key, item.key),
-            ),
-            footer: Column(
-              children: [
-                SingleChildScrollView(
+        : ListenableBuilder(
+            listenable: Listenable.merge([
+              widget.selection,
+              widget.selectionAction,
+              widget.relativeto,
+              uiConfigNotifier,
+            ]),
+            builder: (context, child) {
+              bool selectedExplicitly = false;
+              bool selectedInherently = false;
+              bool selectedPartially = false;
+              for (final file in widget.selection.value.map((e) => e.key)) {
+                if (file == item.key) {
+                  selectedExplicitly = true;
+                }
+                if (p.isWithin(file, item.key)) {
+                  selectedInherently = true;
+                }
+                if (!p.isDir(item.key) &&
+                    p.isWithin(item.key, file) &&
+                    file != item.key) {
+                  selectedPartially = true;
+                }
+                if (selectedExplicitly &&
+                    selectedInherently &&
+                    selectedPartially) {
+                  break;
+                }
+              }
+
+              final selected =
+                  selectedExplicitly || selectedInherently || selectedPartially;
+
+              return ListTile(
+                dense: MediaQuery.of(context).size.width < 600 ? true : false,
+                visualDensity: MediaQuery.of(context).size.width < 600
+                    ? VisualDensity.compact
+                    : VisualDensity.standard,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 0,
+                ),
+                selected: selected,
+                selectedTileColor: Theme.of(
+                  context,
+                ).colorScheme.secondaryContainer,
+                selectedColor: Theme.of(
+                  context,
+                ).colorScheme.onSecondaryContainer,
+                leading: Hero(
+                  tag: item.key,
+                  child: SizedBox(height: 32, width: 32, child: preview(item)),
+                ),
+                title: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(
                     p.isWithin(widget.relativeto.value.key, item.key)
@@ -571,63 +504,259 @@ class ListFilesState extends State<ListFiles> {
                         : item.file!.key,
                   ),
                 ),
-              ],
+                subtitle: uiConfigNotifier.fileListInfo
+                    ? SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: InfoRow(file: item.file!),
+                      )
+                    : null,
+                trailing: widget.selection.value.isNotEmpty
+                    ? selectedExplicitly
+                          ? Icon(Icons.check_circle)
+                          : selectedInherently
+                          ? Icon(Icons.check_circle_outline)
+                          : widget.selectionAction.value == SelectionAction.none
+                          ? Icon(Icons.circle_outlined)
+                          : null
+                    : widget.showContextMenu != null
+                    ? GestureDetector(
+                        onTap: () async {
+                          widget.showContextMenu!(item.file!);
+                        },
+                        child: Icon(Icons.more_vert),
+                      )
+                    : null,
+                onTap: widget.selection.value.isNotEmpty
+                    ? widget.getSelectAction(item.file!)
+                    : widget.showGallery != null
+                    ? () => widget.showGallery!(item.key)
+                    : null,
+                onLongPress: widget.getSelectAction(item.file!),
+              );
+            },
+          );
+  }
+
+  Widget gridItemBuilder(BuildContext context, FileProps item) {
+    return item.job != null
+        ? ListenableBuilder(
+            listenable: widget.relativeto,
+            builder: (context, child) => JobView(
+              job: item.job!,
+              relativeTo: widget.relativeto.value,
+              grid: true,
             ),
-            topLeftBadge: uiConfigNotifier.showDownloadStatus.value
-                ? Padding(
-                    padding: EdgeInsets.all(16),
-                    child: DownloadStatusIcon(file: item.file!),
-                  )
-                : null,
-            topRightBadge: widget.selection.value.isNotEmpty
-                ? widget.selectionAction.value == SelectionAction.none
-                      ? IconButton(
-                          icon: Icon(
-                            widget.selection.value.isEmpty ||
-                                    widget.selection.value.any((selected) {
-                                      return selected.key == item.key;
-                                    })
-                                ? Icons.check_circle
-                                : Icons.circle_outlined,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          onPressed: widget.getSelectAction(item.file!),
-                        )
-                      : widget.selection.value.any(
-                          (selected) => selected.key == item.key,
-                        )
-                      ? IconButton(
-                          icon: Icon(Icons.check_circle),
-                          onPressed: null,
-                          color: Theme.of(context).colorScheme.primary,
-                          disabledColor: Theme.of(context).colorScheme.primary,
-                        )
-                      : widget.selection.value.any(
-                          (selected) => p.isWithin(selected.key, item.key),
-                        )
-                      ? IconButton(
-                          icon: Icon(Icons.check_circle_outline),
-                          onPressed: null,
-                          color: Theme.of(context).colorScheme.primary,
-                          disabledColor: Theme.of(context).colorScheme.primary,
-                        )
-                      : null
-                : widget.showContextMenu != null
-                ? IconButton(
-                    onPressed: () async {
-                      widget.showContextMenu!(item.file!);
-                    },
-                    icon: Icon(Icons.more_vert),
-                  )
-                : null,
-            onTap: widget.showGallery != null
-                ? () => widget.showGallery!(
-                    widget.galleryFiles.indexWhere(
-                      (g) => g.file.key == item.key,
+          )
+        : p.isDir(item.key)
+        ? ListenableBuilder(
+            listenable: Listenable.merge([
+              widget.selection,
+              widget.selectionAction,
+              widget.relativeto,
+              uiConfigNotifier.showDownloadStatus,
+            ]),
+            builder: (context, child) {
+              bool selectedExplicitly = false;
+              bool selectedInherently = false;
+              bool selectedPartially = false;
+              for (final file in widget.selection.value.map((e) => e.key)) {
+                if (file == item.key) {
+                  selectedExplicitly = true;
+                }
+                if (p.isWithin(file, item.key)) {
+                  selectedInherently = true;
+                }
+                if (!p.isDir(item.key) &&
+                    p.isWithin(item.key, file) &&
+                    file != item.key) {
+                  selectedPartially = true;
+                }
+                if (selectedExplicitly &&
+                    selectedInherently &&
+                    selectedPartially) {
+                  break;
+                }
+              }
+
+              final selected =
+                  selectedExplicitly || selectedInherently || selectedPartially;
+
+              return MyGridTile(
+                selected: selected,
+                footer: Column(
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Text(
+                        p.isWithin(widget.relativeto.value.key, item.key)
+                            ? p.s3(
+                                p.asDir(
+                                  p.relative(
+                                    item.key,
+                                    from: widget.relativeto.value.key,
+                                  ),
+                                ),
+                              )
+                            : item.key,
+                      ),
                     ),
-                  )
-                : null,
-            onLongPress: widget.getSelectAction(item.file!),
+                  ],
+                ),
+                onTap: () => widget.changeDirectory(item.file!),
+                onLongPress: widget.getSelectAction(item.file!),
+                topLeftBadge: uiConfigNotifier.showDownloadStatus.value
+                    ? DownloadStatusIcon(file: item.file!)
+                    : null,
+                topRightBadge: widget.selection.value.isNotEmpty
+                    ? widget.selectionAction.value == SelectionAction.none
+                          ? IconButton(
+                              icon: Icon(
+                                selectedExplicitly
+                                    ? Icons.check_circle
+                                    : Icons.circle_outlined,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              onPressed: widget.getSelectAction(item.file!),
+                            )
+                          : selectedExplicitly
+                          ? IconButton(
+                              icon: Icon(Icons.check_circle),
+                              onPressed: null,
+                              color: Theme.of(context).colorScheme.primary,
+                              disabledColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
+                            )
+                          : selectedInherently
+                          ? IconButton(
+                              icon: Icon(Icons.check_circle_outline),
+                              onPressed: null,
+                              color: Theme.of(context).colorScheme.primary,
+                              disabledColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
+                            )
+                          : null
+                    : widget.showContextMenu != null
+                    ? IconButton(
+                        onPressed: () async {
+                          widget.showContextMenu!(item.file!);
+                        },
+                        icon: Icon(Icons.more_vert),
+                      )
+                    : null,
+                child: child!,
+              );
+            },
+            child: Icon(
+              p.split(item.key).length > 1
+                  ? Icons.folder
+                  : Icons.cloud_circle_rounded,
+            ),
+          )
+        : ListenableBuilder(
+            listenable: Listenable.merge([
+              widget.selection,
+              widget.selectionAction,
+              widget.relativeto,
+              uiConfigNotifier.showDownloadStatus,
+            ]),
+            builder: (context, child) {
+              bool selectedExplicitly = false;
+              bool selectedInherently = false;
+              bool selectedPartially = false;
+              for (final file in widget.selection.value.map((e) => e.key)) {
+                if (file == item.key) {
+                  selectedExplicitly = true;
+                }
+                if (p.isWithin(file, item.key)) {
+                  selectedInherently = true;
+                }
+                if (!p.isDir(item.key) &&
+                    p.isWithin(item.key, file) &&
+                    file != item.key) {
+                  selectedPartially = true;
+                }
+                if (selectedExplicitly &&
+                    selectedInherently &&
+                    selectedPartially) {
+                  break;
+                }
+              }
+
+              final selected =
+                  selectedExplicitly || selectedInherently || selectedPartially;
+
+              return MyGridTile(
+                selected: selected,
+                footer: Column(
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Text(
+                        p.isWithin(widget.relativeto.value.key, item.key)
+                            ? p.s3(
+                                p.relative(
+                                  item.key,
+                                  from: widget.relativeto.value.key,
+                                ),
+                              )
+                            : item.file!.key,
+                      ),
+                    ),
+                  ],
+                ),
+                topLeftBadge: uiConfigNotifier.showDownloadStatus.value
+                    ? Padding(
+                        padding: EdgeInsets.all(16),
+                        child: DownloadStatusIcon(file: item.file!),
+                      )
+                    : null,
+                topRightBadge: widget.selection.value.isNotEmpty
+                    ? widget.selectionAction.value == SelectionAction.none
+                          ? IconButton(
+                              icon: Icon(
+                                selectedExplicitly
+                                    ? Icons.check_circle
+                                    : Icons.circle_outlined,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              onPressed: widget.getSelectAction(item.file!),
+                            )
+                          : selectedExplicitly
+                          ? IconButton(
+                              icon: Icon(Icons.check_circle),
+                              onPressed: null,
+                              color: Theme.of(context).colorScheme.primary,
+                              disabledColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
+                            )
+                          : selectedInherently
+                          ? IconButton(
+                              icon: Icon(Icons.check_circle_outline),
+                              onPressed: null,
+                              color: Theme.of(context).colorScheme.primary,
+                              disabledColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
+                            )
+                          : null
+                    : widget.showContextMenu != null
+                    ? IconButton(
+                        onPressed: () async {
+                          widget.showContextMenu!(item.file!);
+                        },
+                        icon: Icon(Icons.more_vert),
+                      )
+                    : null,
+                onTap: widget.showGallery != null
+                    ? () => widget.showGallery!(item.key)
+                    : null,
+                onLongPress: widget.getSelectAction(item.file!),
+                child: child!,
+              );
+            },
             child: Hero(tag: item.key, child: preview(item)),
           );
   }
@@ -675,30 +804,26 @@ class ListFilesState extends State<ListFiles> {
     super.initState();
 
     Listenable.merge([widget.files, widget.relativeto]).addListener(() {
-      widget.setGalleryFiles?.call(
-        widget.files.value
-            .where((f) {
-              return !p.isDir(f.key);
-            })
-            .map(
-              (f) => GalleryProps(
-                file:
-                    f.file ??
-                    RemoteFile(
-                      key: f.key,
-                      size: f.size,
-                      etag: f.job!.md5.toString(),
-                    ),
-                title: p.isWithin(widget.relativeto.value.key, f.key)
-                    ? p.s3(p.relative(f.key, from: widget.relativeto.value.key))
-                    : f.key,
-                url: f.url!,
-                path: Main.pathFromKey(f.key) ?? f.key,
-                cachePath: Main.cachePathFromKey(f.key),
-              ),
-            )
-            .toList(),
-      );
+      widget.setGalleryFiles?.call({
+        for (var f in widget.files.value.where((f) {
+          return !p.isDir(f.key);
+        }))
+          f.key: GalleryProps(
+            file:
+                f.file ??
+                RemoteFile(
+                  key: f.key,
+                  size: f.size,
+                  etag: f.job!.md5.toString(),
+                ),
+            title: p.isWithin(widget.relativeto.value.key, f.key)
+                ? p.s3(p.relative(f.key, from: widget.relativeto.value.key))
+                : f.key,
+            url: f.url!,
+            path: Main.pathFromKey(f.key) ?? f.key,
+            cachePath: Main.cachePathFromKey(f.key),
+          ),
+      });
     });
 
     Listenable.merge([
@@ -724,14 +849,7 @@ class ListFilesState extends State<ListFiles> {
   Widget build(BuildContext context) {
     return MyListenableBuilder(
       name: 'list_files',
-      listenable: Listenable.merge([
-        _groups,
-        widget.selection,
-        widget.selectionAction,
-        widget.relativeto,
-        widget.listOptions,
-        uiConfigNotifier,
-      ]),
+      listenable: Listenable.merge([_groups, widget.listOptions]),
       builder: (ccontext, _) {
         return MultiSliver(
           children: [
@@ -770,46 +888,49 @@ class ListFilesState extends State<ListFiles> {
                                 group.key.replaceAll('_folder', ''),
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              if (widget.selection.value.isNotEmpty)
-                                GestureDetector(
-                                  onTap: () {
-                                    if (group.value.any(
-                                      (f) => !widget.selection.value.contains(
-                                        f.file,
-                                      ),
-                                    )) {
-                                      for (final file in group.value) {
-                                        if (!widget.selection.value.contains(
-                                          file.file,
-                                        )) {
-                                          widget.selection.value = {
-                                            ...widget.selection.value,
-                                            file.file!,
-                                          };
-                                        }
-                                      }
-                                    } else {
-                                      widget.selection.value = {
-                                        ...widget.selection.value.where(
-                                          (f) => !group.value
-                                              .map((f) => f.file)
-                                              .contains(f),
+                              ListenableBuilder(
+                                listenable: widget.selection,
+                                builder: (context, _) =>
+                                    widget.selection.value.isNotEmpty
+                                    ? GestureDetector(
+                                        onTap: () {
+                                          if (group.value.any(
+                                            (f) => !widget.selection.value
+                                                .contains(f.file),
+                                          )) {
+                                            for (final file in group.value) {
+                                              if (!widget.selection.value
+                                                  .contains(file.file)) {
+                                                widget.selection.value = {
+                                                  ...widget.selection.value,
+                                                  file.file!,
+                                                };
+                                              }
+                                            }
+                                          } else {
+                                            widget.selection.value = {
+                                              ...widget.selection.value.where(
+                                                (f) => !group.value
+                                                    .map((f) => f.file)
+                                                    .contains(f),
+                                              ),
+                                            };
+                                          }
+                                        },
+                                        child: Icon(
+                                          group.value.any(
+                                                (f) => !widget.selection.value
+                                                    .contains(f.file),
+                                              )
+                                              ? Icons.circle_outlined
+                                              : Icons.check_circle,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSecondaryContainer,
                                         ),
-                                      };
-                                    }
-                                  },
-                                  child: Icon(
-                                    group.value.any(
-                                          (f) => !widget.selection.value
-                                              .contains(f.file),
-                                        )
-                                        ? Icons.circle_outlined
-                                        : Icons.check_circle,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSecondaryContainer,
-                                  ),
-                                ),
+                                      )
+                                    : SizedBox.shrink(),
+                              ),
                             ],
                           ),
                         ),

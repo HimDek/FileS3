@@ -258,12 +258,12 @@ class MyBrowserState extends BrowserState {
                     },
                   );
                   if (dir != null && dir.isNotEmpty) {
-                    if (Main.remoteFiles.any(
-                      (file) => [
-                        p.join(_driveDir.value.key, dir),
-                        p.asDir(p.join(_driveDir.value.key, dir)),
-                      ].contains(file.key),
-                    )) {
+                    if (Main.remoteFilesIndexByKey.containsKey(
+                          p.join(_driveDir.value.key, dir),
+                        ) ||
+                        Main.remoteFilesIndexByKey.containsKey(
+                          p.asDir(p.join(_driveDir.value.key, dir)),
+                        )) {
                       showSnackBar(
                         SnackBar(
                           content: Text(
@@ -453,10 +453,8 @@ class MyBrowserState extends BrowserState {
                   Navigator.of(context).pop();
                   _navIndex.value = 0;
                   _controlsVisible.value = true;
-                  _driveDir.value = Main.remoteFiles.firstWhere(
-                    (file) => file.key == pinned.value,
-                    orElse: () => RemoteFile(key: pinned.value, etag: ''),
-                  );
+                  _driveDir.value =
+                      Main.remoteFileFromKey(pinned.value) ?? BrowserState.root;
                 },
               ),
             ),
@@ -544,7 +542,7 @@ class BrowserState extends State<Browser> {
   static RemoteFile root = RemoteFile(key: '', etag: '');
 
   final List<RemoteFile> _allSelectableItems = <RemoteFile>[];
-  final List<GalleryProps> _galleryFiles = <GalleryProps>[];
+  final Map<String, GalleryProps> _galleryFiles = <String, GalleryProps>{};
   final Map<String, double> _groupOffsetMap = <String, double>{};
 
   final TextEditingController _searchController = TextEditingController();
@@ -591,7 +589,7 @@ class BrowserState extends State<Browser> {
     }
   }
 
-  Future<void> _setGalleryFiles(List<GalleryProps> files) async {
+  Future<void> _setGalleryFiles(Map<String, GalleryProps> files) async {
     _galleryFiles.clear();
     _galleryFiles.addAll(files);
   }
@@ -633,13 +631,13 @@ class BrowserState extends State<Browser> {
     }
   }
 
-  Future<int?> _pushGallery(int index) async {
-    int? result = await Navigator.of(context).push<int>(
-      PageRouteBuilder<int>(
+  Future<String?> _pushGallery(String key) async {
+    String? result = await Navigator.of(context).push<String>(
+      PageRouteBuilder<String>(
         opaque: false,
         pageBuilder: (context, animation, secondaryAnimation) => Gallery(
           files: _galleryFiles,
-          initialIndex: index,
+          initialKey: key,
           keysOffsetMap: _keysOffsetMap.value,
           scrollController: _scrollController,
           buildContextMenu: _buildContextMenu,
@@ -673,7 +671,7 @@ class BrowserState extends State<Browser> {
               break;
             }
           }
-          return Main.remoteFiles.firstWhere((file) => file.key == ndir);
+          return Main.remoteFileFromKey(ndir) ?? BrowserState.root;
         }();
       }
     }
@@ -1597,7 +1595,8 @@ class BrowserState extends State<Browser> {
                                   border: InputBorder.none,
                                   isDense: true,
                                   helperText: _searchResults.value.isNotEmpty
-                                      ? "${_searchResults.value.where((item) => item is RemoteFile && p.isDir(item.key)).isNotEmpty ? '${_searchResults.value.where((item) => item is RemoteFile && p.isDir(item.key)).length} Folders ' : ''}${_searchResults.value.where((item) => item is RemoteFile && !p.isDir(item.key)).isNotEmpty ? '${_searchResults.value.where((item) => item is RemoteFile && !p.isDir(item.key)).length} Files ' : ''}found"
+                                      ? "${_searchResults.value.any((item) => item is RemoteFile && p.isDir(item.key)) ? '${_searchResults.value.where((item) => item is RemoteFile && p.isDir(item.key)).length} Folders ' : ''}"
+                                            "${_searchResults.value.any((item) => item is RemoteFile && !p.isDir(item.key)) ? '${_searchResults.value.where((item) => item is RemoteFile && !p.isDir(item.key)).length} Files ' : ''}found"
                                       : "No results found",
                                 ),
                                 onChanged: (value) {
@@ -1626,7 +1625,8 @@ class BrowserState extends State<Browser> {
                                       ? 'Selected '
                                       : _selectionAction.value == SelectionAction.cut
                                       ? 'Moving '
-                                      : 'Copying '}${_selection.value.where((item) => p.isDir(item.key)).isNotEmpty ? '${_selection.value.where((item) => p.isDir(item.key)).length} Folders ' : ''}${_selection.value.where((item) => !p.isDir(item.key)).isNotEmpty ? '${_selection.value.where((item) => !p.isDir(item.key)).length} Files ' : ''}",
+                                      : 'Copying '}${_selection.value.where((item) => p.isDir(item.key)).isNotEmpty ? '${_selection.value.where((item) => p.isDir(item.key)).length} Folders ' : ''}"
+                                  "${_selection.value.where((item) => !p.isDir(item.key)).isNotEmpty ? '${_selection.value.where((item) => !p.isDir(item.key)).length} Files ' : ''}",
 
                                   style: Theme.of(context).textTheme.bodySmall,
                                 )
@@ -1991,17 +1991,12 @@ class BrowserState extends State<Browser> {
                                                                       }
                                                                     }
                                                                     _changeDirectory(
-                                                                      Main.remoteFiles.firstWhere(
-                                                                        (
-                                                                          file,
-                                                                        ) =>
-                                                                            p.s3(
-                                                                              file.key,
-                                                                            ) ==
+                                                                      Main.remoteFileFromKey(
                                                                             p.s3(
                                                                               newPath,
                                                                             ),
-                                                                      ),
+                                                                          ) ??
+                                                                          root,
                                                                     );
                                                                   },
                                                                   child: Text(
