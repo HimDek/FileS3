@@ -1460,7 +1460,8 @@ class BrowserState extends State<Browser> {
           }
           if (_driveDir.value.key.isNotEmpty) {
             final newKey = p.s3(p.dirname(_driveDir.value.key));
-            _changeDirectory(RemoteFile(key: newKey, etag: ''));
+            final file = Main.remoteFileFromKey(newKey);
+            _changeDirectory(file ?? RemoteFile(key: newKey, etag: ''));
             return;
           }
         },

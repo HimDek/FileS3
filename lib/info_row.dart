@@ -15,6 +15,7 @@ class InfoRow extends StatefulWidget {
   final double spacing;
   final double iconSize;
   final TextStyle? textStyle;
+  final bool refresh;
 
   const InfoRow({
     super.key,
@@ -29,6 +30,7 @@ class InfoRow extends StatefulWidget {
     this.spacing = 8.0,
     this.iconSize = 16.0,
     this.textStyle,
+    this.refresh = false,
   });
 
   @override
@@ -57,7 +59,7 @@ class _InfoRowState extends State<InfoRow> {
         if (uiConfig.showTime)
           FutureBuilder<DateTime?>(
             future: () async {
-              if (widget.file.lastModified != null) {
+              if (!widget.refresh && widget.file.lastModified != null) {
                 return widget.file.lastModified;
               }
               final lastModified = await widget.file.getLastModified();
@@ -80,7 +82,7 @@ class _InfoRowState extends State<InfoRow> {
         if (uiConfig.showSize)
           FutureBuilder<int>(
             future: () async {
-              if (widget.file.size != 0) {
+              if (!widget.refresh && widget.file.size != 0) {
                 return widget.file.size;
               }
               final size = await widget.file.getSize();
@@ -101,7 +103,11 @@ class _InfoRowState extends State<InfoRow> {
             },
           ),
         if (uiConfig.showDownloadStatus)
-          DownloadStatusIcon(file: widget.file, size: widget.iconSize),
+          DownloadStatusIcon(
+            file: widget.file,
+            size: widget.iconSize,
+            refresh: widget.refresh,
+          ),
         if (p.isDir(widget.file.key)) ...[
           if (uiConfig.showContent)
             FutureBuilder<(int, int)>(
@@ -141,18 +147,26 @@ class DownloadStatusIcon extends StatelessWidget {
   final RemoteFile file;
   final double size;
   final Color? activeColor;
+  final bool refresh;
 
   const DownloadStatusIcon({
     super.key,
     required this.file,
     this.size = 16,
     this.activeColor,
+    this.refresh = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<void>(
-      future: file.getDownloaded(),
+      future: () async {
+        if (!refresh && file.downloaded != null) {
+          return file.downloaded;
+        }
+        final downloaded = await file.getDownloaded();
+        return downloaded;
+      }(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             file.downloaded == null) {
