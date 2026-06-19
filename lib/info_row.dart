@@ -1,9 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:files3/models.dart';
-import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
-import 'package:files3/utils/job.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 
 class InfoRow extends StatefulWidget {
@@ -155,57 +152,20 @@ class DownloadStatusIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<void>(
-      future: () async {
-        if (p.isDir(file.key)) {
-          for (var file in Main.remoteFiles.where(
-            (f) => p.isWithin(file.key, f.key) && !p.isDir(f.key),
-          )) {
-            fileDownloadedCache[file.key] = await File(
-              Main.pathFromKey(file.key) ?? file.key,
-            ).exists();
-          }
-        } else {
-          fileDownloadedCache[file.key] = await File(
-            Main.pathFromKey(file.key) ?? file.key,
-          ).exists();
-        }
-      }(),
+      future: file.getDownloaded(),
       builder: (context, snapshot) {
-        if (p.isDir(file.key)) {
-          if (snapshot.connectionState == ConnectionState.waiting &&
-              fileDownloadedCache.keys.any(
-                (key) =>
-                    p.isWithin(file.key, key) &&
-                    !p.isDir(key) &&
-                    fileDownloadedCache[key] == null,
-              )) {
-            return Icon(Icons.hourglass_empty, size: size);
-          }
-          if (fileDownloadedCache.keys
-              .where((key) => p.isWithin(file.key, key) && !p.isDir(key))
-              .every((key) => fileDownloadedCache[key] == true)) {
-            return Icon(Icons.download_done, size: size);
-          } else {
-            return Icon(
-              Icons.cloud_download,
-              color: activeColor ?? Theme.of(context).colorScheme.primary,
-              size: size,
-            );
-          }
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            file.downloaded == null) {
+          return Icon(Icons.hourglass_empty, size: size);
+        }
+        if (file.downloaded == true) {
+          return Icon(Icons.download_done, size: size);
         } else {
-          if (snapshot.connectionState == ConnectionState.waiting &&
-              fileDownloadedCache[file.key] == null) {
-            return Icon(Icons.hourglass_empty, size: size);
-          }
-          if (fileDownloadedCache[file.key] == true) {
-            return Icon(Icons.download_done, size: size);
-          } else {
-            return Icon(
-              Icons.cloud_download,
-              color: activeColor ?? Theme.of(context).colorScheme.primary,
-              size: size,
-            );
-          }
+          return Icon(
+            Icons.cloud_download,
+            color: activeColor ?? Theme.of(context).colorScheme.primary,
+            size: size,
+          );
         }
       },
     );

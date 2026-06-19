@@ -2086,7 +2086,10 @@ class BrowserState extends State<Browser> {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: ListenableBuilder(
-                        listenable: _driveDir,
+                        listenable: Listenable.merge([
+                          _driveDir,
+                          Main.onRemoteFilesChanged,
+                        ]),
                         builder: (context, child) => InfoRow(
                           file: _driveDir.value,
                           uiConfig: UiConfig(

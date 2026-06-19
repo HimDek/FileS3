@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
@@ -143,6 +144,8 @@ class RemoteFile {
   final String etag;
   DateTime? _lastModified;
   (int, int) _count = (0, 1);
+  bool? downloaded;
+  bool? cached;
 
   RemoteFile({
     required this.key,
@@ -208,6 +211,54 @@ class RemoteFile {
     }
     _count = (dirCount, fileCount);
     return (dirCount, fileCount);
+  }
+
+  Future<bool> getDownloaded() async {
+    if (p.isDir(key)) {
+      bool downloaded = true;
+      for (var file in Main.remoteFiles.where(
+        (f) => p.isWithin(key, f.key) && !p.isDir(f.key),
+      )) {
+        file.downloaded = await File(
+          Main.pathFromKey(file.key) ?? file.key,
+        ).exists();
+        if (!file.downloaded!) {
+          downloaded = false;
+          break;
+        }
+      }
+      this.downloaded = downloaded;
+    } else {
+      downloaded = await File(Main.pathFromKey(key) ?? key).exists();
+    }
+    return downloaded!;
+  }
+
+  Future<bool> getCached() async {
+    if (p.isDir(key)) {
+      bool cached = true;
+      for (var file in Main.remoteFiles.where(
+        (f) => p.isWithin(key, f.key) && !p.isDir(f.key),
+      )) {
+        file.cached = await File(Main.cachePathFromKey(file.key)).exists();
+        if (!file.cached!) {
+          cached = false;
+          break;
+        }
+      }
+      this.cached = cached;
+    } else {
+      cached = await File(Main.cachePathFromKey(key)).exists();
+    }
+    return cached!;
+  }
+
+  Future<void> refresh() async {
+    await Future.wait([
+      getSize(),
+      getLastModified(),
+      getCount(recursive: true),
+    ]);
   }
 
   @override
