@@ -297,13 +297,33 @@ class ListFilesState extends State<ListFiles> {
                 JobView(job: item.job!, relativeTo: widget.relativeto.value),
           )
         : p.isDir(item.key)
-        ? ListenableBuilder(
+        ? MyListenableBuilder(
+            name: 'list_files_list_${item.key}',
             listenable: Listenable.merge([
               widget.selection,
               widget.selectionAction,
               widget.relativeto,
               uiConfigNotifier,
             ]),
+            valueToStore: () => widget.selection.value,
+            shouldRebuild: (oldSelection) {
+              // return false if the change in selection does not affect this item’s inclusion in the selection
+              final inOld = (oldSelection as Set<RemoteFile>).any(
+                (file) =>
+                    file.key == item.key ||
+                    p.isWithin(file.key, item.key) ||
+                    (p.isWithin(item.key, file.key) && file.key != item.key),
+              );
+              final inNew = widget.selection.value.any(
+                (file) =>
+                    file.key == item.key ||
+                    p.isWithin(file.key, item.key) ||
+                    (p.isWithin(item.key, file.key) && file.key != item.key),
+              );
+              return inOld != inNew ||
+                  (oldSelection.isEmpty && widget.selection.value.isNotEmpty) ||
+                  (oldSelection.isNotEmpty && widget.selection.value.isEmpty);
+            },
             builder: (context, child) {
               bool selectedExplicitly = false;
               bool selectedInherently = false;
@@ -438,13 +458,33 @@ class ListFilesState extends State<ListFiles> {
               );
             },
           )
-        : ListenableBuilder(
+        : MyListenableBuilder(
+            name: 'list_files_list_${item.key}',
             listenable: Listenable.merge([
               widget.selection,
               widget.selectionAction,
               widget.relativeto,
               uiConfigNotifier,
             ]),
+            valueToStore: () => widget.selection.value,
+            shouldRebuild: (oldSelection) {
+              // return false if the change in selection does not affect this item’s inclusion in the selection
+              final inOld = (oldSelection as Set<RemoteFile>).any(
+                (file) =>
+                    file.key == item.key ||
+                    p.isWithin(file.key, item.key) ||
+                    (p.isWithin(item.key, file.key) && file.key != item.key),
+              );
+              final inNew = widget.selection.value.any(
+                (file) =>
+                    file.key == item.key ||
+                    p.isWithin(file.key, item.key) ||
+                    (p.isWithin(item.key, file.key) && file.key != item.key),
+              );
+              return inOld != inNew ||
+                  (oldSelection.isEmpty && widget.selection.value.isNotEmpty) ||
+                  (oldSelection.isNotEmpty && widget.selection.value.isEmpty);
+            },
             builder: (context, child) {
               bool selectedExplicitly = false;
               bool selectedInherently = false;
@@ -487,10 +527,7 @@ class ListFilesState extends State<ListFiles> {
                 selectedColor: Theme.of(
                   context,
                 ).colorScheme.onSecondaryContainer,
-                leading: Hero(
-                  tag: item.key,
-                  child: SizedBox(height: 32, width: 32, child: preview(item)),
-                ),
+                leading: child!,
                 title: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(
@@ -534,6 +571,10 @@ class ListFilesState extends State<ListFiles> {
                 onLongPress: widget.getSelectAction(item.file!),
               );
             },
+            child: Hero(
+              tag: item.key,
+              child: SizedBox(height: 32, width: 32, child: preview(item)),
+            ),
           );
   }
 
@@ -548,13 +589,33 @@ class ListFilesState extends State<ListFiles> {
             ),
           )
         : p.isDir(item.key)
-        ? ListenableBuilder(
+        ? MyListenableBuilder(
+            name: 'list_files_grid_${item.key}',
             listenable: Listenable.merge([
               widget.selection,
               widget.selectionAction,
               widget.relativeto,
               uiConfigNotifier.showDownloadStatus,
             ]),
+            valueToStore: () => widget.selection.value,
+            shouldRebuild: (oldSelection) {
+              // return false if the change in selection does not affect this item’s inclusion in the selection
+              final inOld = (oldSelection as Set<RemoteFile>).any(
+                (file) =>
+                    file.key == item.key ||
+                    p.isWithin(file.key, item.key) ||
+                    (p.isWithin(item.key, file.key) && file.key != item.key),
+              );
+              final inNew = widget.selection.value.any(
+                (file) =>
+                    file.key == item.key ||
+                    p.isWithin(file.key, item.key) ||
+                    (p.isWithin(item.key, file.key) && file.key != item.key),
+              );
+              return inOld != inNew ||
+                  (oldSelection.isEmpty && widget.selection.value.isNotEmpty) ||
+                  (oldSelection.isNotEmpty && widget.selection.value.isEmpty);
+            },
             builder: (context, child) {
               bool selectedExplicitly = false;
               bool selectedInherently = false;
@@ -654,13 +715,33 @@ class ListFilesState extends State<ListFiles> {
                   : Icons.cloud_circle_rounded,
             ),
           )
-        : ListenableBuilder(
+        : MyListenableBuilder(
+            name: 'list_files_grid_${item.key}',
             listenable: Listenable.merge([
               widget.selection,
               widget.selectionAction,
               widget.relativeto,
               uiConfigNotifier.showDownloadStatus,
             ]),
+            valueToStore: () => widget.selection.value,
+            shouldRebuild: (oldSelection) {
+              // return false if the change in selection does not affect this item’s inclusion in the selection
+              final inOld = (oldSelection as Set<RemoteFile>).any(
+                (file) =>
+                    file.key == item.key ||
+                    p.isWithin(file.key, item.key) ||
+                    (p.isWithin(item.key, file.key) && file.key != item.key),
+              );
+              final inNew = widget.selection.value.any(
+                (file) =>
+                    file.key == item.key ||
+                    p.isWithin(file.key, item.key) ||
+                    (p.isWithin(item.key, file.key) && file.key != item.key),
+              );
+              return inOld != inNew ||
+                  (oldSelection.isEmpty && widget.selection.value.isNotEmpty) ||
+                  (oldSelection.isNotEmpty && widget.selection.value.isEmpty);
+            },
             builder: (context, child) {
               bool selectedExplicitly = false;
               bool selectedInherently = false;
@@ -888,8 +969,40 @@ class ListFilesState extends State<ListFiles> {
                                 group.key.replaceAll('_folder', ''),
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              ListenableBuilder(
+                              MyListenableBuilder(
+                                name: 'list_files_header_${group.key}',
                                 listenable: widget.selection,
+                                valueToStore: () => widget.selection.value,
+                                shouldRebuild: (oldSelection) {
+                                  // return false if the change in selection does not affect this item’s inclusion in the selection
+                                  final inOld =
+                                      (oldSelection as Set<RemoteFile>).where(
+                                        (file) => group.value
+                                            .map((f) => f.file)
+                                            .contains(file),
+                                      );
+                                  final inNew = widget.selection.value.where(
+                                    (file) => group.value
+                                        .map((f) => f.file)
+                                        .contains(file),
+                                  );
+
+                                  final oldNone = inOld.isEmpty;
+                                  final newNone = inNew.isEmpty;
+                                  final oldAll =
+                                      inOld.length == group.value.length;
+                                  final newAll =
+                                      inNew.length == group.value.length;
+
+                                  return (oldNone && !newNone) ||
+                                      (!oldNone && newNone) ||
+                                      (oldAll && !newAll) ||
+                                      (!oldAll && newAll) ||
+                                      (oldSelection.isEmpty &&
+                                          widget.selection.value.isNotEmpty) ||
+                                      (oldSelection.isNotEmpty &&
+                                          widget.selection.value.isEmpty);
+                                },
                                 builder: (context, _) =>
                                     widget.selection.value.isNotEmpty
                                     ? GestureDetector(

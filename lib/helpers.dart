@@ -1132,19 +1132,39 @@ class MyPersistentHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
-class MyListenableBuilder extends ListenableBuilder {
+class MyListenableBuilder<T> extends ListenableBuilder {
   final String? name;
+  final bool Function(T?)? shouldRebuild;
+  final ManualNotifier _manualNotifier = ManualNotifier();
+  final T? Function()? valueToStore;
+  final ValueNotifier<T?> _old = ValueNotifier(null);
 
-  const MyListenableBuilder({
+  MyListenableBuilder({
     super.key,
     this.name,
     required super.listenable,
     required super.builder,
     super.child,
+    this.shouldRebuild,
+    this.valueToStore,
   });
+
+  void checkAndNotify() {
+    if (shouldRebuild == null || shouldRebuild!(_old.value)) {
+      _manualNotifier.notifyListeners();
+    }
+  }
+
+  @override
+  Listenable get listenable {
+    super.listenable.removeListener(checkAndNotify);
+    super.listenable.addListener(checkAndNotify);
+    return _manualNotifier;
+  }
 
   @override
   Widget build(BuildContext context) {
+    _old.value = valueToStore?.call();
     if (kDebugMode && name != null) {
       debugPrint('Building MyListenableBuilder $name');
     }

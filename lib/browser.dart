@@ -1884,248 +1884,224 @@ class BrowserState extends State<Browser> {
                                 }
                                 return size;
                               }(),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (uiConfigNotifier
-                                          .showDirectorySummary
-                                          .value ||
-                                      _driveDir.value.key != '' ||
-                                      (Main.pathFromKey(_driveDir.value.key) !=
-                                              null &&
-                                          uiConfigNotifier
-                                              .showDirectoryBackupConfig
-                                              .value))
-                                    Padding(
-                                      padding: EdgeInsets.only(
-                                        left: 16,
-                                        right: 16,
-                                        top: 4,
-                                        bottom: 8,
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          if (uiConfigNotifier
-                                              .showDirectorySummary
-                                              .value)
-                                            SingleChildScrollView(
-                                              scrollDirection: Axis.horizontal,
-                                              child: InfoRow(
-                                                file: _driveDir.value,
-                                                uiConfig: UiConfig(
-                                                  showTime: true,
-                                                  showSize: true,
-                                                  showDownloadStatus: true,
-                                                  showContent: true,
-                                                ),
-                                                spacing: 6,
-                                                iconSize: 14,
-                                                textStyle: Theme.of(
-                                                  context,
-                                                ).textTheme.labelSmall,
-                                              ),
-                                            ),
-                                          if (_driveDir.value.key != '')
-                                            SingleChildScrollView(
-                                              scrollDirection: Axis.horizontal,
-                                              child: Row(
-                                                children:
-                                                    <Widget>[
-                                                          GestureDetector(
-                                                            onTap: () =>
-                                                                _changeDirectory(
-                                                                  BrowserState
-                                                                      .root,
-                                                                ),
-                                                            child: Text(
-                                                              'FileS3',
-                                                              style:
-                                                                  Theme.of(
-                                                                        context,
-                                                                      )
-                                                                      .textTheme
-                                                                      .bodyLarge,
-                                                            ),
-                                                          ),
-                                                        ]
-                                                        .followedBy(
-                                                          p
-                                                              .split(
-                                                                _driveDir
-                                                                    .value
-                                                                    .key,
-                                                              )
-                                                              .where(
-                                                                (dir) => dir
-                                                                    .isNotEmpty,
-                                                              )
-                                                              .map(
-                                                                (
-                                                                  dir,
-                                                                ) => GestureDetector(
-                                                                  onTap: () {
-                                                                    String
-                                                                    newPath =
-                                                                        '';
-                                                                    for (final part in p.split(
-                                                                      _driveDir
-                                                                          .value
-                                                                          .key,
-                                                                    )) {
-                                                                      if (part
-                                                                          .isEmpty) {
-                                                                        continue;
-                                                                      }
-                                                                      newPath +=
-                                                                          p.asDir(
-                                                                            part,
-                                                                          );
-                                                                      if (part ==
-                                                                          dir) {
-                                                                        break;
-                                                                      }
-                                                                    }
-                                                                    _changeDirectory(
-                                                                      Main.remoteFileFromKey(
-                                                                            p.s3(
-                                                                              newPath,
-                                                                            ),
-                                                                          ) ??
-                                                                          root,
-                                                                    );
-                                                                  },
-                                                                  child: Text(
-                                                                    dir,
-                                                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                                                      color:
-                                                                          p.asDir(
-                                                                                dir,
-                                                                              ) ==
-                                                                              p.basename(
-                                                                                _driveDir.value.key,
-                                                                              )
-                                                                          ? Theme.of(
-                                                                              context,
-                                                                            ).colorScheme.primary
-                                                                          : null,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              )
-                                                              .map(
-                                                                (widget) => Row(
-                                                                  children: [
-                                                                    const Icon(
-                                                                      Icons
-                                                                          .chevron_right,
-                                                                      size: 16,
-                                                                    ),
-                                                                    widget,
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                        )
-                                                        .toList(),
-                                              ),
-                                            ),
-                                          if (Main.pathFromKey(
-                                                    _driveDir.value.key,
-                                                  ) !=
-                                                  null &&
-                                              uiConfigNotifier
-                                                  .showDirectoryBackupConfig
-                                                  .value)
-                                            Row(
-                                              children: [
-                                                Text(
-                                                  '${Main.backupModeFromKey(_driveDir.value.key).name}: ',
-                                                  style: Theme.of(
-                                                    context,
-                                                  ).textTheme.labelSmall,
-                                                ),
-                                                SizedBox(width: 4),
-                                                Expanded(
-                                                  child: SingleChildScrollView(
-                                                    scrollDirection:
-                                                        Axis.horizontal,
-                                                    child: GestureDetector(
-                                                      child: Text(
-                                                        Main.pathFromKey(
-                                                              _driveDir
-                                                                  .value
-                                                                  .key,
-                                                            ) ??
-                                                            '',
-                                                        style: Theme.of(
-                                                          context,
-                                                        ).textTheme.labelSmall,
-                                                      ),
-                                                      onTap: () {
-                                                        launchUrl(
-                                                          Uri.file(
-                                                            Main.pathFromKey(
-                                                                  _driveDir
-                                                                      .value
-                                                                      .key,
-                                                                ) ??
-                                                                _driveDir
-                                                                    .value
-                                                                    .key,
-                                                          ),
-                                                        );
-                                                      },
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  if (!(_profile.value == null
-                                      ? true
-                                      : _profile.value?.accessible.value ??
-                                            false))
-                                    Container(
-                                      width: double.infinity,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.errorContainer,
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        'Remote access failed!',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelSmall
-                                            ?.copyWith(
-                                              color: Theme.of(
-                                                context,
-                                              ).colorScheme.onErrorContainer,
-                                            ),
-                                      ),
-                                    ),
-                                  if ((_profile.value == null
-                                          ? true
-                                          : _profile.value?.accessible.value ??
-                                                false) &&
-                                      loading.value)
-                                    LinearProgressIndicator(
-                                      value:
-                                          progress.value <= 0.0 ||
-                                              progress.value >= 1.0
-                                          ? null
-                                          : progress.value,
-                                    ),
-                                ],
-                              ),
+                              child: child!,
                             ),
                           )
                         : null,
+                  ),
+                  child: ListenableBuilder(
+                    listenable: Listenable.merge([
+                      _driveDir,
+                      _profile,
+                      _profile.value?.accessible,
+                      uiConfigNotifier.showDirectorySummary,
+                      uiConfigNotifier.showDirectoryBackupConfig,
+                      progress,
+                      loading,
+                    ]),
+                    builder: (context, _) => Column(
+                      mainAxisSize: MainAxisSize.max,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (uiConfigNotifier.showDirectorySummary.value ||
+                            _driveDir.value.key != '' ||
+                            (Main.pathFromKey(_driveDir.value.key) != null &&
+                                uiConfigNotifier
+                                    .showDirectoryBackupConfig
+                                    .value))
+                          Padding(
+                            padding: EdgeInsets.only(
+                              left: 16,
+                              right: 16,
+                              top: 4,
+                              bottom: 8,
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (uiConfigNotifier.showDirectorySummary.value)
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: InfoRow(
+                                      file: _driveDir.value,
+                                      uiConfig: UiConfig(
+                                        showTime: true,
+                                        showSize: true,
+                                        showDownloadStatus: true,
+                                        showContent: true,
+                                      ),
+                                      spacing: 6,
+                                      iconSize: 14,
+                                      textStyle: Theme.of(
+                                        context,
+                                      ).textTheme.labelSmall,
+                                    ),
+                                  ),
+                                if (_driveDir.value.key != '')
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Row(
+                                      children:
+                                          <Widget>[
+                                                GestureDetector(
+                                                  onTap: () => _changeDirectory(
+                                                    BrowserState.root,
+                                                  ),
+                                                  child: Text(
+                                                    'FileS3',
+                                                    style: Theme.of(
+                                                      context,
+                                                    ).textTheme.bodyLarge,
+                                                  ),
+                                                ),
+                                              ]
+                                              .followedBy(
+                                                p
+                                                    .split(_driveDir.value.key)
+                                                    .where(
+                                                      (dir) => dir.isNotEmpty,
+                                                    )
+                                                    .map(
+                                                      (dir) => GestureDetector(
+                                                        onTap: () {
+                                                          String newPath = '';
+                                                          for (final part
+                                                              in p.split(
+                                                                _driveDir
+                                                                    .value
+                                                                    .key,
+                                                              )) {
+                                                            if (part.isEmpty) {
+                                                              continue;
+                                                            }
+                                                            newPath += p.asDir(
+                                                              part,
+                                                            );
+                                                            if (part == dir) {
+                                                              break;
+                                                            }
+                                                          }
+                                                          _changeDirectory(
+                                                            Main.remoteFileFromKey(
+                                                                  p.s3(newPath),
+                                                                ) ??
+                                                                root,
+                                                          );
+                                                        },
+                                                        child: Text(
+                                                          dir,
+                                                          style: Theme.of(context)
+                                                              .textTheme
+                                                              .bodyLarge
+                                                              ?.copyWith(
+                                                                color:
+                                                                    p.asDir(
+                                                                          dir,
+                                                                        ) ==
+                                                                        p.basename(
+                                                                          _driveDir
+                                                                              .value
+                                                                              .key,
+                                                                        )
+                                                                    ? Theme.of(
+                                                                        context,
+                                                                      ).colorScheme.primary
+                                                                    : null,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    )
+                                                    .map(
+                                                      (widget) => Row(
+                                                        children: [
+                                                          const Icon(
+                                                            Icons.chevron_right,
+                                                            size: 16,
+                                                          ),
+                                                          widget,
+                                                        ],
+                                                      ),
+                                                    ),
+                                              )
+                                              .toList(),
+                                    ),
+                                  ),
+                                if (Main.pathFromKey(_driveDir.value.key) !=
+                                        null &&
+                                    uiConfigNotifier
+                                        .showDirectoryBackupConfig
+                                        .value)
+                                  Row(
+                                    children: [
+                                      Text(
+                                        '${Main.backupModeFromKey(_driveDir.value.key).name}: ',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.labelSmall,
+                                      ),
+                                      SizedBox(width: 4),
+                                      Expanded(
+                                        child: SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: GestureDetector(
+                                            child: Text(
+                                              Main.pathFromKey(
+                                                    _driveDir.value.key,
+                                                  ) ??
+                                                  '',
+                                              style: Theme.of(
+                                                context,
+                                              ).textTheme.labelSmall,
+                                            ),
+                                            onTap: () {
+                                              launchUrl(
+                                                Uri.file(
+                                                  Main.pathFromKey(
+                                                        _driveDir.value.key,
+                                                      ) ??
+                                                      _driveDir.value.key,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                          ),
+                        if (!(_profile.value == null
+                            ? true
+                            : _profile.value?.accessible.value ?? false))
+                          Container(
+                            width: double.infinity,
+                            color: Theme.of(context).colorScheme.errorContainer,
+                            alignment: Alignment.center,
+                            child: Text(
+                              'Remote access failed!',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onErrorContainer,
+                                  ),
+                            ),
+                          ),
+                        if ((_profile.value == null
+                                ? true
+                                : _profile.value?.accessible.value ?? false) &&
+                            loading.value)
+                          LinearProgressIndicator(
+                            value:
+                                progress.value <= 0.0 || progress.value >= 1.0
+                                ? null
+                                : progress.value,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
                 ListFiles(
