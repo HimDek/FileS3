@@ -213,6 +213,14 @@ abstract class Main {
 
   static void rebuildRemoteFiles() {
     _filteredRemoteFiles.clear();
+    _filteredRemoteFiles.addAll(
+      Map.fromEntries(
+        _remoteFiles.entries.where(
+          (entry) =>
+              !_ignoreKeyRegexps.any((regex) => regex.hasMatch(entry.key)),
+        ),
+      ),
+    );
   }
 
   static void remoteFilesSet(Map<String, RemoteFile> files) {

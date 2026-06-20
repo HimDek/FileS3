@@ -48,10 +48,7 @@ class Profile {
       accessible.value = true;
     } catch (e) {
       accessible.value = false;
-      if (p.equals(name, dir) &&
-          !Main.remoteFiles.keys.any(
-            (key) => p.isWithin(dir, key) || p.equals(key, dir),
-          )) {
+      if (p.equals(name, dir) && Main.remoteFiles["$name/"] == null) {
         Main.remoteFilesAdd(RemoteFile(key: "$name/", etag: ""));
       }
       if (kDebugMode) {
