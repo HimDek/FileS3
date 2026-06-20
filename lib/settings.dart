@@ -1020,9 +1020,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                 ),
               ),
             if (widget.profile != null &&
-                Main.remoteFiles.any(
-                  (file) => file.key == widget.profile!.deletionRegistrar.key,
-                ))
+                Main.remoteFiles[widget.profile!.deletionRegistrar.key] != null)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(

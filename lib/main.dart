@@ -315,7 +315,7 @@ class _HomeState extends State<Home> {
             : BackupMode.sync,
       );
     }
-    final files = Main.remoteFiles
+    final files = Main.remoteFiles.values
         .where(
           (file) =>
               p.isWithin(dir.key, file.key) &&
@@ -373,7 +373,7 @@ class _HomeState extends State<Home> {
 
   // uses _saveFile
   void _saveDirectory(RemoteFile dir, String savePath) {
-    final files = Main.remoteFiles
+    final files = Main.remoteFiles.values
         .where(
           (file) =>
               p.isWithin(dir.key, file.key) &&

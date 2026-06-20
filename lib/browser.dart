@@ -256,10 +256,10 @@ class MyBrowserState extends BrowserState {
                     },
                   );
                   if (dir != null && dir.isNotEmpty) {
-                    if (Main.remoteFilesIndexByKey.containsKey(
+                    if (Main.remoteFiles.containsKey(
                           p.join(_driveDir.value.key, dir),
                         ) ||
-                        Main.remoteFilesIndexByKey.containsKey(
+                        Main.remoteFiles.containsKey(
                           p.asDir(p.join(_driveDir.value.key, dir)),
                         )) {
                       showSnackBar(
@@ -451,7 +451,7 @@ class MyBrowserState extends BrowserState {
                   _navIndex.value = 0;
                   _controlsVisible.value = true;
                   _driveDir.value =
-                      Main.remoteFileFromKey(pinned.value) ?? BrowserState.root;
+                      Main.remoteFiles[pinned.value] ?? BrowserState.root;
                 },
               ),
             ),
@@ -538,7 +538,6 @@ class Browser extends StatefulWidget {
 class BrowserState extends State<Browser> {
   static RemoteFile root = RemoteFile(key: '', etag: '');
 
-  final List<RemoteFile> _allSelectableItems = <RemoteFile>[];
   final Map<String, GalleryProps> _galleryFiles = <String, GalleryProps>{};
   final Map<String, double> _groupOffsetMap = <String, double>{};
 
@@ -560,12 +559,15 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<SelectionAction> _selectionAction = ValueNotifier(
     SelectionAction.none,
   );
-  final ValueNotifier<Set<RemoteFile>> _selection = ValueNotifier({});
-  final ValueNotifier<List<Object>> _searchResults = ValueNotifier([]);
+  final ValueNotifier<Set<String>> _selection = ValueNotifier({});
+  final ValueNotifier<List> _searchResults = ValueNotifier<List>([]);
   final ValueNotifier<List> _currentItems = ValueNotifier<List>([]);
   final ValueNotifier<List<FileProps>> _currentProps = ValueNotifier([]);
   final ValueNotifier<Map<String, double>> _keysOffsetMap = ValueNotifier({});
   final ManualNotifier _rebuildContext = ManualNotifier();
+
+  Iterable<String> get _allSelectableItems =>
+      _currentItems.value.whereType<RemoteFile>().map((file) => file.key);
 
   late Listenable _currentItemsNotifiers;
 
@@ -592,33 +594,28 @@ class BrowserState extends State<Browser> {
   }
 
   void Function()? _getSelectAction(RemoteFile item) =>
-      _selection.value.any((selected) => p.isWithin(selected.key, item.key)) ||
+      _selection.value.any((selected) => p.isWithin(selected, item.key)) ||
           _selectionAction.value != SelectionAction.none
       ? null
       : () {
           if (p.isDir(item.key)) {
             if (_selection.value.any(
-              (selected) => p.isWithin(item.key, selected.key),
+              (selected) => p.isWithin(item.key, selected),
             )) {
               // Deselect all children
               _selection.value = _selection.value
-                  .where((selected) => !p.isWithin(item.key, selected.key))
+                  .where((selected) => !p.isWithin(item.key, selected))
                   .toSet();
             }
           }
-          if (_selection.value.any((selected) => selected.key == item.key)) {
+          if (_selection.value.any((selected) => selected == item.key)) {
             _selection.value = _selection.value
-                .where((selected) => selected.key != item.key)
+                .where((selected) => selected != item.key)
                 .toSet();
           } else {
-            _selection.value = {..._selection.value, item};
+            _selection.value = {..._selection.value, item.key};
           }
         };
-
-  void _updateAllSelectableItems(List<dynamic> items) {
-    _allSelectableItems.clear();
-    _allSelectableItems.addAll(items.whereType<RemoteFile>());
-  }
 
   String? _getLink(RemoteFile file, int? seconds) {
     try {
@@ -661,16 +658,16 @@ class BrowserState extends State<Browser> {
     _navIndex.value = 0;
     _controlsVisible.value = true;
     String ndir = dir.key;
-    for (RemoteFile item in _selection.value) {
-      if (p.isWithin(item.key, dir.key) || item.key == dir.key) {
+    for (String item in _selection.value) {
+      if (p.isWithin(item, dir.key) || item == dir.key) {
         dir = () {
-          while (p.isWithin(item.key, ndir) || item.key == ndir) {
+          while (p.isWithin(item, ndir) || item == ndir) {
             ndir = p.s3(p.dirname(ndir));
             if (ndir == '') {
               break;
             }
           }
-          return Main.remoteFileFromKey(ndir) ?? BrowserState.root;
+          return Main.remoteFiles[ndir] ?? BrowserState.root;
         }();
       }
     }
@@ -748,7 +745,7 @@ class BrowserState extends State<Browser> {
         ? _searchResults.value
         : _driveDir.value.key == '' && _navIndex.value == 0
         ? Set<RemoteFile>.from(
-            Main.remoteFiles
+            Main.remoteFiles.values
                 .where(
                   (file) =>
                       p.s3(p.dirname(file.key)).isEmpty && p.isDir(file.key),
@@ -757,7 +754,7 @@ class BrowserState extends State<Browser> {
           ).toList()
         : _driveDir.value.key != '' && _navIndex.value == 0
         ? [
-            ...Main.remoteFiles.where(
+            ...Main.remoteFiles.values.where(
               (file) =>
                   p.s3(p.dirname(file.key)) == p.s3(_driveDir.value.key) &&
                   !Job.activeJobs.any((job) => job.remoteKey == file.key),
@@ -782,7 +779,7 @@ class BrowserState extends State<Browser> {
     _searchResults.value = extractAllSorted(
       query: _searchController.text.trim().toLowerCase(),
       choices: [
-        ...Main.remoteFiles.where(
+        ...Main.remoteFiles.values.where(
           (file) =>
               p.isWithin(p.s3(_driveDir.value.key), p.s3(file.key)) &&
               !Job.activeJobs.any((job) => job.remoteKey == file.key),
@@ -848,14 +845,14 @@ class BrowserState extends State<Browser> {
 
   void _cut(RemoteFile? item) {
     if (item != null) {
-      _selection.value = {..._selection.value, item};
+      _selection.value = {..._selection.value, item.key};
     }
     _selectionAction.value = SelectionAction.cut;
   }
 
   void _copy(RemoteFile? item) {
     if (item != null) {
-      _selection.value = {..._selection.value, item};
+      _selection.value = {..._selection.value, item.key};
     }
     _selectionAction.value = SelectionAction.copy;
   }
@@ -892,8 +889,7 @@ class BrowserState extends State<Browser> {
             final selection = _selection.value.toList();
             if (_selectionAction.value == SelectionAction.copy) {
               final items = selection.where(
-                (item) =>
-                    p.s3(p.dirname(item.key)) != p.s3(_driveDir.value.key),
+                (item) => p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
               );
               int progressCount = 0;
               final totalItems = items.length;
@@ -901,50 +897,43 @@ class BrowserState extends State<Browser> {
               for (final item in items) {
                 progressCount += 1;
                 progress.value = progressCount / totalItems;
-                final newKey = p.join(
-                  _driveDir.value.key,
-                  p.basename(item.key),
-                );
-                if (item.key == newKey) {
+                final newKey = p.join(_driveDir.value.key, p.basename(item));
+                if (item == newKey) {
                   continue;
                 }
-                if (!p.isDir(item.key)) {
-                  await widget.copyFile?.call(item.key, newKey);
+                if (!p.isDir(item)) {
+                  await widget.copyFile?.call(item, newKey);
                 } else {
-                  await widget.copyDirectory?.call(item.key, newKey);
+                  await widget.copyDirectory?.call(item, newKey);
                 }
               }
             } else {
               final dirs = selection
                   .where(
                     (item) =>
-                        p.isDir(item.key) &&
-                        p.s3(p.dirname(item.key)) != p.s3(_driveDir.value.key),
+                        p.isDir(item) &&
+                        p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
                   )
                   .toList();
               final files = selection
                   .where(
                     (item) =>
-                        !p.isDir(item.key) &&
-                        p.s3(p.dirname(item.key)) != p.s3(_driveDir.value.key),
+                        !p.isDir(item) &&
+                        p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
                   )
                   .toList();
               final dirsDestinations = dirs
-                  .map(
-                    (item) => p.join(_driveDir.value.key, p.basename(item.key)),
-                  )
+                  .map((item) => p.join(_driveDir.value.key, p.basename(item)))
                   .toList();
               final filesDestinations = files
-                  .map(
-                    (item) => p.join(_driveDir.value.key, p.basename(item.key)),
-                  )
+                  .map((item) => p.join(_driveDir.value.key, p.basename(item)))
                   .toList();
               widget.moveDirectories?.call(
-                dirs.map((item) => item.key).toList(),
+                dirs.map((item) => item).toList(),
                 dirsDestinations,
               );
               widget.moveFiles?.call(
-                files.map((item) => item.key).toList(),
+                files.map((item) => item).toList(),
                 filesDestinations,
               );
               _selection.value = {};
@@ -1344,12 +1333,6 @@ class BrowserState extends State<Browser> {
       _searching,
     ]).addListener(_fetchListOptions);
 
-    _currentItems.addListener(
-      () => _updateAllSelectableItems(
-        _currentItems.value.whereType<RemoteFile>().toList(),
-      ),
-    );
-
     Listenable.merge([
       _currentItems,
       _listOptions,
@@ -1460,7 +1443,7 @@ class BrowserState extends State<Browser> {
           }
           if (_driveDir.value.key.isNotEmpty) {
             final newKey = p.s3(p.dirname(_driveDir.value.key));
-            final file = Main.remoteFileFromKey(newKey);
+            final file = Main.remoteFiles[newKey];
             _changeDirectory(file ?? RemoteFile(key: newKey, etag: ''));
             return;
           }
@@ -1623,8 +1606,8 @@ class BrowserState extends State<Browser> {
                                       ? 'Selected '
                                       : _selectionAction.value == SelectionAction.cut
                                       ? 'Moving '
-                                      : 'Copying '}${_selection.value.where((item) => p.isDir(item.key)).isNotEmpty ? '${_selection.value.where((item) => p.isDir(item.key)).length} Folders ' : ''}"
-                                  "${_selection.value.where((item) => !p.isDir(item.key)).isNotEmpty ? '${_selection.value.where((item) => !p.isDir(item.key)).length} Files ' : ''}",
+                                      : 'Copying '}${_selection.value.where((item) => p.isDir(item)).isNotEmpty ? '${_selection.value.where((item) => p.isDir(item)).length} Folders ' : ''}"
+                                  "${_selection.value.where((item) => !p.isDir(item)).isNotEmpty ? '${_selection.value.where((item) => !p.isDir(item)).length} Files ' : ''}",
 
                                   style: Theme.of(context).textTheme.bodySmall,
                                 )
@@ -1966,9 +1949,10 @@ class BrowserState extends State<Browser> {
                                                             }
                                                           }
                                                           _changeDirectory(
-                                                            Main.remoteFileFromKey(
-                                                                  p.s3(newPath),
-                                                                ) ??
+                                                            Main.remoteFiles[p
+                                                                    .s3(
+                                                                      newPath,
+                                                                    )] ??
                                                                 root,
                                                           );
                                                         },

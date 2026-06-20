@@ -964,19 +964,28 @@ abstract class ConfigManager {
     IniManager.save();
   }
 
-  static Future<void> saveRemoteFiles(List<RemoteFile> files) async {
+  static Future<void> saveRemoteFiles(Map<String, RemoteFile> files) async {
     final String jsonString = jsonEncode(
-      files.map((file) => file.toJson()).toList(),
+      files
+          as Map<
+            String,
+            ({String key, int size, String etag, DateTime? lastModified})
+          >,
     );
     await _storage.write(key: 'remote_files', value: jsonString);
   }
 
-  static Future<List<RemoteFile>> loadRemoteFiles() async {
+  static Future<Map<String, RemoteFile>> loadRemoteFiles() async {
     final jsonString = await _storage.read(key: 'remote_files') ?? '[]';
-    final List<dynamic> jsonList = jsonDecode(jsonString);
-    return jsonList
-        .map((json) => RemoteFile.fromJson(json as Map<String, dynamic>))
-        .toList();
+    try {
+      final Map<String, dynamic> jsonList = jsonDecode(jsonString);
+      return jsonList.map(
+        (key, json) =>
+            MapEntry(key, RemoteFile.fromJson(json as Map<String, dynamic>)),
+      );
+    } catch (e) {
+      return {};
+    }
   }
 }
 
@@ -1018,19 +1027,17 @@ class DeletionRegistrar {
   Future<Map<String, DateTime>> pullDeletions() async {
     await profile.refreshRemote(dir: _key);
 
-    if (Main.remoteFilesRaw.every((file) => file.key != _key)) {
+    if (Main.remoteFilesRaw[_key] == null) {
       if (kDebugMode) {
         debugPrint("Remote deletion register does not exist.");
       }
       return {};
     }
 
-    final remoteFile = Main.remoteFilesRaw.firstWhere(
-      (file) => file.key == _key,
-    );
+    final remoteFile = Main.remoteFilesRaw[_key];
 
     if (_lastPulled.toUtc().isAfter(
-          remoteFile.lastModified?.toUtc() ??
+          remoteFile?.lastModified?.toUtc() ??
               DateTime.fromMillisecondsSinceEpoch(0).toUtc(),
         ) &&
         _file.existsSync()) {
@@ -1046,9 +1053,9 @@ class DeletionRegistrar {
     Job job = DownloadJob(
       localFile: _file,
       remoteKey: _key,
-      bytes: remoteFile.size,
+      bytes: remoteFile?.size ?? 0,
       md5: () {
-        final hex = remoteFile.etag.replaceAll('"', '');
+        final hex = remoteFile?.etag.replaceAll('"', '') ?? '';
 
         if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
           throw StateError('ETag is not a single-part MD5 digest');

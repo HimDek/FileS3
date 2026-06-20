@@ -138,9 +138,18 @@ class BackupMode {
   }
 }
 
-class RemoteFile {
+abstract interface class RemoteFileFields {
+  String get key;
+  int get size;
+  String get etag;
+  DateTime? get lastModified;
+}
+
+class RemoteFile implements RemoteFileFields {
+  @override
   final String key;
   int _size;
+  @override
   final String etag;
   DateTime? _lastModified;
   (int, int) _count = (0, 1);
@@ -155,8 +164,12 @@ class RemoteFile {
   }) : _size = size,
        _lastModified = lastModified;
 
+  @override
   int get size => _size;
+
+  @override
   DateTime? get lastModified => _lastModified;
+
   (int, int) get count => _count;
 
   Future<int> getSize() async {
@@ -164,7 +177,7 @@ class RemoteFile {
       return _size;
     }
     int size = 0;
-    for (final file in Main.remoteFiles.where(
+    for (final file in Main.remoteFiles.values.where(
       (file) => p.isWithin(key, file.key) && !p.isDir(file.key),
     )) {
       size += file.size;
@@ -178,10 +191,10 @@ class RemoteFile {
       return _lastModified;
     }
     DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
-    for (final file in Main.remoteFiles.where(
+    for (final file in Main.remoteFiles.values.where(
       (file) => p.isWithin(key, file.key) && !p.isDir(file.key),
     )) {
-      if (file.lastModified!.isAfter(latest)) {
+      if (file.lastModified?.isAfter(latest) ?? false) {
         latest = file.lastModified!;
       }
     }
@@ -197,7 +210,7 @@ class RemoteFile {
     }
     int dirCount = 0;
     int fileCount = 0;
-    for (final file in Main.remoteFiles.where(
+    for (final file in Main.remoteFiles.values.where(
       (file) =>
           p.isWithin(key, file.key) &&
           file.key != key &&
@@ -216,7 +229,7 @@ class RemoteFile {
   Future<bool> getDownloaded() async {
     if (p.isDir(key)) {
       bool downloaded = true;
-      for (var file in Main.remoteFiles.where(
+      for (var file in Main.remoteFiles.values.where(
         (f) => p.isWithin(key, f.key) && !p.isDir(f.key),
       )) {
         file.downloaded = await File(
@@ -237,7 +250,7 @@ class RemoteFile {
   Future<bool> getCached() async {
     if (p.isDir(key)) {
       bool cached = true;
-      for (var file in Main.remoteFiles.where(
+      for (var file in Main.remoteFiles.values.where(
         (f) => p.isWithin(key, f.key) && !p.isDir(f.key),
       )) {
         file.cached = await File(Main.cachePathFromKey(file.key)).exists();

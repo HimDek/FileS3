@@ -41,7 +41,7 @@ class Profile {
     try {
       final fetchedRemoteFiles = await fileManager!.listObjects(dir);
       Main.remoteFilesRemoveWhereNoNotify(
-        (file) => p.isWithin(dir, file.key) || file.key == dir || dir.isEmpty,
+        (key, file) => p.isWithin(dir, key) || key == dir || dir.isEmpty,
       );
       Main.remoteFilesAddAll(fetchedRemoteFiles);
       await ConfigManager.saveRemoteFiles(Main.remoteFiles);
@@ -49,8 +49,8 @@ class Profile {
     } catch (e) {
       accessible.value = false;
       if (p.equals(name, dir) &&
-          !Main.remoteFiles.any(
-            (file) => p.isWithin(dir, file.key) || p.equals(file.key, dir),
+          !Main.remoteFiles.keys.any(
+            (key) => p.isWithin(dir, key) || p.equals(key, dir),
           )) {
         Main.remoteFilesAdd(RemoteFile(key: "$name/", etag: ""));
       }

@@ -136,7 +136,7 @@ class ListFiles extends StatefulWidget {
   final Future<void> Function(Map<String, GalleryProps>)? setGalleryFiles;
   final ValueNotifier<ListOptions> listOptions;
   final ValueNotifier<RemoteFile> relativeto;
-  final ValueNotifier<Set<RemoteFile>> selection;
+  final ValueNotifier<Set<String>> selection;
   final ValueNotifier<SelectionAction> selectionAction;
   final ValueNotifier<Map<String, double>> keysOffsetMap;
   final Map<String, double> groupOffsetMap;
@@ -327,17 +327,16 @@ class ListFilesState extends State<ListFiles> {
               final inOld =
                   oldSelection?.any(
                     (file) =>
-                        file.key == item.key ||
-                        p.isWithin(file.key, item.key) ||
-                        (p.isWithin(item.key, file.key) &&
-                            file.key != item.key),
+                        file == item.key ||
+                        p.isWithin(file, item.key) ||
+                        (p.isWithin(item.key, file) && file != item.key),
                   ) ??
                   false;
               final inNew = widget.selection.value.any(
                 (file) =>
-                    file.key == item.key ||
-                    p.isWithin(file.key, item.key) ||
-                    (p.isWithin(item.key, file.key) && file.key != item.key),
+                    file == item.key ||
+                    p.isWithin(file, item.key) ||
+                    (p.isWithin(item.key, file) && file != item.key),
               );
 
               final sameLength =
@@ -354,7 +353,7 @@ class ListFilesState extends State<ListFiles> {
               bool selectedExplicitly = false;
               bool selectedInherently = false;
               bool selectedPartially = false;
-              for (final file in widget.selection.value.map((e) => e.key)) {
+              for (final file in widget.selection.value.map((e) => e)) {
                 if (file == item.key) {
                   selectedExplicitly = true;
                 }
@@ -502,17 +501,16 @@ class ListFilesState extends State<ListFiles> {
               final inOld =
                   oldSelection?.any(
                     (file) =>
-                        file.key == item.key ||
-                        p.isWithin(file.key, item.key) ||
-                        (p.isWithin(item.key, file.key) &&
-                            file.key != item.key),
+                        file == item.key ||
+                        p.isWithin(file, item.key) ||
+                        (p.isWithin(item.key, file) && file != item.key),
                   ) ??
                   false;
               final inNew = widget.selection.value.any(
                 (file) =>
-                    file.key == item.key ||
-                    p.isWithin(file.key, item.key) ||
-                    (p.isWithin(item.key, file.key) && file.key != item.key),
+                    file == item.key ||
+                    p.isWithin(file, item.key) ||
+                    (p.isWithin(item.key, file) && file != item.key),
               );
 
               final sameLength =
@@ -529,7 +527,7 @@ class ListFilesState extends State<ListFiles> {
               bool selectedExplicitly = false;
               bool selectedInherently = false;
               bool selectedPartially = false;
-              for (final file in widget.selection.value.map((e) => e.key)) {
+              for (final file in widget.selection.value) {
                 if (file == item.key) {
                   selectedExplicitly = true;
                 }
@@ -663,17 +661,16 @@ class ListFilesState extends State<ListFiles> {
               final inOld =
                   oldSelection?.any(
                     (file) =>
-                        file.key == item.key ||
-                        p.isWithin(file.key, item.key) ||
-                        (p.isWithin(item.key, file.key) &&
-                            file.key != item.key),
+                        file == item.key ||
+                        p.isWithin(file, item.key) ||
+                        (p.isWithin(item.key, file) && file != item.key),
                   ) ??
                   false;
               final inNew = widget.selection.value.any(
                 (file) =>
-                    file.key == item.key ||
-                    p.isWithin(file.key, item.key) ||
-                    (p.isWithin(item.key, file.key) && file.key != item.key),
+                    file == item.key ||
+                    p.isWithin(file, item.key) ||
+                    (p.isWithin(item.key, file) && file != item.key),
               );
 
               final sameLength =
@@ -690,7 +687,7 @@ class ListFilesState extends State<ListFiles> {
               bool selectedExplicitly = false;
               bool selectedInherently = false;
               bool selectedPartially = false;
-              for (final file in widget.selection.value.map((e) => e.key)) {
+              for (final file in widget.selection.value) {
                 if (file == item.key) {
                   selectedExplicitly = true;
                 }
@@ -797,17 +794,16 @@ class ListFilesState extends State<ListFiles> {
               final inOld =
                   oldSelection?.any(
                     (file) =>
-                        file.key == item.key ||
-                        p.isWithin(file.key, item.key) ||
-                        (p.isWithin(item.key, file.key) &&
-                            file.key != item.key),
+                        file == item.key ||
+                        p.isWithin(file, item.key) ||
+                        (p.isWithin(item.key, file) && file != item.key),
                   ) ??
                   false;
               final inNew = widget.selection.value.any(
                 (file) =>
-                    file.key == item.key ||
-                    p.isWithin(file.key, item.key) ||
-                    (p.isWithin(item.key, file.key) && file.key != item.key),
+                    file == item.key ||
+                    p.isWithin(file, item.key) ||
+                    (p.isWithin(item.key, file) && file != item.key),
               );
 
               final sameLength =
@@ -824,7 +820,7 @@ class ListFilesState extends State<ListFiles> {
               bool selectedExplicitly = false;
               bool selectedInherently = false;
               bool selectedPartially = false;
-              for (final file in widget.selection.value.map((e) => e.key)) {
+              for (final file in widget.selection.value) {
                 if (file == item.key) {
                   selectedExplicitly = true;
                 }
@@ -1057,13 +1053,13 @@ class ListFilesState extends State<ListFiles> {
                                   final inOld =
                                       oldSelection?.where(
                                         (file) => group.value
-                                            .map((f) => f.file)
+                                            .map((f) => f.key)
                                             .contains(file),
                                       ) ??
                                       [];
                                   final inNew = widget.selection.value.where(
                                     (file) => group.value
-                                        .map((f) => f.file)
+                                        .map((f) => f.key)
                                         .contains(file),
                                   );
 
@@ -1094,14 +1090,14 @@ class ListFilesState extends State<ListFiles> {
                                         onTap: () {
                                           if (group.value.any(
                                             (f) => !widget.selection.value
-                                                .contains(f.file),
+                                                .contains(f.key),
                                           )) {
                                             for (final file in group.value) {
                                               if (!widget.selection.value
-                                                  .contains(file.file)) {
+                                                  .contains(file.key)) {
                                                 widget.selection.value = {
                                                   ...widget.selection.value,
-                                                  file.file!,
+                                                  file.key,
                                                 };
                                               }
                                             }
@@ -1109,7 +1105,7 @@ class ListFilesState extends State<ListFiles> {
                                             widget.selection.value = {
                                               ...widget.selection.value.where(
                                                 (f) => !group.value
-                                                    .map((f) => f.file)
+                                                    .map((f) => f.key)
                                                     .contains(f),
                                               ),
                                             };
@@ -1118,7 +1114,7 @@ class ListFilesState extends State<ListFiles> {
                                         child: Icon(
                                           group.value.any(
                                                 (f) => !widget.selection.value
-                                                    .contains(f.file),
+                                                    .contains(f.key),
                                               )
                                               ? Icons.circle_outlined
                                               : Icons.check_circle,
