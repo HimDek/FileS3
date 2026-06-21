@@ -441,7 +441,7 @@ abstract class Main {
   static Future<void> listDirectories({bool background = false}) async {
     loading.value = true;
     if (!background && _remoteFiles.isEmpty) {
-      remoteFilesSet((await ConfigManager.loadRemoteFiles()).toList());
+      remoteFilesSet(await ConfigManager.loadRemoteFiles());
     }
 
     for (final profile in _profiles.values) {

@@ -898,19 +898,23 @@ abstract class ConfigManager {
   }
 
   static Iterable<MapEntry<String, String>> loadPinnedFolders() {
-    return IniManager.config.value?.options("pinned_folders")?.map((key) {
-          final value = IniManager.config.value!.get("pinned_folders", key);
-          if (value != null) {
-            final jsonValue = jsonDecode(value);
-            if (jsonValue is Map<String, dynamic> &&
-                jsonValue.containsKey('path') &&
-                jsonValue['path'] is String) {
-              return MapEntry(key, jsonValue['path'] as String);
+    try {
+      return IniManager.config.value?.options("pinned_folders")?.map((key) {
+            final value = IniManager.config.value!.get("pinned_folders", key);
+            if (value != null) {
+              final jsonValue = jsonDecode(value);
+              if (jsonValue is Map<String, dynamic> &&
+                  jsonValue.containsKey('path') &&
+                  jsonValue['path'] is String) {
+                return MapEntry(key, jsonValue['path'] as String);
+              }
             }
-          }
-          return null;
-        }).whereType<MapEntry<String, String>>() ??
-        [];
+            return null;
+          }).whereType<MapEntry<String, String>>() ??
+          [];
+    } catch (e) {
+      return [];
+    }
   }
 
   static Future<void> savePinnedFolders(
@@ -934,20 +938,25 @@ abstract class ConfigManager {
     IniManager.save();
   }
 
-  static Iterable<Color> loadRecentColors() {
-    final recentColorsStr =
-        IniManager.config.value?.get("ui", "recent_colors") ?? '[]';
-    final List<dynamic> recentColorsJson = jsonDecode(recentColorsStr);
-    return recentColorsJson
-        .map(
-          (colorCode) => Color.fromARGB(
-            int.tryParse(colorCode.substring(0, 2), radix: 16) ?? 0,
-            int.tryParse(colorCode.substring(2, 4), radix: 16) ?? 0,
-            int.tryParse(colorCode.substring(4, 6), radix: 16) ?? 0,
-            int.tryParse(colorCode.substring(6, 8), radix: 16) ?? 0,
-          ),
-        )
-        .whereType<Color>();
+  static List<Color> loadRecentColors() {
+    try {
+      final recentColorsStr =
+          IniManager.config.value?.get("ui", "recent_colors") ?? '[]';
+      final List<dynamic> recentColorsJson = jsonDecode(recentColorsStr);
+      return recentColorsJson
+          .map(
+            (colorCode) => Color.fromARGB(
+              int.tryParse(colorCode.substring(0, 2), radix: 16) ?? 0,
+              int.tryParse(colorCode.substring(2, 4), radix: 16) ?? 0,
+              int.tryParse(colorCode.substring(4, 6), radix: 16) ?? 0,
+              int.tryParse(colorCode.substring(6, 8), radix: 16) ?? 0,
+            ),
+          )
+          .whereType<Color>()
+          .toList();
+    } catch (e) {
+      return [];
+    }
   }
 
   static Future<void> saveRecentColors(List<Color> colors) async {
@@ -962,26 +971,23 @@ abstract class ConfigManager {
     IniManager.save();
   }
 
-  static Future<void> saveRemoteFiles(Iterable<RemoteFile> files) async {
-    final String jsonString = jsonEncode(
-      files
-          as List<
-            ({String key, int size, String etag, DateTime? lastModified})
-          >,
-    );
-    await _storage.write(key: 'remote_files', value: jsonString);
-  }
-
-  static Future<Iterable<RemoteFile>> loadRemoteFiles() async {
+  static Future<List<RemoteFile>> loadRemoteFiles() async {
     final jsonString = await _storage.read(key: 'remote_files') ?? '[]';
     try {
       final List<dynamic> jsonList = jsonDecode(jsonString);
-      return jsonList.map(
-        (json) => RemoteFile.fromJson(json as Map<String, dynamic>),
-      );
+      return jsonList
+          .map((json) => RemoteFile.fromJson(json as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       return [];
     }
+  }
+
+  static Future<void> saveRemoteFiles(Iterable<RemoteFile> files) async {
+    await _storage.write(
+      key: 'remote_files',
+      value: jsonEncode(files.map((file) => file.toJson())),
+    );
   }
 }
 

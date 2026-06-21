@@ -1287,7 +1287,7 @@ class SettingsPageState extends State<SettingsPage> {
       colorNameTextStyle: Theme.of(context).textTheme.bodySmall,
       colorCodeTextStyle: Theme.of(context).textTheme.bodySmall,
       showRecentColors: true,
-      recentColors: ConfigManager.loadRecentColors().toList(),
+      recentColors: ConfigManager.loadRecentColors(),
       maxRecentColors: 6,
       onRecentColorsChanged: (List<Color> recentColors) {
         ConfigManager.saveRecentColors(recentColors);
