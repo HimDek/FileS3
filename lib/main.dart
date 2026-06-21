@@ -315,12 +315,10 @@ class _HomeState extends State<Home> {
             : BackupMode.sync,
       );
     }
-    final files = Main.remoteFiles.where(
-      (file) =>
-          p.isWithin(dir.key, file.key) &&
-          file.key != dir.key &&
-          !p.isDir(file.key),
-    );
+    final files = Main.remoteFilesByDir(
+      dir.key,
+      recursive: true,
+    ).where((file) => !p.isDir(file.key));
     int progressCount = 0;
     final totalFiles = files.length;
     for (final file in files) {
@@ -371,12 +369,10 @@ class _HomeState extends State<Home> {
 
   // uses _saveFile
   void _saveDirectory(RemoteFile dir, String savePath) {
-    final files = Main.remoteFiles.where(
-      (file) =>
-          p.isWithin(dir.key, file.key) &&
-          file.key != dir.key &&
-          !p.isDir(file.key),
-    );
+    final files = Main.remoteFilesByDir(
+      dir.key,
+      recursive: true,
+    ).where((file) => !p.isDir(file.key));
 
     int progressCount = 0;
     final totalFiles = files.length;

@@ -986,7 +986,7 @@ abstract class ConfigManager {
   static Future<void> saveRemoteFiles(Iterable<RemoteFile> files) async {
     await _storage.write(
       key: 'remote_files',
-      value: jsonEncode(files.map((file) => file.toJson())),
+      value: jsonEncode(files.map((file) => file.toJson()).toList()),
     );
   }
 }

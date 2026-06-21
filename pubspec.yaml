@@ -35,8 +35,10 @@ dependencies:
   http:
   path:
   yaml:
+  pool:
   image:
   pdfrx:
+  fpdart:
   crypto:
   chewie:
   open_file:
@@ -69,7 +71,6 @@ dependencies:
   flutter_launcher_icons: 
   flutter_secure_storage:
   flutter_foreground_task:
-  pool: ^1.5.2
 
 dev_dependencies:
   flutter_test:

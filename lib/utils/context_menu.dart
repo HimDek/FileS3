@@ -460,9 +460,10 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   }
 
   List<String> get files => _filesCache ??= List.unmodifiable(
-    Main.remoteFilesIndex.keys.where(
-      (f) => p.isWithin(file.key, f) && !p.isDir(f),
-    ),
+    Main.remoteFilesByDir(
+      file.key,
+      recursive: true,
+    ).where((file) => !p.isDir(file.key)).map((f) => f.key),
   );
 
   bool get rootExists =>
@@ -490,13 +491,14 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   );
 
   List<String> get removableFiles => _removableFilesCache ??= List.unmodifiable(
-    Main.remoteFilesIndex.keys.where(
-      (f) =>
-          p.isWithin(file.key, f) &&
-          !p.isDir(f) &&
-          File(Main.pathFromKey(f) ?? f).existsSync() &&
-          Main.backupModeFromKey(f) == BackupMode.upload,
-    ),
+    Main.remoteFilesByDir(file.key)
+        .map((f) => f.key)
+        .where(
+          (f) =>
+              !p.isDir(f) &&
+              File(Main.pathFromKey(f) ?? f).existsSync() &&
+              Main.backupModeFromKey(f) == BackupMode.upload,
+        ),
   );
 
   void Function()? open() {
@@ -657,11 +659,18 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     _removableFilesCache = null;
   }
 
-  List<String> get files => _filesCache ??= List.unmodifiable(
-    Main.remoteFilesIndex.keys.where(
-      (f) => directories.any((dir) => p.isWithin(dir, f)) && !p.isDir(f),
-    ),
-  );
+  List<String> get files => _filesCache ??= List.unmodifiable(() {
+    List<String> files = [];
+    for (final dir in directories) {
+      files.addAll(
+        Main.remoteFilesByDir(
+          dir,
+          recursive: true,
+        ).where((f) => !p.isDir(f.key)).map((f) => f.key),
+      );
+    }
+    return files;
+  }());
 
   List<bool> get rootExists => _rootExistsCache ??= List.unmodifiable(
     directories.map((dir) => p.isAbsolute(Main.pathFromKey(dir) ?? dir)),
@@ -694,15 +703,23 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     ),
   );
 
-  List<String> get removableFiles => _removableFilesCache ??= List.unmodifiable(
-    Main.remoteFilesIndex.keys.where(
-      (f) =>
-          directories.any((dir) => p.isWithin(dir, f)) &&
-          !p.isDir(f) &&
-          File(Main.pathFromKey(f) ?? f).existsSync() &&
-          Main.backupModeFromKey(f) == BackupMode.upload,
-    ),
-  );
+  List<String> get removableFiles =>
+      _removableFilesCache ??= List.unmodifiable(() {
+        List<String> removable = [];
+        for (final dir in directories) {
+          removable.addAll(
+            Main.remoteFilesByDir(dir, recursive: true)
+                .where(
+                  (f) =>
+                      !p.isDir(f.key) &&
+                      File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
+                      Main.backupModeFromKey(f.key) == BackupMode.upload,
+                )
+                .map((f) => f.key),
+          );
+        }
+        return removable;
+      }());
 
   @override
   void Function()? download() {

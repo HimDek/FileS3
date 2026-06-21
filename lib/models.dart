@@ -177,9 +177,10 @@ class RemoteFile implements RemoteFileFields {
       return _size;
     }
     int size = 0;
-    for (final file in Main.remoteFiles.where(
-      (file) => p.isWithin(key, file.key) && !p.isDir(file.key),
-    )) {
+    for (final file in Main.remoteFilesByDir(
+      key,
+      recursive: true,
+    ).where((file) => !p.isDir(file.key))) {
       size += file.size;
     }
     _size = size;
@@ -191,9 +192,10 @@ class RemoteFile implements RemoteFileFields {
       return _lastModified;
     }
     DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
-    for (final file in Main.remoteFiles.where(
-      (file) => p.isWithin(key, file.key) && !p.isDir(file.key),
-    )) {
+    for (final file in Main.remoteFilesByDir(
+      key,
+      recursive: true,
+    ).where((file) => !p.isDir(file.key))) {
       if (file.lastModified?.isAfter(latest) ?? false) {
         latest = file.lastModified!;
       }
@@ -210,12 +212,7 @@ class RemoteFile implements RemoteFileFields {
     }
     int dirCount = 0;
     int fileCount = 0;
-    for (final file in Main.remoteFiles.where(
-      (file) =>
-          p.isWithin(key, file.key) &&
-          file.key != key &&
-          (recursive || p.s3(p.dirname(file.key)) == p.s3(key)),
-    )) {
+    for (final file in Main.remoteFilesByDir(key, recursive: recursive)) {
       if (p.isDir(file.key)) {
         dirCount += 1;
       } else {
@@ -229,9 +226,10 @@ class RemoteFile implements RemoteFileFields {
   Future<bool> getDownloaded() async {
     if (p.isDir(key)) {
       bool downloaded = true;
-      for (var file in Main.remoteFiles.where(
-        (f) => p.isWithin(key, f.key) && !p.isDir(f.key),
-      )) {
+      for (var file in Main.remoteFilesByDir(
+        key,
+        recursive: true,
+      ).where((file) => !p.isDir(file.key))) {
         file.downloaded = await File(
           Main.pathFromKey(file.key) ?? file.key,
         ).exists();
@@ -250,9 +248,10 @@ class RemoteFile implements RemoteFileFields {
   Future<bool> getCached() async {
     if (p.isDir(key)) {
       bool cached = true;
-      for (var file in Main.remoteFiles.where(
-        (f) => p.isWithin(key, f.key) && !p.isDir(f.key),
-      )) {
+      for (var file in Main.remoteFilesByDir(
+        key,
+        recursive: true,
+      ).where((file) => !p.isDir(file.key))) {
         file.cached = await File(Main.cachePathFromKey(file.key)).exists();
         if (!file.cached!) {
           cached = false;

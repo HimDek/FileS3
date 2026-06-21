@@ -250,12 +250,14 @@ class MyBrowserState extends BrowserState {
                     },
                   );
                   if (dir != null && dir.isNotEmpty) {
-                    if (Main.remoteFilesIndex.containsKey(
-                          p.join(_driveDir.value.key, dir),
-                        ) ||
-                        Main.remoteFilesIndex.containsKey(
-                          p.asDir(p.join(_driveDir.value.key, dir)),
-                        )) {
+                    if (Main.remoteFileByKey(
+                              p.join(_driveDir.value.key, dir),
+                            ) !=
+                            null ||
+                        Main.remoteFileByKey(
+                              p.asDir(p.join(_driveDir.value.key, dir)),
+                            ) !=
+                            null) {
                       showSnackBar(
                         SnackBar(
                           content: Text(
@@ -725,18 +727,17 @@ class BrowserState extends State<Browser> {
     _currentItems.value = _searching.value && _navIndex.value == 0
         ? _searchResults.value
         : _driveDir.value.key == '' && _navIndex.value == 0
-        ? Main.remoteFiles
-              .where(
-                (file) =>
-                    p.s3(p.dirname(file.key)).isEmpty && p.isDir(file.key),
-              )
-              .map<RemoteFile>((file) => file)
+        ? Main.remoteFilesByDir(
+            '',
+            recursive: false,
+          ).where((file) => p.isDir(file.key))
         : _driveDir.value.key != '' && _navIndex.value == 0
         ? [
-            ...Main.remoteFiles.where(
-              (file) =>
-                  p.s3(p.dirname(file.key)) == p.s3(_driveDir.value.key) &&
-                  !Job.activeJobs.any((job) => job.remoteKey == file.key),
+            ...Main.remoteFilesByDir(
+              _driveDir.value.key,
+              recursive: false,
+            ).where(
+              (file) => !Job.activeJobs.any((job) => job.remoteKey == file.key),
             ),
             ...Job.activeJobs.where(
               (job) =>
@@ -758,10 +759,8 @@ class BrowserState extends State<Browser> {
     _searchResults.value = extractAllSorted(
       query: _searchController.text.trim().toLowerCase(),
       choices: [
-        ...Main.remoteFiles.where(
-          (file) =>
-              p.isWithin(p.s3(_driveDir.value.key), p.s3(file.key)) &&
-              !Job.activeJobs.any((job) => job.remoteKey == file.key),
+        ...Main.remoteFilesByDir(_driveDir.value.key, recursive: true).where(
+          (file) => !Job.activeJobs.any((job) => job.remoteKey == file.key),
         ),
         ...Job.activeJobs.where(
           (job) => p.isWithin(p.s3(_driveDir.value.key), p.s3(job.remoteKey)),

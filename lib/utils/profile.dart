@@ -40,11 +40,8 @@ class Profile {
   Future<void> refreshRemote({required String dir}) async {
     try {
       final fetchedRemoteFiles = await fileManager!.listObjects(dir);
-      Main.remoteFilesRemoveWhereNoNotify(
-        (file) => p.isWithin(dir, file.key) || file.key == dir || dir.isEmpty,
-      );
-      Main.remoteFilesAddAll(fetchedRemoteFiles);
-      await ConfigManager.saveRemoteFiles(Main.remoteFiles);
+      Main.remoteFileRemoveByKey(dir, notify: false);
+      Main.remoteFilesAddAll(fetchedRemoteFiles.toList());
       accessible.value = true;
     } catch (e) {
       accessible.value = false;
@@ -54,6 +51,8 @@ class Profile {
       if (kDebugMode) {
         debugPrint("Error refreshing remote files: $e");
       }
+    } finally {
+      await ConfigManager.saveRemoteFiles(Main.remoteFiles);
     }
   }
 
