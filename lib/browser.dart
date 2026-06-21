@@ -314,7 +314,11 @@ class MyBrowserState extends BrowserState {
   @override
   Widget drawer(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_navIndex, Job.jobs, Job.onProgressUpdate]),
+      listenable: Listenable.merge([
+        _navIndex,
+        Job.onJobsChanged,
+        Job.onProgressUpdate,
+      ]),
       builder: (context, _) => NavigationDrawer(
         children: [
           ListTile(
@@ -732,18 +736,18 @@ class BrowserState extends State<Browser> {
             recursive: false,
           ).where((file) => p.isDir(file.key))
         : _driveDir.value.key != '' && _navIndex.value == 0
-        ? [
-            ...Main.remoteFilesByDir(
-              _driveDir.value.key,
-              recursive: false,
-            ).where(
-              (file) => !Job.activeJobs.any((job) => job.remoteKey == file.key),
-            ),
-            ...Job.activeJobs.where(
-              (job) =>
-                  p.s3(p.dirname(job.remoteKey)) == p.s3(_driveDir.value.key),
-            ),
-          ]
+        ? (Main.remoteFilesByDir(_driveDir.value.key, recursive: false).where(
+                    (file) =>
+                        !Job.activeJobs.any((job) => job.remoteKey == file.key),
+                  )
+                  as Iterable)
+              .followedBy(
+                Job.activeJobs.where(
+                  (job) =>
+                      p.s3(p.dirname(job.remoteKey)) ==
+                      p.s3(_driveDir.value.key),
+                ),
+              )
         : _navIndex.value == 1
         ? Job.completedJobs
         : _navIndex.value == 2
@@ -1271,7 +1275,7 @@ class BrowserState extends State<Browser> {
       _searching,
       _searchResults,
       Main.onRemoteFilesChanged,
-      Job.jobs,
+      Job.onJobsChanged,
       Job.onProgressUpdate,
     ]);
 
@@ -1476,7 +1480,7 @@ class BrowserState extends State<Browser> {
                     _profile,
                     _profile.value?.accessible,
                     Main.onRemoteFilesChanged,
-                    Job.jobs,
+                    Job.onJobsChanged,
                     uiConfigNotifier.showDirectorySummary,
                     uiConfigNotifier.showDirectoryBackupConfig,
                     progress,
@@ -1490,7 +1494,7 @@ class BrowserState extends State<Browser> {
                     leading: drawer(context) != null
                         ? IconButton(
                             icon: Badge(
-                              isLabelVisible: Job.jobs.value.isNotEmpty,
+                              isLabelVisible: Job.jobs.isNotEmpty,
                               label: Job.activeJobs.isNotEmpty
                                   ? Text(
                                       Job.activeJobs.length.toString(),

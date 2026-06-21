@@ -958,9 +958,7 @@ class ListFilesState extends State<ListFiles> {
 
     Listenable.merge([widget.files, widget.relativeto]).addListener(() {
       widget.setGalleryFiles?.call({
-        for (var f in widget.files.value.where((f) {
-          return !p.isDir(f.key);
-        }))
+        for (var f in widget.files.value.where((f) => !p.isDir(f.key)))
           f.key: GalleryProps(
             file:
                 f.file ??

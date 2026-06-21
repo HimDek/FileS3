@@ -976,22 +976,21 @@ abstract class Job {
   static int maxrun = 5;
   static bool scheduled = false;
 
-  static final ValueNotifier<List<Job>> jobs = ValueNotifier<List<Job>>(
-    <Job>[],
-  );
+  static final List<Job> jobs = <Job>[];
+  static final ManualNotifier onJobsChanged = ManualNotifier();
   static Iterable<Job> get runningJobs =>
-      jobs.value.where((job) => job.status.value == JobStatus.running);
+      jobs.where((job) => job.status.value == JobStatus.running);
   static Iterable<Job> get pendingJobs =>
-      jobs.value.where((job) => job.status.value == JobStatus.initialized);
+      jobs.where((job) => job.status.value == JobStatus.initialized);
   static Iterable<Job> get activeJobs =>
-      jobs.value.where((job) => job.status.value != JobStatus.completed);
-  static Iterable<Job> get unInitializedJobs => jobs.value.where(
+      jobs.where((job) => job.status.value != JobStatus.completed);
+  static Iterable<Job> get unInitializedJobs => jobs.where(
     (job) =>
         job.status.value == JobStatus.failed ||
         job.status.value == JobStatus.stopped,
   );
   static Iterable<Job> get completedJobs =>
-      jobs.value.where((job) => job.status.value == JobStatus.completed);
+      jobs.where((job) => job.status.value == JobStatus.completed);
   static final ManualNotifier onProgressUpdate = ManualNotifier();
 
   final ValueNotifier<JobStatus> status = ValueNotifier<JobStatus>(
@@ -1012,7 +1011,7 @@ abstract class Job {
   });
 
   void add() {
-    if (jobs.value.any(
+    if (jobs.any(
       (job) =>
           job.localFile.path == localFile.path &&
           job.remoteKey == remoteKey &&
@@ -1025,8 +1024,9 @@ abstract class Job {
         "Adding job: ${runtimeType == UploadJob ? 'Upload' : 'Download'} - $remoteKey",
       );
     }
-    if (!jobs.value.contains(this)) jobs.value = [...jobs.value, this];
-    if (jobs.value.any((job) => job.status.value == JobStatus.initialized)) {
+    if (!jobs.contains(this)) jobs.add(this);
+    onJobsChanged.notifyListeners();
+    if (jobs.any((job) => job.status.value == JobStatus.initialized)) {
       startall();
     }
   }
@@ -1133,11 +1133,14 @@ abstract class Job {
   }
 
   bool removable() {
-    return status.value != JobStatus.running && jobs.value.contains(this);
+    return status.value != JobStatus.running && jobs.contains(this);
   }
 
   void remove() {
-    if (removable()) jobs.value = jobs.value.where((j) => j != this).toList();
+    if (removable()) {
+      jobs.remove(this);
+      onJobsChanged.notifyListeners();
+    }
   }
 
   bool dismissible() {
@@ -1145,7 +1148,10 @@ abstract class Job {
   }
 
   void dismiss() {
-    if (dismissible()) jobs.value = jobs.value.where((j) => j != this).toList();
+    if (dismissible()) {
+      jobs.remove(this);
+      onJobsChanged.notifyListeners();
+    }
   }
 
   static void continueAll() {
@@ -1173,7 +1179,7 @@ abstract class Job {
       }
 
       while (runningJobs.length < maxrun && pendingJobs.isNotEmpty) {
-        Job? job = jobs.value.firstWhereOrNull(
+        Job? job = jobs.firstWhereOrNull(
           (job) => job.status.value == JobStatus.initialized,
         );
         if (job == null) {
@@ -1194,18 +1200,20 @@ abstract class Job {
   }
 
   static void stopall() {
-    for (var job in jobs.value) {
+    for (var job in jobs) {
       job.stop();
     }
     onProgressUpdate.notifyListeners();
   }
 
   static void clearCompleted() {
-    jobs.value = activeJobs.toList();
+    jobs.removeWhere((job) => job.status.value == JobStatus.completed);
+    onJobsChanged.notifyListeners();
   }
 
   static void clear() {
-    jobs.value = [];
+    jobs.clear();
+    onJobsChanged.notifyListeners();
   }
 
   static void clearCache() {

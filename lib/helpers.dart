@@ -1075,7 +1075,7 @@ class DeletionRegistrar {
     );
 
     await job.start();
-    Job.jobs.value.remove(job);
+    Job.jobs.remove(job);
 
     if (_file.existsSync()) {
       _config = Config.fromStrings(_file.readAsLinesSync());
@@ -1099,7 +1099,7 @@ class DeletionRegistrar {
       profile: profile,
     );
     await job.start();
-    Job.jobs.value.remove(job);
+    Job.jobs.remove(job);
   }
 
   Future<void> clear() async {
