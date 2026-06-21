@@ -231,8 +231,6 @@ abstract class Main {
       _remoteFiles.whereType<RemoteFile>().where(
         (file) => !_ignoreKeyRegexps.any((regexp) => regexp.hasMatch(file.key)),
       );
-  static List<RemoteFile?> get remoteFilesRaw =>
-      UnmodifiableListView(_remoteFiles);
   static Map<String, Profile> get profiles => _profiles;
 
   static void remoteFilesSet(List<RemoteFile> files) {
@@ -638,9 +636,7 @@ abstract class Main {
   }) async {
     loading.value = true;
 
-    RemoteFile? oldFile = remoteFilesRaw.elementAtOrNull(
-      remoteFileIndexByKey(key) ?? -1,
-    );
+    RemoteFile? oldFile = remoteFileByKey(key);
     if (oldFile == null) {
       loading.value = false;
       return;
@@ -1344,8 +1340,6 @@ class Watcher {
             .where((file) => !p.isDir(file.key))
             .map((file) => MapEntry(file.key, file)),
       );
-
-      return;
 
       if (remoteFiles.isEmpty) {
         if (kDebugMode) {
