@@ -96,14 +96,8 @@ class MyBrowser extends Browser {
     required super.downloadDirectory,
     required super.saveFile,
     required super.saveDirectory,
-    required super.copyFile,
-    required super.copyDirectory,
-    required super.moveFiles,
-    required super.moveDirectories,
     required super.deleteLocal,
-    required super.deleteFiles,
     required super.deleteCache,
-    required super.deleteDirectories,
     required super.createDirectory,
     required super.uploadDirectory,
   });
@@ -256,10 +250,10 @@ class MyBrowserState extends BrowserState {
                     },
                   );
                   if (dir != null && dir.isNotEmpty) {
-                    if (Main.remoteFiles.containsKey(
+                    if (Main.remoteFilesIndex.containsKey(
                           p.join(_driveDir.value.key, dir),
                         ) ||
-                        Main.remoteFiles.containsKey(
+                        Main.remoteFilesIndex.containsKey(
                           p.asDir(p.join(_driveDir.value.key, dir)),
                         )) {
                       showSnackBar(
@@ -451,7 +445,7 @@ class MyBrowserState extends BrowserState {
                   _navIndex.value = 0;
                   _controlsVisible.value = true;
                   _driveDir.value =
-                      Main.remoteFiles[pinned.value] ?? BrowserState.root;
+                      Main.remoteFileByKey(pinned.value) ?? BrowserState.root;
                 },
               ),
             ),
@@ -491,16 +485,8 @@ class Browser extends StatefulWidget {
   final Function(RemoteFile)? downloadDirectory;
   final Function(RemoteFile, String)? saveFile;
   final Function(RemoteFile, String)? saveDirectory;
-  final Future<void> Function(String, String)? copyFile;
-  final Future<void> Function(String, String)? copyDirectory;
-  final Future<void> Function(List<String>, List<String>, {bool refresh})?
-  moveFiles;
-  final Future<void> Function(List<String>, List<String>, {bool refresh})?
-  moveDirectories;
   final Function(String)? deleteLocal;
   final Function(String)? deleteCache;
-  final Future<void> Function(List<String>, {bool refresh})? deleteFiles;
-  final Future<void> Function(List<String>, {bool refresh})? deleteDirectories;
   final Future<void> Function(String)? createDirectory;
   final void Function(String, Directory)? uploadDirectory;
   final Function(RemoteFile)? onPick;
@@ -518,14 +504,8 @@ class Browser extends StatefulWidget {
     this.downloadDirectory,
     this.saveFile,
     this.saveDirectory,
-    this.copyFile,
-    this.copyDirectory,
-    this.moveFiles,
-    this.moveDirectories,
     this.deleteLocal,
     this.deleteCache,
-    this.deleteFiles,
-    this.deleteDirectories,
     this.createDirectory,
     this.uploadDirectory,
     this.onPick,
@@ -560,9 +540,10 @@ class BrowserState extends State<Browser> {
     SelectionAction.none,
   );
   final ValueNotifier<Set<String>> _selection = ValueNotifier({});
-  final ValueNotifier<List> _searchResults = ValueNotifier<List>([]);
-  final ValueNotifier<List> _currentItems = ValueNotifier<List>([]);
-  final ValueNotifier<List<FileProps>> _currentProps = ValueNotifier([]);
+  final ValueNotifier<Iterable> _searchResults = ValueNotifier<Iterable>([]);
+  final ValueNotifier<Iterable> _currentItems = ValueNotifier<Iterable>([]);
+  final ValueNotifier<Iterable<FileProps>> _currentProps =
+      ValueNotifier<Iterable<FileProps>>([]);
   final ValueNotifier<Map<String, double>> _keysOffsetMap = ValueNotifier({});
   final ManualNotifier _rebuildContext = ManualNotifier();
 
@@ -667,7 +648,7 @@ class BrowserState extends State<Browser> {
               break;
             }
           }
-          return Main.remoteFiles[ndir] ?? BrowserState.root;
+          return Main.remoteFileByKey(ndir) ?? BrowserState.root;
         }();
       }
     }
@@ -704,7 +685,7 @@ class BrowserState extends State<Browser> {
           : p.isDir(file.key)
           ? FileProps(key: file.key, size: file.size, file: file, url: url)
           : FileProps(key: file.key, size: file.size, file: file, url: url);
-    }).toList();
+    });
     if (!_searching.value) {
       _currentProps.value = sort(
         _currentItems.value.map((file) {
@@ -744,17 +725,15 @@ class BrowserState extends State<Browser> {
     _currentItems.value = _searching.value && _navIndex.value == 0
         ? _searchResults.value
         : _driveDir.value.key == '' && _navIndex.value == 0
-        ? Set<RemoteFile>.from(
-            Main.remoteFiles.values
-                .where(
-                  (file) =>
-                      p.s3(p.dirname(file.key)).isEmpty && p.isDir(file.key),
-                )
-                .map<RemoteFile>((file) => file),
-          ).toList()
+        ? Main.remoteFiles
+              .where(
+                (file) =>
+                    p.s3(p.dirname(file.key)).isEmpty && p.isDir(file.key),
+              )
+              .map<RemoteFile>((file) => file)
         : _driveDir.value.key != '' && _navIndex.value == 0
         ? [
-            ...Main.remoteFiles.values.where(
+            ...Main.remoteFiles.where(
               (file) =>
                   p.s3(p.dirname(file.key)) == p.s3(_driveDir.value.key) &&
                   !Job.activeJobs.any((job) => job.remoteKey == file.key),
@@ -765,9 +744,9 @@ class BrowserState extends State<Browser> {
             ),
           ]
         : _navIndex.value == 1
-        ? Job.completedJobs.toList()
+        ? Job.completedJobs
         : _navIndex.value == 2
-        ? Job.activeJobs.toList()
+        ? Job.activeJobs
         : [];
     if (kDebugMode) {
       debugPrint('Current items set: ${_currentItems.value.length} items');
@@ -779,7 +758,7 @@ class BrowserState extends State<Browser> {
     _searchResults.value = extractAllSorted(
       query: _searchController.text.trim().toLowerCase(),
       choices: [
-        ...Main.remoteFiles.values.where(
+        ...Main.remoteFiles.where(
           (file) =>
               p.isWithin(p.s3(_driveDir.value.key), p.s3(file.key)) &&
               !Job.activeJobs.any((job) => job.remoteKey == file.key),
@@ -793,7 +772,7 @@ class BrowserState extends State<Browser> {
         String key = item is Job ? item.remoteKey : (item as RemoteFile).key;
         return p.s3(key).toLowerCase();
       },
-    ).map((result) => result.choice).toList();
+    ).map((result) => result.choice);
 
     loading.value = false;
   }
@@ -886,7 +865,7 @@ class BrowserState extends State<Browser> {
       ? null
       : () async {
           try {
-            final selection = _selection.value.toList();
+            final selection = _selection.value;
             if (_selectionAction.value == SelectionAction.copy) {
               final items = selection.where(
                 (item) => p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
@@ -902,40 +881,30 @@ class BrowserState extends State<Browser> {
                   continue;
                 }
                 if (!p.isDir(item)) {
-                  await widget.copyFile?.call(item, newKey);
+                  await Main.copyFile(item, newKey);
                 } else {
-                  await widget.copyDirectory?.call(item, newKey);
+                  await Main.copyDirectory(item, newKey);
                 }
               }
             } else {
-              final dirs = selection
-                  .where(
-                    (item) =>
-                        p.isDir(item) &&
-                        p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
-                  )
-                  .toList();
-              final files = selection
-                  .where(
-                    (item) =>
-                        !p.isDir(item) &&
-                        p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
-                  )
-                  .toList();
-              final dirsDestinations = dirs
-                  .map((item) => p.join(_driveDir.value.key, p.basename(item)))
-                  .toList();
-              final filesDestinations = files
-                  .map((item) => p.join(_driveDir.value.key, p.basename(item)))
-                  .toList();
-              widget.moveDirectories?.call(
-                dirs.map((item) => item).toList(),
-                dirsDestinations,
+              final dirs = selection.where(
+                (item) =>
+                    p.isDir(item) &&
+                    p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
               );
-              widget.moveFiles?.call(
-                files.map((item) => item).toList(),
-                filesDestinations,
+              final files = selection.where(
+                (item) =>
+                    !p.isDir(item) &&
+                    p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
               );
+              final dirsDestinations = dirs.map(
+                (item) => p.join(_driveDir.value.key, p.basename(item)),
+              );
+              final filesDestinations = files.map(
+                (item) => p.join(_driveDir.value.key, p.basename(item)),
+              );
+              Main.moveDirectories(dirs.map((item) => item), dirsDestinations);
+              Main.moveFiles(files.map((item) => item), filesDestinations);
               _selection.value = {};
             }
             _selectionAction.value = SelectionAction.none;
@@ -955,23 +924,12 @@ class BrowserState extends State<Browser> {
         child: file == null
             ? buildBulkContextMenu(
                 context,
-                _selection.value.toList(),
+                _selection.value,
                 _getLink,
                 loading.value ? null : widget.downloadFile,
                 loading.value ? null : widget.downloadDirectory,
                 loading.value ? null : widget.saveFile,
                 loading.value ? null : widget.saveDirectory,
-                loading.value
-                    ? null
-                    : (keys, newKeys) async => await widget.moveFiles?.call(
-                        keys,
-                        newKeys,
-                        refresh: true,
-                      ),
-                loading.value
-                    ? null
-                    : (dirs, newDirs) async => await widget.moveDirectories
-                          ?.call(dirs, newDirs, refresh: true),
                 loading.value ? null : _cut,
                 loading.value ? null : _copy,
                 loading.value ? null : widget.deleteLocal,
@@ -979,13 +937,11 @@ class BrowserState extends State<Browser> {
                 loading.value
                     ? null
                     : (keys) async =>
-                          await widget.deleteFiles?.call(keys, refresh: true),
+                          await Main.deleteFiles(keys, refresh: true),
                 loading.value
                     ? null
-                    : (dirs) async => await widget.deleteDirectories?.call(
-                        dirs,
-                        refresh: true,
-                      ),
+                    : (dirs) async =>
+                          await Main.deleteDirectories(dirs, refresh: true),
                 () {
                   _selection.value = {};
                 },
@@ -1005,7 +961,7 @@ class BrowserState extends State<Browser> {
                 loading.value
                     ? null
                     : (List<String> dirs, List<String> newDirs) async =>
-                          await widget.moveDirectories?.call(
+                          await Main.moveDirectories(
                             dirs,
                             newDirs,
                             refresh: true,
@@ -1014,9 +970,8 @@ class BrowserState extends State<Browser> {
                 loading.value ? null : widget.deleteCache,
                 loading.value
                     ? null
-                    : (List<String> dirs) async => await widget
-                          .deleteDirectories
-                          ?.call(dirs, refresh: true),
+                    : (List<String> dirs) async =>
+                          await Main.deleteDirectories(dirs, refresh: true),
                 () {
                   _rebuildContext.notifyListeners();
                 },
@@ -1033,17 +988,13 @@ class BrowserState extends State<Browser> {
                 loading.value
                     ? null
                     : (List<String> keys, List<String> newKeys) async =>
-                          await widget.moveFiles?.call(
-                            keys,
-                            newKeys,
-                            refresh: true,
-                          ),
+                          await Main.moveFiles(keys, newKeys, refresh: true),
                 loading.value ? null : widget.deleteLocal,
                 loading.value ? null : widget.deleteCache,
                 loading.value
                     ? null
                     : (List<String> keys) async =>
-                          await widget.deleteFiles?.call(keys, refresh: true),
+                          await Main.deleteFiles(keys, refresh: true),
                 () {
                   _rebuildContext.notifyListeners();
                 },
@@ -1443,7 +1394,7 @@ class BrowserState extends State<Browser> {
           }
           if (_driveDir.value.key.isNotEmpty) {
             final newKey = p.s3(p.dirname(_driveDir.value.key));
-            final file = Main.remoteFiles[newKey];
+            final file = Main.remoteFileByKey(newKey);
             _changeDirectory(file ?? RemoteFile(key: newKey, etag: ''));
             return;
           }
@@ -1908,90 +1859,78 @@ class BrowserState extends State<Browser> {
                                   SingleChildScrollView(
                                     scrollDirection: Axis.horizontal,
                                     child: Row(
-                                      children:
-                                          <Widget>[
-                                                GestureDetector(
-                                                  onTap: () => _changeDirectory(
-                                                    BrowserState.root,
+                                      children: <Widget>[
+                                        GestureDetector(
+                                          onTap: () => _changeDirectory(
+                                            BrowserState.root,
+                                          ),
+                                          child: Text(
+                                            'FileS3',
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodyLarge,
+                                          ),
+                                        ),
+                                        ...p
+                                            .split(_driveDir.value.key)
+                                            .where((dir) => dir.isNotEmpty)
+                                            .map(
+                                              (dir) => Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.chevron_right,
+                                                    size: 16,
                                                   ),
-                                                  child: Text(
-                                                    'FileS3',
-                                                    style: Theme.of(
-                                                      context,
-                                                    ).textTheme.bodyLarge,
-                                                  ),
-                                                ),
-                                              ]
-                                              .followedBy(
-                                                p
-                                                    .split(_driveDir.value.key)
-                                                    .where(
-                                                      (dir) => dir.isNotEmpty,
-                                                    )
-                                                    .map(
-                                                      (dir) => GestureDetector(
-                                                        onTap: () {
-                                                          String newPath = '';
-                                                          for (final part
-                                                              in p.split(
-                                                                _driveDir
-                                                                    .value
-                                                                    .key,
-                                                              )) {
-                                                            if (part.isEmpty) {
-                                                              continue;
-                                                            }
-                                                            newPath += p.asDir(
-                                                              part,
-                                                            );
-                                                            if (part == dir) {
-                                                              break;
-                                                            }
-                                                          }
-                                                          _changeDirectory(
-                                                            Main.remoteFiles[p
-                                                                    .s3(
-                                                                      newPath,
-                                                                    )] ??
-                                                                root,
-                                                          );
-                                                        },
-                                                        child: Text(
-                                                          dir,
-                                                          style: Theme.of(context)
-                                                              .textTheme
-                                                              .bodyLarge
-                                                              ?.copyWith(
-                                                                color:
-                                                                    p.asDir(
-                                                                          dir,
-                                                                        ) ==
-                                                                        p.basename(
-                                                                          _driveDir
-                                                                              .value
-                                                                              .key,
-                                                                        )
-                                                                    ? Theme.of(
+                                                  GestureDetector(
+                                                    onTap: () {
+                                                      String newPath = '';
+                                                      for (final part
+                                                          in p.split(
+                                                            _driveDir.value.key,
+                                                          )) {
+                                                        if (part.isEmpty) {
+                                                          continue;
+                                                        }
+                                                        newPath += p.asDir(
+                                                          part,
+                                                        );
+                                                        if (part == dir) {
+                                                          break;
+                                                        }
+                                                      }
+                                                      _changeDirectory(
+                                                        Main.remoteFileByKey(
+                                                              p.s3(newPath),
+                                                            ) ??
+                                                            root,
+                                                      );
+                                                    },
+                                                    child: Text(
+                                                      dir,
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .bodyLarge
+                                                          ?.copyWith(
+                                                            color:
+                                                                p.asDir(dir) ==
+                                                                    p.basename(
+                                                                      _driveDir
+                                                                          .value
+                                                                          .key,
+                                                                    )
+                                                                ? Theme.of(
                                                                         context,
-                                                                      ).colorScheme.primary
-                                                                    : null,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    )
-                                                    .map(
-                                                      (widget) => Row(
-                                                        children: [
-                                                          const Icon(
-                                                            Icons.chevron_right,
-                                                            size: 16,
+                                                                      )
+                                                                      .colorScheme
+                                                                      .primary
+                                                                : null,
                                                           ),
-                                                          widget,
-                                                        ],
-                                                      ),
                                                     ),
-                                              )
-                                              .toList(),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                      ],
                                     ),
                                   ),
                                 if (Main.pathFromKey(_driveDir.value.key) !=

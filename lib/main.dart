@@ -315,14 +315,12 @@ class _HomeState extends State<Home> {
             : BackupMode.sync,
       );
     }
-    final files = Main.remoteFiles.values
-        .where(
-          (file) =>
-              p.isWithin(dir.key, file.key) &&
-              file.key != dir.key &&
-              !p.isDir(file.key),
-        )
-        .toList();
+    final files = Main.remoteFiles.where(
+      (file) =>
+          p.isWithin(dir.key, file.key) &&
+          file.key != dir.key &&
+          !p.isDir(file.key),
+    );
     int progressCount = 0;
     final totalFiles = files.length;
     for (final file in files) {
@@ -373,14 +371,12 @@ class _HomeState extends State<Home> {
 
   // uses _saveFile
   void _saveDirectory(RemoteFile dir, String savePath) {
-    final files = Main.remoteFiles.values
-        .where(
-          (file) =>
-              p.isWithin(dir.key, file.key) &&
-              file.key != dir.key &&
-              !p.isDir(file.key),
-        )
-        .toList();
+    final files = Main.remoteFiles.where(
+      (file) =>
+          p.isWithin(dir.key, file.key) &&
+          file.key != dir.key &&
+          !p.isDir(file.key),
+    );
 
     int progressCount = 0;
     final totalFiles = files.length;
@@ -615,14 +611,8 @@ class _HomeState extends State<Home> {
       downloadDirectory: _downloadDirectory,
       saveFile: _saveFile,
       saveDirectory: _saveDirectory,
-      copyFile: Main.copyFile,
-      copyDirectory: Main.copyDirectory,
-      moveFiles: Main.moveFiles,
-      moveDirectories: Main.moveDirectories,
       deleteLocal: _deleteLocal,
-      deleteFiles: Main.deleteFiles,
       deleteCache: _deleteCache,
-      deleteDirectories: Main.deleteDirectories,
       createDirectory: _createDirectory,
       uploadDirectory: _uploadDirectory,
     );

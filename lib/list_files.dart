@@ -131,7 +131,7 @@ class FileRow extends GroupRow {
 }
 
 class ListFiles extends StatefulWidget {
-  final ValueNotifier<List<FileProps>> files;
+  final ValueNotifier<Iterable<FileProps>> files;
   final Map<String, GalleryProps> galleryFiles;
   final Future<void> Function(Map<String, GalleryProps>)? setGalleryFiles;
   final ValueNotifier<ListOptions> listOptions;

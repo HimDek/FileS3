@@ -97,7 +97,7 @@ class S3FileManager {
     return response.headers;
   }
 
-  Future<Map<String, RemoteFile>> listObjects(String dir) async {
+  Future<Iterable<RemoteFile>> listObjects(String dir) async {
     String? prefix = p.join(
       _prefix,
       p.s3(p.relative(dir, from: _profile.name)),
@@ -108,25 +108,21 @@ class S3FileManager {
       prefix: prefix,
     );
     final contents = resp.contents ?? [];
-    Map<String, RemoteFile> files = {
-      for (var item
-          in contents
-              .where((item) => item.key != null)
-              .map(
-                (item) => RemoteFile(
-                  key: p.join(
-                    _profile.name,
-                    p.s3(p.relative(item.key!, from: _prefix)),
-                  ),
-                  size: item.size ?? 0,
-                  etag: item.eTag != null && item.eTag!.isNotEmpty
-                      ? item.eTag!.substring(1, item.eTag!.length - 1)
-                      : '',
-                  lastModified: item.lastModified ?? DateTime.now(),
-                ),
-              ))
-        item.key: item,
-    };
+    final files = contents
+        .where((item) => item.key != null)
+        .map(
+          (item) => RemoteFile(
+            key: p.join(
+              _profile.name,
+              p.s3(p.relative(item.key!, from: _prefix)),
+            ),
+            size: item.size ?? 0,
+            etag: item.eTag != null && item.eTag!.isNotEmpty
+                ? item.eTag!.substring(1, item.eTag!.length - 1)
+                : '',
+            lastModified: item.lastModified ?? DateTime.now(),
+          ),
+        );
     return files;
   }
 

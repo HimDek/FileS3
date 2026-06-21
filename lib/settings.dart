@@ -1020,7 +1020,8 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                 ),
               ),
             if (widget.profile != null &&
-                Main.remoteFiles[widget.profile!.deletionRegistrar.key] != null)
+                Main.remoteFileByKey(widget.profile!.deletionRegistrar.key) !=
+                    null)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -1286,7 +1287,7 @@ class SettingsPageState extends State<SettingsPage> {
       colorNameTextStyle: Theme.of(context).textTheme.bodySmall,
       colorCodeTextStyle: Theme.of(context).textTheme.bodySmall,
       showRecentColors: true,
-      recentColors: ConfigManager.loadRecentColors(),
+      recentColors: ConfigManager.loadRecentColors().toList(),
       maxRecentColors: 6,
       onRecentColorsChanged: (List<Color> recentColors) {
         ConfigManager.saveRecentColors(recentColors);
@@ -1781,32 +1782,29 @@ class SettingsPageState extends State<SettingsPage> {
                           initialValue: _downloadConfig.maxConcurrentTransfers,
                           position: PopupMenuPosition.under,
                           itemBuilder: (context) =>
-                              List.generate(10, (i) => i + 1)
-                                  .map(
-                                    (index) => MyPopupMenuItem<int>(
-                                      value: index,
-                                      child: Text(index.toString()),
-                                      backgroundColor: Colors.transparent,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 12,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      foregroundColor: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurface,
-                                      selectedBackgroundColor: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
-                                      selectedForegroundColor: Theme.of(
-                                        context,
-                                      ).colorScheme.onPrimary,
-                                    ),
-                                  )
-                                  .toList(),
-
+                              List.generate(10, (i) => i + 1).map(
+                                (index) => MyPopupMenuItem<int>(
+                                  value: index,
+                                  child: Text(index.toString()),
+                                  backgroundColor: Colors.transparent,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  foregroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
+                                  selectedBackgroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.primary,
+                                  selectedForegroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.onPrimary,
+                                ),
+                              ),
                           onOpened: () => setState(() {
                             _maxTransfersPopupVisible = true;
                           }),
@@ -1980,7 +1978,7 @@ class PinnedFoldersPageState extends State<PinnedFoldersPage> {
   @override
   void initState() {
     super.initState();
-    _pinnedFolders = ConfigManager.loadPinnedFolders();
+    _pinnedFolders = ConfigManager.loadPinnedFolders().toList();
   }
 
   Future<void> _saveConfig() async {
@@ -2109,9 +2107,7 @@ class PinnedFoldersPageState extends State<PinnedFoldersPage> {
                           context,
                           _pinnedFolders[i].key,
                           title: 'Rename ${_pinnedFolders[i].key}',
-                          existingNames: _pinnedFolders
-                              .map((e) => e.key)
-                              .toList(),
+                          existingNames: _pinnedFolders.map((e) => e.key),
                         )) ??
                         _pinnedFolders[i].key;
                     if (newName != _pinnedFolders[i].key) {

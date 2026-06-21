@@ -122,14 +122,14 @@ Future<String?> Function(
   BuildContext,
   String, {
   String title,
-  List<String> existingNames,
+  Iterable<String> existingNames,
 })
 renameDialog =
     (
       BuildContext context,
       String currentName, {
       String title = 'Rename File',
-      List<String> existingNames = const [],
+      Iterable<String> existingNames = const [],
     }) => showDialog<String>(
       context: context,
       builder: (_) {
@@ -607,9 +607,9 @@ abstract class IniManager {
   }
 
   static void cleanDirectories({String? keepKey}) {
-    for (String key in config.value!.options('directories')?.toList() ?? []) {
+    for (String key in config.value!.options('directories') ?? []) {
       final dirPath = config.value!.get('directories', key).toString();
-      for (String k in config.value!.options('directories')?.toList() ?? []) {
+      for (String k in config.value!.options('directories') ?? []) {
         if (k != key &&
             p.canonicalize(config.value!.get('directories', k).toString()) ==
                 p.canonicalize(dirPath)) {
@@ -739,7 +739,7 @@ abstract class ConfigManager {
       if (mode == BackupMode.sync && p.split(key).length == 1) {
         final toremove = <String>[];
         for (var dir
-            in IniManager.config.value?.options('modes')?.toList() ?? []) {
+            in IniManager.config.value?.options('modes') ?? <String>[]) {
           if (p.isWithin(key, dir) && dir != key) {
             toremove.add(dir);
           }
@@ -897,45 +897,44 @@ abstract class ConfigManager {
     IniManager.save();
   }
 
-  static List<MapEntry<String, String>> loadPinnedFolders() {
-    return IniManager.config.value
-            ?.options("pinned_folders")
-            ?.map((key) {
-              final value = IniManager.config.value!.get("pinned_folders", key);
-              if (value != null) {
-                final jsonValue = jsonDecode(value);
-                if (jsonValue is Map<String, dynamic> &&
-                    jsonValue.containsKey('path') &&
-                    jsonValue['path'] is String) {
-                  return MapEntry(key, jsonValue['path'] as String);
-                }
-              }
-              return null;
-            })
-            .whereType<MapEntry<String, String>>()
-            .toList() ??
+  static Iterable<MapEntry<String, String>> loadPinnedFolders() {
+    return IniManager.config.value?.options("pinned_folders")?.map((key) {
+          final value = IniManager.config.value!.get("pinned_folders", key);
+          if (value != null) {
+            final jsonValue = jsonDecode(value);
+            if (jsonValue is Map<String, dynamic> &&
+                jsonValue.containsKey('path') &&
+                jsonValue['path'] is String) {
+              return MapEntry(key, jsonValue['path'] as String);
+            }
+          }
+          return null;
+        }).whereType<MapEntry<String, String>>() ??
         [];
   }
 
   static Future<void> savePinnedFolders(
-    List<MapEntry<String, String>> folders,
+    Iterable<MapEntry<String, String>> folders,
   ) async {
     if (IniManager.config.value!.sections().contains("pinned_folders")) {
       IniManager.config.value!.removeSection("pinned_folders");
     }
     IniManager.config.value!.addSection("pinned_folders");
-    for (int i = 0; i < folders.length; i++) {
-      final entry = folders[i];
+    int i = 0;
+    final iFolders = folders.iterator;
+    while (iFolders.moveNext()) {
+      final entry = iFolders.current;
       IniManager.config.value!.set(
         "pinned_folders",
         entry.key,
         jsonEncode({"path": entry.value, "index": i}),
       );
+      i++;
     }
     IniManager.save();
   }
 
-  static List<Color> loadRecentColors() {
+  static Iterable<Color> loadRecentColors() {
     final recentColorsStr =
         IniManager.config.value?.get("ui", "recent_colors") ?? '[]';
     final List<dynamic> recentColorsJson = jsonDecode(recentColorsStr);
@@ -948,8 +947,7 @@ abstract class ConfigManager {
             int.tryParse(colorCode.substring(6, 8), radix: 16) ?? 0,
           ),
         )
-        .whereType<Color>()
-        .toList();
+        .whereType<Color>();
   }
 
   static Future<void> saveRecentColors(List<Color> colors) async {
@@ -959,32 +957,30 @@ abstract class ConfigManager {
     IniManager.config.value!.set(
       "ui",
       "recent_colors",
-      jsonEncode(colors.map((color) => ColorTools.colorCode(color)).toList()),
+      jsonEncode(colors.map((color) => ColorTools.colorCode(color))),
     );
     IniManager.save();
   }
 
-  static Future<void> saveRemoteFiles(Map<String, RemoteFile> files) async {
+  static Future<void> saveRemoteFiles(Iterable<RemoteFile> files) async {
     final String jsonString = jsonEncode(
       files
-          as Map<
-            String,
+          as List<
             ({String key, int size, String etag, DateTime? lastModified})
           >,
     );
     await _storage.write(key: 'remote_files', value: jsonString);
   }
 
-  static Future<Map<String, RemoteFile>> loadRemoteFiles() async {
+  static Future<Iterable<RemoteFile>> loadRemoteFiles() async {
     final jsonString = await _storage.read(key: 'remote_files') ?? '[]';
     try {
-      final Map<String, dynamic> jsonList = jsonDecode(jsonString);
+      final List<dynamic> jsonList = jsonDecode(jsonString);
       return jsonList.map(
-        (key, json) =>
-            MapEntry(key, RemoteFile.fromJson(json as Map<String, dynamic>)),
+        (json) => RemoteFile.fromJson(json as Map<String, dynamic>),
       );
     } catch (e) {
-      return {};
+      return [];
     }
   }
 }
@@ -1027,14 +1023,14 @@ class DeletionRegistrar {
   Future<Map<String, DateTime>> pullDeletions() async {
     await profile.refreshRemote(dir: _key);
 
-    if (Main.remoteFilesRaw[_key] == null) {
+    if (Main.remoteFileByKey(_key) == null) {
       if (kDebugMode) {
         debugPrint("Remote deletion register does not exist.");
       }
       return {};
     }
 
-    final remoteFile = Main.remoteFilesRaw[_key];
+    final remoteFile = Main.remoteFileByKey(_key);
 
     if (_lastPulled.toUtc().isAfter(
           remoteFile?.lastModified?.toUtc() ??
@@ -1183,7 +1179,7 @@ class MyListenableBuilder<T> extends ListenableBuilder {
 class MyPopupMenuButton<T> extends PopupMenuButton<T> {
   MyPopupMenuButton({
     super.key,
-    required List<MyPopupMenuItem<T>> Function(BuildContext) itemBuilder,
+    required Iterable<MyPopupMenuItem<T>> Function(BuildContext) itemBuilder,
     super.initialValue,
     super.onOpened,
     super.onSelected,

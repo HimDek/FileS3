@@ -177,7 +177,7 @@ class RemoteFile implements RemoteFileFields {
       return _size;
     }
     int size = 0;
-    for (final file in Main.remoteFiles.values.where(
+    for (final file in Main.remoteFiles.where(
       (file) => p.isWithin(key, file.key) && !p.isDir(file.key),
     )) {
       size += file.size;
@@ -191,7 +191,7 @@ class RemoteFile implements RemoteFileFields {
       return _lastModified;
     }
     DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
-    for (final file in Main.remoteFiles.values.where(
+    for (final file in Main.remoteFiles.where(
       (file) => p.isWithin(key, file.key) && !p.isDir(file.key),
     )) {
       if (file.lastModified?.isAfter(latest) ?? false) {
@@ -210,7 +210,7 @@ class RemoteFile implements RemoteFileFields {
     }
     int dirCount = 0;
     int fileCount = 0;
-    for (final file in Main.remoteFiles.values.where(
+    for (final file in Main.remoteFiles.where(
       (file) =>
           p.isWithin(key, file.key) &&
           file.key != key &&
@@ -229,7 +229,7 @@ class RemoteFile implements RemoteFileFields {
   Future<bool> getDownloaded() async {
     if (p.isDir(key)) {
       bool downloaded = true;
-      for (var file in Main.remoteFiles.values.where(
+      for (var file in Main.remoteFiles.where(
         (f) => p.isWithin(key, f.key) && !p.isDir(f.key),
       )) {
         file.downloaded = await File(
@@ -250,7 +250,7 @@ class RemoteFile implements RemoteFileFields {
   Future<bool> getCached() async {
     if (p.isDir(key)) {
       bool cached = true;
-      for (var file in Main.remoteFiles.values.where(
+      for (var file in Main.remoteFiles.where(
         (f) => p.isWithin(key, f.key) && !p.isDir(f.key),
       )) {
         file.cached = await File(Main.cachePathFromKey(file.key)).exists();

@@ -193,9 +193,8 @@ abstract class Main {
   static String _documentsDir = '';
   static String _cacheDir = '';
   static String _downloadCacheDir = '';
-  static Map<String, RemoteFile> _remoteFiles = <String, RemoteFile>{};
-  static final Map<String, RemoteFile> _filteredRemoteFiles =
-      <String, RemoteFile>{};
+  static List<RemoteFile> _remoteFiles = <RemoteFile>[];
+  static Map<String, int> _remoteFilesIndex = <String, int>{};
   static final Map<String, Profile> _profiles = <String, Profile>{};
   static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
   static final ManualNotifier onRemoteFilesChanged = ManualNotifier();
@@ -204,26 +203,32 @@ abstract class Main {
     RegExp(r'^.*[/\\]deletion-register\.ini$'),
   ];
 
+  static String get cacheDir => _cacheDir;
+
+  static String get downloadCacheDir => _downloadCacheDir;
+
+  static String get documentsDir => _documentsDir;
+
+  static List<RegExp> get ignoreKeyRegexps =>
+      UnmodifiableListView(_ignoreKeyRegexps);
+
+  static Iterable<RemoteFile> get remoteFiles => _remoteFiles.where(
+    (file) => !_ignoreKeyRegexps.any((regexp) => regexp.hasMatch(file.key)),
+  );
+  static List<RemoteFile> get remoteFilesRaw =>
+      UnmodifiableListView(_remoteFiles);
+  static Map<String, int> get remoteFilesIndex =>
+      UnmodifiableMapView(_remoteFilesIndex);
   static Map<String, Profile> get profiles => _profiles;
 
-  static Map<String, RemoteFile> get remoteFiles =>
-      UnmodifiableMapView(_filteredRemoteFiles);
-  static Map<String, RemoteFile> get remoteFilesRaw =>
-      UnmodifiableMapView(_remoteFiles);
-
   static void rebuildRemoteFiles() {
-    _filteredRemoteFiles.clear();
-    _filteredRemoteFiles.addAll(
-      Map.fromEntries(
-        _remoteFiles.entries.where(
-          (entry) =>
-              !_ignoreKeyRegexps.any((regex) => regex.hasMatch(entry.key)),
-        ),
-      ),
-    );
+    _remoteFiles.sort((a, b) => a.key.compareTo(b.key));
+    _remoteFilesIndex = {
+      for (int i = 0; i < _remoteFiles.length; i++) _remoteFiles[i].key: i,
+    };
   }
 
-  static void remoteFilesSet(Map<String, RemoteFile> files) {
+  static void remoteFilesSet(List<RemoteFile> files) {
     _remoteFiles = files;
     _ensureDirectories();
     rebuildRemoteFiles();
@@ -231,28 +236,26 @@ abstract class Main {
   }
 
   static void remoteFilesAdd(RemoteFile file) {
-    _remoteFiles[file.key] = file;
+    _remoteFiles.add(file);
     _ensureDirectory(file.key);
     rebuildRemoteFiles();
     onRemoteFilesChanged.notifyListeners();
   }
 
-  static void remoteFilesAddAll(Map<String, RemoteFile> files) {
+  static void remoteFilesAddAll(Iterable<RemoteFile> files) {
     _remoteFiles.addAll(files);
     _ensureDirectories(files: files);
     rebuildRemoteFiles();
     onRemoteFilesChanged.notifyListeners();
   }
 
-  static void remoteFilesRemoveWhere(
-    bool Function(String, RemoteFile element) test,
-  ) {
+  static void remoteFilesRemoveWhere(bool Function(RemoteFile element) test) {
     remoteFilesRemoveWhereNoNotify(test);
     onRemoteFilesChanged.notifyListeners();
   }
 
   static void remoteFilesRemoveWhereNoNotify(
-    bool Function(String, RemoteFile element) test,
+    bool Function(RemoteFile element) test,
   ) {
     _remoteFiles.removeWhere(test);
     rebuildRemoteFiles();
@@ -264,14 +267,9 @@ abstract class Main {
     onRemoteFilesChanged.notifyListeners();
   }
 
-  static String get cacheDir => _cacheDir;
-
-  static String get downloadCacheDir => _downloadCacheDir;
-
-  static String get documentsDir => _documentsDir;
-
-  static List<RegExp> get ignoreKeyRegexps =>
-      UnmodifiableListView(_ignoreKeyRegexps);
+  static RemoteFile? remoteFileByKey(String key) {
+    return _remoteFiles.elementAtOrNull(_remoteFilesIndex[key] ?? -1);
+  }
 
   static Profile? profileFromKey(String key) {
     try {
@@ -343,7 +341,7 @@ abstract class Main {
     if (job is UploadJob &&
         job.status.value == JobStatus.completed &&
         result is RemoteFile) {
-      _remoteFiles.removeWhere((key, file) => key == job.remoteKey);
+      _remoteFiles.removeWhere((file) => file.key == job.remoteKey);
       remoteFilesAdd(result);
     }
   }
@@ -352,7 +350,7 @@ abstract class Main {
     if (kDebugMode) {
       debugPrint("Stopping all watchers...");
     }
-    for (final watcher in _watcherMap.values.toList()) {
+    for (final watcher in _watcherMap.values) {
       await watcher.stop();
     }
   }
@@ -382,7 +380,7 @@ abstract class Main {
 
   static void _ensureDirectory(String key) {
     final parent = p.s3(p.dirname(p.normalize(key)));
-    if (parent.isEmpty || _remoteFiles.containsKey(parent)) return;
+    if (parent.isEmpty || _remoteFilesIndex.containsKey(parent)) return;
 
     final parts = p.split(parent);
 
@@ -393,15 +391,15 @@ abstract class Main {
       current = p.join(current, part);
       final dirPath = p.asDir(current);
 
-      if (!_remoteFiles.containsKey(dirPath)) {
-        _remoteFiles[dirPath] = RemoteFile(key: dirPath, etag: '');
+      if (!_remoteFilesIndex.containsKey(dirPath)) {
+        _remoteFiles.add(RemoteFile(key: dirPath, etag: ''));
       }
     }
   }
 
-  static void _ensureDirectories({Map<String, RemoteFile>? files}) {
-    final keys = (files ?? _remoteFiles).keys;
-    for (final key in Iterable.castFrom(keys)) {
+  static void _ensureDirectories({Iterable<RemoteFile>? files}) {
+    final keys = (files ?? _remoteFiles).map((f) => f.key);
+    for (final key in keys) {
       _ensureDirectory(key);
     }
   }
@@ -420,12 +418,12 @@ abstract class Main {
   static Future<void> refreshProfiles() async {
     loading.value = true;
     final entries = (await ConfigManager.loadS3Config()).entries;
-    for (final profile in _profiles.values.toList()) {
+    for (final profile in _profiles.values) {
       if (entries.every((e) => e.key != profile.name)) {
         profile.dispose();
         _profiles.remove(profile.name);
         remoteFilesRemoveWhere(
-          (key, file) => p.split(key).firstOrNull == profile.name,
+          (file) => p.split(file.key).firstOrNull == profile.name,
         );
         await ConfigManager.saveRemoteFiles(Main.remoteFiles);
       }
@@ -443,7 +441,7 @@ abstract class Main {
   static Future<void> listDirectories({bool background = false}) async {
     loading.value = true;
     if (!background && _remoteFiles.isEmpty) {
-      remoteFilesSet(await ConfigManager.loadRemoteFiles());
+      remoteFilesSet((await ConfigManager.loadRemoteFiles()).toList());
     }
 
     for (final profile in _profiles.values) {
@@ -512,7 +510,7 @@ abstract class Main {
         String ext = p.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (_remoteFiles.containsKey(candidateKey)) {
+        while (_remoteFilesIndex.containsKey(candidateKey)) {
           candidateKey = p.join(p.s3(p.dirname(key)), '$base${'($count)'}$ext');
           count++;
         }
@@ -541,7 +539,7 @@ abstract class Main {
         String ext = p.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (_remoteFiles.containsKey(candidateKey)) {
+        while (_remoteFilesIndex.containsKey(candidateKey)) {
           candidateKey = p.join(p.s3(p.dirname(key)), '$base${'($count)'}$ext');
           count++;
         }
@@ -565,7 +563,9 @@ abstract class Main {
   }) async {
     loading.value = true;
 
-    RemoteFile? oldFile = remoteFiles[key];
+    RemoteFile? oldFile = remoteFilesRaw.elementAtOrNull(
+      _remoteFilesIndex[key] ?? -1,
+    );
     if (oldFile == null) {
       loading.value = false;
       return;
@@ -628,7 +628,7 @@ abstract class Main {
     ValueNotifier<double>? preprogress,
   }) async {
     loading.value = true;
-    final keys = remoteFiles.keys.where(
+    final keys = _remoteFilesIndex.keys.where(
       (key) => p.isWithin(dir, key) && key != dir && !p.isDir(key),
     );
     int progressCount = 0;
@@ -649,13 +649,13 @@ abstract class Main {
   }
 
   static Future<void> deleteFiles(
-    List<String> keys, {
+    Iterable<String> keys, {
     bool refresh = true,
     ValueNotifier<double>? preprogress,
   }) async {
     loading.value = true;
 
-    final files = remoteFiles.keys.where(
+    final files = _remoteFilesIndex.keys.where(
       (key) => keys.contains(key) && !p.isDir(key),
     );
 
@@ -691,7 +691,7 @@ abstract class Main {
         }
       }
 
-      remoteFilesRemoveWhere((key, file) => keysForProfile.contains(key));
+      remoteFilesRemoveWhere((file) => keysForProfile.contains(file.key));
     }
 
     if (refresh) {
@@ -700,13 +700,13 @@ abstract class Main {
   }
 
   static Future<void> deleteS3(
-    List<String> keys, {
+    Iterable<String> keys, {
     bool refresh = true,
     ValueNotifier<double>? preprogress,
   }) async {
     loading.value = true;
 
-    final files = remoteFiles.keys.where(
+    final files = _remoteFilesIndex.keys.where(
       (key) => keys.contains(key) || !p.isDir(key)
           ? keys.any((d) => p.isWithin(d, key))
           : false,
@@ -715,7 +715,7 @@ abstract class Main {
     final Map<Profile, List<String>> profileFiles = {};
     for (final file in files) {
       final profile = profileFromKey(file);
-      if (profile != null && remoteFiles[file] != null) {
+      if (profile != null && _remoteFilesIndex[file] != null) {
         profileFiles.putIfAbsent(profile, () => []).add(file);
       }
     }
@@ -726,13 +726,10 @@ abstract class Main {
       final filesForProfile = entry.value;
 
       await profile.deletionRegistrar.pullDeletions();
-      profile.deletionRegistrar.logDeletions(
-        filesForProfile.map((e) => e).toList(),
-      );
+      profile.deletionRegistrar.logDeletions(filesForProfile);
       await profile.deletionRegistrar.pushDeletions();
 
-      for (final file
-          in filesForProfile.where((file) => !p.isDir(file)).toList()) {
+      for (final file in filesForProfile.where((file) => !p.isDir(file))) {
         progressCount += 1;
         (preprogress ?? progress).value =
             progressCount / profileFiles.values.expand((e) => e).length;
@@ -740,11 +737,12 @@ abstract class Main {
       }
 
       remoteFilesRemoveWhere(
-        (key, file) =>
-            filesForProfile.map((e) => e).contains(key) && !p.isDir(key),
+        (file) =>
+            filesForProfile.map((e) => e).contains(file.key) &&
+            !p.isDir(file.key),
       );
 
-      final dirsForProfile = remoteFiles.keys
+      final dirsForProfile = _remoteFilesIndex.keys
           .where(
             (key) =>
                 filesForProfile.map((e) => e).contains(key) && p.isDir(key),
@@ -760,7 +758,7 @@ abstract class Main {
       }
 
       remoteFilesRemoveWhere(
-        (key, file) => dirsForProfile.map((e) => e).contains(key),
+        (file) => dirsForProfile.map((e) => e).contains(file.key),
       );
 
       await profile.refreshRemote(dir: profile.name);
@@ -773,7 +771,7 @@ abstract class Main {
 
   // uses deleteS3
   static Future<void> deleteDirectories(
-    List<String> dirs, {
+    Iterable<String> dirs, {
     bool refresh = true,
     ValueNotifier<double>? preprogress,
   }) async {
@@ -799,22 +797,28 @@ abstract class Main {
 
   // uses copyFile and deleteFiles
   static Future<void> moveFiles(
-    List<String> keys,
-    List<String> newKeys, {
+    Iterable<String> keys,
+    Iterable<String> newKeys, {
     bool refresh = true,
   }) async {
     loading.value = true;
-    for (int i = 0; i < keys.length; i++) {
+    int i = 0;
+    final ikeys = keys.iterator;
+    final inewKeys = newKeys.iterator;
+    while (ikeys.moveNext() && inewKeys.moveNext()) {
+      final key = ikeys.current;
+      final newKey = inewKeys.current;
       progress.value = (i + 1) * 0.5 / keys.length;
-      await copyFile(keys[i], newKeys[i], refresh: false);
-      File file = File(pathFromKey(keys[i]) ?? keys[i]);
+      await copyFile(key, newKey, refresh: false);
+      File file = File(pathFromKey(key) ?? key);
       if (file.existsSync()) {
-        renameOrCopyAndDelete(file, pathFromKey(newKeys[i]) ?? newKeys[i]);
+        renameOrCopyAndDelete(file, pathFromKey(newKey) ?? newKey);
       }
-      File cacheFile = File(cachePathFromKey(keys[i]));
+      File cacheFile = File(cachePathFromKey(key));
       if (cacheFile.existsSync()) {
-        renameOrCopyAndDelete(cacheFile, pathFromKey(newKeys[i]) ?? newKeys[i]);
+        renameOrCopyAndDelete(cacheFile, pathFromKey(newKey) ?? newKey);
       }
+      i++;
     }
     final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
     preprogress.addListener(() {
@@ -829,23 +833,30 @@ abstract class Main {
 
   // uses copyDirectory and deleteDirectories
   static Future<void> moveDirectories(
-    List<String> dirs,
-    List<String> newDirs, {
+    Iterable<String> dirs,
+    Iterable<String> newDirs, {
     bool refresh = true,
   }) async {
     loading.value = true;
-    for (int i = 0; i < dirs.length; i++) {
+    final iDirs = dirs.iterator;
+    final iNewDirs = newDirs.iterator;
+
+    int i = 0;
+    while (iDirs.moveNext() && iNewDirs.moveNext()) {
+      final dir = iDirs.current;
+      final newDir = iNewDirs.current;
       final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
       preprogress.addListener(() {
         progress.value = (i + 1) * 0.5 * preprogress.value / dirs.length;
       });
       await copyDirectory(
-        dirs[i],
-        newDirs[i],
+        dir,
+        newDir,
         refresh: false,
         preprogress: preprogress,
       );
       preprogress.dispose();
+      i++;
     }
     final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
     preprogress.addListener(() {
@@ -1257,9 +1268,11 @@ class Watcher {
       }
 
       final remoteFiles = Map.fromEntries(
-        Main.remoteFiles.entries.where(
-          (entry) => p.isWithin(remoteDir, entry.key) && !p.isDir(entry.key),
-        ),
+        Main.remoteFiles
+            .where(
+              (file) => p.isWithin(remoteDir, file.key) && !p.isDir(file.key),
+            )
+            .map((file) => MapEntry(file.key, file)),
       );
 
       if (remoteFiles.isEmpty) {
@@ -1306,7 +1319,7 @@ class Watcher {
         }
         BackupMode mode = Main.backupModeFromKey(key);
         if (mode == BackupMode.sync || mode == BackupMode.upload) {
-          final file = Main.remoteFiles[key];
+          final file = Main.remoteFileByKey(key);
           if (file != null) {
             Main.downloadFile(file);
           }
@@ -1318,7 +1331,7 @@ class Watcher {
           continue;
         }
         if (Main.backupModeFromKey(key) == BackupMode.sync) {
-          final file = Main.remoteFiles[key];
+          final file = Main.remoteFileByKey(key);
           if (file != null) {
             Main.downloadFile(file);
           }

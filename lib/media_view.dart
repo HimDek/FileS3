@@ -1013,10 +1013,14 @@ class GalleryState extends State<Gallery> {
   void initState() {
     _currentKey.value = widget.initialKey;
 
-    final entries = widget.files.keys.toList();
-    for (int i = 0; i < entries.length; i++) {
-      indexMap[entries[i]] = i;
-      keyMap[i] = entries[i];
+    final entries = widget.files.keys;
+    int i = 0;
+    final iEntries = entries.iterator;
+    while (iEntries.moveNext()) {
+      final entry = iEntries.current;
+      indexMap[entry] = i;
+      keyMap[i] = entry;
+      i++;
     }
 
     _pageController = PageController(
