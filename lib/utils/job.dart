@@ -802,13 +802,13 @@ abstract class Main {
     bool refresh = true,
   }) async {
     loading.value = true;
-    int i = 0;
+    int i = 1;
     final ikeys = keys.iterator;
     final inewKeys = newKeys.iterator;
     while (ikeys.moveNext() && inewKeys.moveNext()) {
       final key = ikeys.current;
       final newKey = inewKeys.current;
-      progress.value = (i + 1) * 0.5 / keys.length;
+      progress.value = i * 0.5 / keys.length;
       await copyFile(key, newKey, refresh: false);
       File file = File(pathFromKey(key) ?? key);
       if (file.existsSync()) {
@@ -841,13 +841,13 @@ abstract class Main {
     final iDirs = dirs.iterator;
     final iNewDirs = newDirs.iterator;
 
-    int i = 0;
+    int i = 1;
     while (iDirs.moveNext() && iNewDirs.moveNext()) {
       final dir = iDirs.current;
       final newDir = iNewDirs.current;
       final ValueNotifier<double> preprogress = ValueNotifier<double>(0.0);
       preprogress.addListener(() {
-        progress.value = (i + 1) * 0.5 * preprogress.value / dirs.length;
+        progress.value = i * 0.5 * preprogress.value / dirs.length;
       });
       await copyDirectory(
         dir,
