@@ -949,20 +949,19 @@ class ListFilesState extends State<ListFiles> {
                                               for (final file in group.value) {
                                                 if (!widget.selection.value
                                                     .contains(file.key)) {
-                                                  widget.selection.value = {
-                                                    ...widget.selection.value,
-                                                    file.key,
-                                                  };
+                                                  widget
+                                                      .getSelectAction(
+                                                        file.file!,
+                                                      )
+                                                      ?.call();
                                                 }
                                               }
                                             } else {
-                                              widget.selection.value = {
-                                                ...widget.selection.value.where(
-                                                  (f) => !group.value
-                                                      .map((f) => f.key)
-                                                      .contains(f),
-                                                ),
-                                              };
+                                              for (final file in group.value) {
+                                                widget
+                                                    .getSelectAction(file.file!)
+                                                    ?.call();
+                                              }
                                             }
                                           },
                                           child: Icon(
