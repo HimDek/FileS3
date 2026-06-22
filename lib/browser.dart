@@ -736,17 +736,20 @@ class BrowserState extends State<Browser> {
             recursive: false,
           ).where((file) => p.isDir(file.key))
         : _driveDir.value.key != '' && _navIndex.value == 0
-        ? (Main.remoteFilesByDir(_driveDir.value.key, recursive: false).where(
-                    (file) =>
-                        !Job.activeJobs.any((job) => job.remoteKey == file.key),
-                  )
-                  as Iterable)
+        ? Main.remoteFilesByDir(_driveDir.value.key, recursive: false)
+              .where(
+                (file) =>
+                    !Job.activeJobs.any((job) => job.remoteKey == file.key),
+              )
+              .cast<dynamic>()
               .followedBy(
-                Job.activeJobs.where(
-                  (job) =>
-                      p.s3(p.dirname(job.remoteKey)) ==
-                      p.s3(_driveDir.value.key),
-                ),
+                Job.activeJobs
+                    .where(
+                      (job) =>
+                          p.s3(p.dirname(job.remoteKey)) ==
+                          p.s3(_driveDir.value.key),
+                    )
+                    .cast<dynamic>(),
               )
         : _navIndex.value == 1
         ? Job.completedJobs
