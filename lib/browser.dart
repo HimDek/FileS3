@@ -542,6 +542,16 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<Profile?> _profile = ValueNotifier(null);
   final ValueNotifier<RemoteFile> _driveDir = ValueNotifier(BrowserState.root);
   final ValueNotifier<ListOptions> _listOptions = ValueNotifier(ListOptions());
+  final ValueNotifier<SortMode> _sortMode = ValueNotifier(
+    ListOptions().sortMode,
+  );
+  final ValueNotifier<ViewMode> _viewMode = ValueNotifier(
+    ListOptions().viewMode,
+  );
+  final ValueNotifier<bool> _foldersFirst = ValueNotifier(
+    ListOptions().foldersFirst,
+  );
+  final ValueNotifier<bool> _group = ValueNotifier(ListOptions().group);
   final ValueNotifier<SelectionAction> _selectionAction = ValueNotifier(
     SelectionAction.none,
   );
@@ -718,8 +728,8 @@ class BrowserState extends State<Browser> {
               ? FileProps(key: file.key, size: file.size, file: file, url: url)
               : FileProps(key: file.key, size: file.size, file: file, url: url);
         }),
-        _listOptions.value.sortMode,
-        _listOptions.value.foldersFirst,
+        _sortMode.value,
+        _foldersFirst.value,
       );
     }
   }
@@ -1044,7 +1054,10 @@ class BrowserState extends State<Browser> {
       listenable: Listenable.merge([
         loading,
         _searching,
-        _listOptions,
+        _sortMode,
+        _foldersFirst,
+        _viewMode,
+        _group,
         _globalListOptions,
       ]),
       builder: (context, _) => M3ECardColumn(
@@ -1080,14 +1093,13 @@ class BrowserState extends State<Browser> {
                 contentPadding: EdgeInsets.only(left: 16, right: 16),
                 titleTextStyle: Theme.of(context).textTheme.bodyMedium,
                 title: Text('Name'),
-                trailing: _listOptions.value.sortMode == SortMode.nameAsc
+                trailing: _sortMode.value == SortMode.nameAsc
                     ? Icon(Icons.arrow_upward)
-                    : _listOptions.value.sortMode == SortMode.nameDesc
+                    : _sortMode.value == SortMode.nameDesc
                     ? Icon(Icons.arrow_downward)
                     : null,
                 onTap: () {
-                  _listOptions.value =
-                      _listOptions.value.sortMode == SortMode.nameAsc
+                  _listOptions.value = _sortMode.value == SortMode.nameAsc
                       ? _listOptions.value.copyWith(sortMode: SortMode.nameDesc)
                       : _listOptions.value.copyWith(sortMode: SortMode.nameAsc);
                   _setListOptions(_listOptions.value);
@@ -1100,14 +1112,13 @@ class BrowserState extends State<Browser> {
                 contentPadding: EdgeInsets.only(left: 16, right: 16),
                 titleTextStyle: Theme.of(context).textTheme.bodyMedium,
                 title: Text('Date'),
-                trailing: _listOptions.value.sortMode == SortMode.dateAsc
+                trailing: _sortMode.value == SortMode.dateAsc
                     ? Icon(Icons.arrow_upward)
-                    : _listOptions.value.sortMode == SortMode.dateDesc
+                    : _sortMode.value == SortMode.dateDesc
                     ? Icon(Icons.arrow_downward)
                     : null,
                 onTap: () {
-                  _listOptions.value =
-                      _listOptions.value.sortMode == SortMode.dateAsc
+                  _listOptions.value = _sortMode.value == SortMode.dateAsc
                       ? _listOptions.value.copyWith(sortMode: SortMode.dateDesc)
                       : _listOptions.value.copyWith(sortMode: SortMode.dateAsc);
                   _setListOptions(_listOptions.value);
@@ -1119,14 +1130,13 @@ class BrowserState extends State<Browser> {
                 contentPadding: EdgeInsets.only(left: 16, right: 16),
                 titleTextStyle: Theme.of(context).textTheme.bodyMedium,
                 title: Text('Size'),
-                trailing: _listOptions.value.sortMode == SortMode.sizeAsc
+                trailing: _sortMode.value == SortMode.sizeAsc
                     ? Icon(Icons.arrow_upward)
-                    : _listOptions.value.sortMode == SortMode.sizeDesc
+                    : _sortMode.value == SortMode.sizeDesc
                     ? Icon(Icons.arrow_downward)
                     : null,
                 onTap: () {
-                  _listOptions.value =
-                      _listOptions.value.sortMode == SortMode.sizeAsc
+                  _listOptions.value = _sortMode.value == SortMode.sizeAsc
                       ? _listOptions.value.copyWith(sortMode: SortMode.sizeDesc)
                       : _listOptions.value.copyWith(sortMode: SortMode.sizeAsc);
                   _setListOptions(_listOptions.value);
@@ -1138,14 +1148,13 @@ class BrowserState extends State<Browser> {
                 contentPadding: EdgeInsets.only(left: 16, right: 16),
                 titleTextStyle: Theme.of(context).textTheme.bodyMedium,
                 title: Text('Type'),
-                trailing: _listOptions.value.sortMode == SortMode.typeAsc
+                trailing: _sortMode.value == SortMode.typeAsc
                     ? Icon(Icons.arrow_upward)
-                    : _listOptions.value.sortMode == SortMode.typeDesc
+                    : _sortMode.value == SortMode.typeDesc
                     ? Icon(Icons.arrow_downward)
                     : null,
                 onTap: () {
-                  _listOptions.value =
-                      _listOptions.value.sortMode == SortMode.typeAsc
+                  _listOptions.value = _sortMode.value == SortMode.typeAsc
                       ? _listOptions.value.copyWith(sortMode: SortMode.typeDesc)
                       : _listOptions.value.copyWith(sortMode: SortMode.typeAsc);
                   _setListOptions(_listOptions.value);
@@ -1165,7 +1174,7 @@ class BrowserState extends State<Browser> {
                   'Folders First',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                value: _listOptions.value.foldersFirst,
+                value: _foldersFirst.value,
                 onChanged: (value) {
                   _listOptions.value = _listOptions.value.copyWith(
                     foldersFirst: value ?? true,
@@ -1181,7 +1190,7 @@ class BrowserState extends State<Browser> {
                   'Grid View',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                value: _listOptions.value.viewMode == ViewMode.grid,
+                value: _viewMode.value == ViewMode.grid,
                 onChanged: (value) {
                   _listOptions.value = _listOptions.value.copyWith(
                     viewMode: value! ? ViewMode.grid : ViewMode.list,
@@ -1197,7 +1206,7 @@ class BrowserState extends State<Browser> {
                   'Grouped View',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                value: _listOptions.value.group,
+                value: _group.value,
                 onChanged: (value) {
                   _listOptions.value = _listOptions.value.copyWith(
                     group: value ?? true,
@@ -1292,10 +1301,18 @@ class BrowserState extends State<Browser> {
 
     Listenable.merge([
       _currentItems,
-      _listOptions,
+      _sortMode,
+      _foldersFirst,
     ]).addListener(_applyListOptions);
 
     Main.onRemoteFilesChanged.addListener(_updateCounts);
+
+    Listenable.merge([_listOptions]).addListener(() {
+      _sortMode.value = _listOptions.value.sortMode;
+      _viewMode.value = _listOptions.value.viewMode;
+      _foldersFirst.value = _listOptions.value.foldersFirst;
+      _group.value = _listOptions.value.group;
+    });
 
     if (IniManager.config.value == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1306,7 +1323,6 @@ class BrowserState extends State<Browser> {
         });
         if (!loading.value) {
           _setCurrentItems();
-          _applyListOptions();
         }
       });
     } else {
@@ -1314,7 +1330,6 @@ class BrowserState extends State<Browser> {
         _fetchListOptions();
         if (!loading.value) {
           _setCurrentItems();
-          _applyListOptions();
         }
       });
     }
@@ -1337,6 +1352,10 @@ class BrowserState extends State<Browser> {
     _profile.dispose();
     _driveDir.dispose();
     _listOptions.dispose();
+    _sortMode.dispose();
+    _viewMode.dispose();
+    _foldersFirst.dispose();
+    _group.dispose();
     _selectionAction.dispose();
     _selection.dispose();
     _searchResults.dispose();

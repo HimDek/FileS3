@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
@@ -98,17 +100,12 @@ class MyGridTile extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (bottomLeftBadge != null || bottomRightBadge != null)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      bottomLeftBadge ?? SizedBox.shrink(),
-                      bottomRightBadge ?? SizedBox.shrink(),
-                    ],
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    bottomLeftBadge ?? SizedBox.shrink(),
+                    bottomRightBadge ?? SizedBox.shrink(),
+                  ],
                 ),
               AnimatedPadding(
                 duration: Duration(milliseconds: 250),
@@ -194,12 +191,24 @@ class ListFiles extends StatefulWidget {
 }
 
 class ListFilesState extends State<ListFiles> {
-  final ValueNotifier<Map<String, List<FileProps>>> _groups = ValueNotifier({});
+  final ValueNotifier<SortMode> _sortMode = ValueNotifier(
+    ListOptions().sortMode,
+  );
+  final ValueNotifier<ViewMode> _viewMode = ValueNotifier(
+    ListOptions().viewMode,
+  );
+  final ValueNotifier<bool> _foldersFirst = ValueNotifier(
+    ListOptions().foldersFirst,
+  );
+  final ValueNotifier<bool> _group = ValueNotifier(ListOptions().group);
+  final ValueNotifier<Map<String, Iterable<FileProps>>> _groups = ValueNotifier(
+    {},
+  );
   final SelectionNotifiers _selectionNotifiers = SelectionNotifiers();
 
-  void makeGroups() {
+  Future<void> makeGroups() async {
     final Map<String, List<FileProps>> groups = {};
-    SortMode? groupBy = widget.listOptions.value.sortMode;
+    SortMode? groupBy = _sortMode.value;
     for (var file in widget.files.value) {
       String key;
       switch (groupBy) {
@@ -260,7 +269,7 @@ class ListFilesState extends State<ListFiles> {
               : 'No Extension';
           break;
       }
-      if (widget.listOptions.value.foldersFirst && p.isDir(file.key)) {
+      if (_foldersFirst.value && p.isDir(file.key)) {
         key += '_folder';
       }
 
@@ -285,7 +294,7 @@ class ListFilesState extends State<ListFiles> {
 
     for (final group in _groups.value.entries) {
       // Header height (if enabled)
-      if (widget.listOptions.value.group) {
+      if (_group.value) {
         final style = Theme.of(context).textTheme.titleMedium!;
         final painter = TextPainter(
           text: TextSpan(text: group.key, style: style),
@@ -296,7 +305,7 @@ class ListFilesState extends State<ListFiles> {
       }
 
       // Grid items
-      if (widget.listOptions.value.viewMode != ViewMode.grid) {
+      if (_viewMode.value != ViewMode.grid) {
         // List view
         for (final file in group.value) {
           final listTileHeight = MediaQuery.of(context).size.width < 600
@@ -306,10 +315,13 @@ class ListFilesState extends State<ListFiles> {
           offset += listTileHeight;
         }
       } else {
-        for (int i = 0; i < group.value.length; i++) {
-          final file = group.value[i];
+        int i = 0;
+        final iGroupValue = group.value.iterator;
+        while (iGroupValue.moveNext()) {
+          final file = iGroupValue.current;
           final row = i ~/ columns;
           widget.keysOffsetMap.value[file.key] = offset + row * tileHeight;
+          i++;
         }
 
         // Skip past this group’s grid
@@ -783,84 +795,100 @@ class ListFilesState extends State<ListFiles> {
   }
 
   Widget _groupContent(MapEntry<String, List<FileProps>> group) {
-    return widget.listOptions.value.viewMode == ViewMode.grid
-        ? SliverGrid.builder(
-            key: ValueKey(widget.relativeto.value.key + group.key),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: MediaQuery.of(context).size.width < 600 ? 4 : 6,
-              childAspectRatio: 3 / 4,
+    return ListenableBuilder(
+      listenable: _viewMode,
+      builder: (context, child) => _viewMode.value == ViewMode.grid
+          ? SliverGrid.builder(
+              key: ValueKey(widget.relativeto.value.key + group.key),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: MediaQuery.of(context).size.width < 600 ? 4 : 6,
+                childAspectRatio: 3 / 4,
+              ),
+              itemCount: group.value.length,
+              itemBuilder: (context, index) =>
+                  gridItemBuilder(context, group.value[index]),
+            )
+          : SliverM3ECardList(
+              key: ValueKey(widget.relativeto.value.key + group.key),
+              itemCount: group.value.length,
+              outerRadius: 14,
+              innerRadius: 4,
+              gap: 3,
+              margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: EdgeInsets.zero,
+              color: Colors.transparent,
+              itemBuilder: (context, index) => TweenAnimationBuilder<double>(
+                duration: Duration(milliseconds: 300),
+                tween: Tween(begin: 0, end: 1),
+                builder: (context, value, child) {
+                  return Opacity(
+                    opacity: value,
+                    child: Transform.translate(
+                      offset: Offset(0, 20 * (1 - value)),
+                      child: child,
+                    ),
+                  );
+                },
+                child: listItemBuilder(context, group.value[index]),
+              ),
             ),
-            itemCount: group.value.length,
-            itemBuilder: (context, index) =>
-                gridItemBuilder(context, group.value[index]),
-          )
-        : SliverM3ECardList(
-            key: ValueKey(widget.relativeto.value.key + group.key),
-            itemCount: group.value.length,
-            outerRadius: 14,
-            innerRadius: 4,
-            gap: 3,
-            margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            padding: EdgeInsets.zero,
-            color: Colors.transparent,
-            itemBuilder: (context, index) => TweenAnimationBuilder<double>(
-              duration: Duration(milliseconds: 300),
-              tween: Tween(begin: 0, end: 1),
-              builder: (context, value, child) {
-                return Opacity(
-                  opacity: value,
-                  child: Transform.translate(
-                    offset: Offset(0, 20 * (1 - value)),
-                    child: child,
-                  ),
-                );
-              },
-              child: listItemBuilder(context, group.value[index]),
-            ),
-          );
+    );
   }
 
   @override
   void initState() {
+    _sortMode.value = widget.listOptions.value.sortMode;
+    _viewMode.value = widget.listOptions.value.viewMode;
+    _foldersFirst.value = widget.listOptions.value.foldersFirst;
+    _group.value = widget.listOptions.value.group;
     super.initState();
-
-    Listenable.merge([widget.files, widget.relativeto]).addListener(() {
-      widget.setGalleryFiles?.call({
-        for (var f in widget.files.value.where((f) => !p.isDir(f.key)))
-          f.key: GalleryProps(
-            file:
-                f.file ??
-                RemoteFile(
-                  key: f.key,
-                  size: f.size,
-                  etag: f.job!.md5.toString(),
-                ),
-            title: p.isWithin(widget.relativeto.value.key, f.key)
-                ? p.s3(p.relative(f.key, from: widget.relativeto.value.key))
-                : f.key,
-            url: f.url!,
-            path: Main.pathFromKey(f.key) ?? f.key,
-            cachePath: Main.cachePathFromKey(f.key),
-          ),
-      });
-    });
 
     Listenable.merge([
       widget.files,
-      widget.listOptions,
+      _sortMode,
+      _foldersFirst,
       widget.relativeto,
     ]).addListener(() {
-      makeGroups();
+      unawaited(makeGroups());
+      unawaited(
+        widget.setGalleryFiles?.call({
+          for (var f in widget.files.value.where((f) => !p.isDir(f.key)))
+            f.key: GalleryProps(
+              file:
+                  f.file ??
+                  RemoteFile(
+                    key: f.key,
+                    size: f.size,
+                    etag: f.job!.md5.toString(),
+                  ),
+              title: p.isWithin(widget.relativeto.value.key, f.key)
+                  ? p.s3(p.relative(f.key, from: widget.relativeto.value.key))
+                  : f.key,
+              url: f.url!,
+              path: Main.pathFromKey(f.key) ?? f.key,
+              cachePath: Main.cachePathFromKey(f.key),
+            ),
+        }),
+      );
     });
 
-    Listenable.merge([_groups, widget.listOptions]).addListener(() {
-      buildKeysOffsetMap(context);
-    });
+    Listenable.merge([
+      _groups,
+      _group,
+      _viewMode,
+    ]).addListener(() => unawaited(buildKeysOffsetMap(context)));
 
     Listenable.merge([
       widget.selection,
       widget.files,
-    ]).addListener(updateSelectionNotifiers);
+    ]).addListener(() => unawaited(updateSelectionNotifiers()));
+
+    Listenable.merge([widget.listOptions]).addListener(() {
+      _sortMode.value = widget.listOptions.value.sortMode;
+      _viewMode.value = widget.listOptions.value.viewMode;
+      _foldersFirst.value = widget.listOptions.value.foldersFirst;
+      _group.value = widget.listOptions.value.group;
+    });
   }
 
   @override
@@ -874,123 +902,113 @@ class ListFilesState extends State<ListFiles> {
   Widget build(BuildContext context) {
     return MyListenableBuilder(
       name: 'list_files',
-      listenable: Listenable.merge([_groups, widget.listOptions]),
-      builder: (ccontext, _) {
-        return MultiSliver(
-          children: [
-            for (final group
-                in widget.listOptions.value.group
-                    ? _groups.value.entries
-                    : [
-                        MapEntry(
-                          '',
-                          _groups.value.entries
-                              .map((g) => g.value)
-                              .flattenedToList,
-                        ),
-                      ])
-              if (widget.listOptions.value.group)
-                SliverMainAxisGroup(
-                  slivers: [
-                    SliverPersistentHeader(
-                      floating: false,
-                      pinned: true,
-                      delegate: MyPersistentHeaderDelegate(
-                        height: 32,
-                        child: Container(
-                          color: Theme.of(context).colorScheme.surface,
-                          padding: EdgeInsets.only(
-                            left: 16,
-                            right:
-                                widget.listOptions.value.viewMode ==
-                                    ViewMode.grid
-                                ? 12
-                                : 18,
-                          ),
-                          alignment: Alignment.centerLeft,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                group.key.replaceAll('_folder', ''),
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              ListenableBuilder(
-                                listenable: Listenable.merge([
-                                  _selectionNotifiers.anySelected,
-                                  _selectionNotifiers[group.key]
-                                      .explicitlySelected,
-                                  widget.selectionAction,
-                                ]),
-                                builder: (context, _) =>
-                                    widget.selection.value.isNotEmpty
-                                    ? GestureDetector(
-                                        onTap: () {
-                                          if (group.value.any(
-                                            (f) => !widget.selection.value
-                                                .contains(f.key),
-                                          )) {
-                                            for (final file in group.value) {
-                                              if (!widget.selection.value
-                                                  .contains(file.key)) {
-                                                widget.selection.value = {
-                                                  ...widget.selection.value,
-                                                  file.key,
-                                                };
+      listenable: Listenable.merge([_groups, _group]),
+      builder: (context, child) => !_group.value
+          ? _groupContent(
+              MapEntry(
+                '',
+                _groups.value.entries.map((g) => g.value).flattened.toList(),
+              ),
+            )
+          : MultiSliver(
+              children: [
+                for (final group in _groups.value.entries)
+                  SliverMainAxisGroup(
+                    slivers: [
+                      SliverPersistentHeader(
+                        floating: false,
+                        pinned: true,
+                        delegate: MyPersistentHeaderDelegate(
+                          height: 32,
+                          child: Container(
+                            color: Theme.of(context).colorScheme.surface,
+                            padding: EdgeInsets.only(
+                              left: 16,
+                              right: _viewMode.value == ViewMode.grid ? 12 : 18,
+                            ),
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  group.key.replaceAll('_folder', ''),
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                                ListenableBuilder(
+                                  listenable: Listenable.merge([
+                                    _selectionNotifiers.anySelected,
+                                    _selectionNotifiers[group.key]
+                                        .explicitlySelected,
+                                    widget.selectionAction,
+                                  ]),
+                                  builder: (context, _) =>
+                                      widget.selection.value.isNotEmpty
+                                      ? GestureDetector(
+                                          onTap: () {
+                                            if (group.value.any(
+                                              (f) => !widget.selection.value
+                                                  .contains(f.key),
+                                            )) {
+                                              for (final file in group.value) {
+                                                if (!widget.selection.value
+                                                    .contains(file.key)) {
+                                                  widget.selection.value = {
+                                                    ...widget.selection.value,
+                                                    file.key,
+                                                  };
+                                                }
                                               }
+                                            } else {
+                                              widget.selection.value = {
+                                                ...widget.selection.value.where(
+                                                  (f) => !group.value
+                                                      .map((f) => f.key)
+                                                      .contains(f),
+                                                ),
+                                              };
                                             }
-                                          } else {
-                                            widget.selection.value = {
-                                              ...widget.selection.value.where(
-                                                (f) => !group.value
-                                                    .map((f) => f.key)
-                                                    .contains(f),
-                                              ),
-                                            };
-                                          }
-                                        },
-                                        child: Icon(
-                                          group.value.any(
-                                                (f) => !widget.selection.value
-                                                    .contains(f.key),
-                                              )
-                                              ? Icons.circle_outlined
-                                              : Icons.check_circle,
-                                          color:
-                                              widget.selectionAction.value ==
-                                                  SelectionAction.none
-                                              ? widget
-                                                            .listOptions
-                                                            .value
-                                                            .viewMode ==
-                                                        ViewMode.grid
-                                                    ? Theme.of(
-                                                        context,
-                                                      ).colorScheme.primary
-                                                    : Theme.of(context)
-                                                          .colorScheme
-                                                          .onSecondaryContainer
-                                              : Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurfaceVariant
-                                                    .withAlpha(100),
-                                        ),
-                                      )
-                                    : SizedBox.shrink(),
-                              ),
-                            ],
+                                          },
+                                          child: Icon(
+                                            group.value.any(
+                                                  (f) => !widget.selection.value
+                                                      .contains(f.key),
+                                                )
+                                                ? Icons.circle_outlined
+                                                : Icons.check_circle,
+                                            color:
+                                                widget.selectionAction.value ==
+                                                    SelectionAction.none
+                                                ? widget
+                                                              .listOptions
+                                                              .value
+                                                              .viewMode ==
+                                                          ViewMode.grid
+                                                      ? Theme.of(
+                                                          context,
+                                                        ).colorScheme.primary
+                                                      : Theme.of(context)
+                                                            .colorScheme
+                                                            .onSecondaryContainer
+                                                : Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurfaceVariant
+                                                      .withAlpha(100),
+                                          ),
+                                        )
+                                      : SizedBox.shrink(),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    _groupContent(group),
-                  ],
-                )
-              else
-                _groupContent(group),
-          ],
-        );
-      },
+                      _groupContent(MapEntry(group.key, group.value.toList())),
+                    ],
+                  ),
+              ],
+            ),
     );
   }
 }
