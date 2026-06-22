@@ -843,12 +843,7 @@ class ListFilesState extends State<ListFiles> {
     _group.value = widget.listOptions.value.group;
     super.initState();
 
-    Listenable.merge([
-      widget.files,
-      _sortMode,
-      _foldersFirst,
-      widget.relativeto,
-    ]).addListener(() {
+    Listenable.merge([widget.files, widget.relativeto]).addListener(() {
       unawaited(makeGroups());
       unawaited(
         widget.setGalleryFiles?.call({
