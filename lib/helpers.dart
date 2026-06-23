@@ -455,8 +455,10 @@ List<FileProps> sort(
 ) {
   List<FileProps> sortedItems = List.from(items);
   sortedItems.sort((a, b) {
-    var aIsDir = p.isDir(a.key);
-    var bIsDir = p.isDir(b.key);
+    final aIsDir = p.isDir(a.key);
+    final bIsDir = p.isDir(b.key);
+    final aFile = Main.remoteFileByKey(a.key);
+    final bFile = Main.remoteFileByKey(b.key);
 
     if (foldersFirst) {
       if (aIsDir && !bIsDir) return -1;
@@ -469,19 +471,19 @@ List<FileProps> sort(
       case SortMode.nameDesc:
         return b.key.toLowerCase().compareTo(a.key.toLowerCase());
       case SortMode.dateAsc:
-        DateTime aDate = a.file != null
-            ? a.file!.lastModified!
+        DateTime aDate = aFile != null
+            ? aFile.lastModified!
             : DateTime.fromMillisecondsSinceEpoch(0);
-        DateTime bDate = b.file != null
-            ? b.file!.lastModified!
+        DateTime bDate = bFile != null
+            ? bFile.lastModified!
             : DateTime.fromMillisecondsSinceEpoch(0);
         return aDate.compareTo(bDate);
       case SortMode.dateDesc:
-        DateTime aDate = a.file != null
-            ? a.file!.lastModified!
+        DateTime aDate = aFile != null
+            ? aFile.lastModified!
             : DateTime.fromMillisecondsSinceEpoch(0);
-        DateTime bDate = b.file != null
-            ? b.file!.lastModified!
+        DateTime bDate = bFile != null
+            ? bFile.lastModified!
             : DateTime.fromMillisecondsSinceEpoch(0);
         return bDate.compareTo(aDate);
       case SortMode.sizeAsc:

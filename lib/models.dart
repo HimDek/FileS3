@@ -7,14 +7,14 @@ import 'package:files3/utils/job.dart';
 class FileProps {
   final String key;
   final int size;
-  final RemoteFile? file;
+  final DateTime? lastModified;
   final Job? job;
   final String? url;
 
   FileProps({
     required this.key,
     required this.size,
-    this.file,
+    this.lastModified,
     this.job,
     this.url,
   });

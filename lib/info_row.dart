@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:files3/utils/path_utils.dart' as p;
+import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
 import 'package:files3/helpers.dart';
-import 'package:files3/utils/path_utils.dart' as p;
 
 class InfoRow extends StatefulWidget {
-  final RemoteFile file;
+  final String remoteKey;
   final UiConfig? uiConfig;
   final MainAxisAlignment mainAxisAlignment;
   final MainAxisSize mainAxisSize;
@@ -19,7 +20,7 @@ class InfoRow extends StatefulWidget {
 
   const InfoRow({
     super.key,
-    required this.file,
+    required this.remoteKey,
     this.uiConfig,
     this.mainAxisAlignment = MainAxisAlignment.start,
     this.mainAxisSize = MainAxisSize.min,
@@ -38,11 +39,15 @@ class InfoRow extends StatefulWidget {
 }
 
 class _InfoRowState extends State<InfoRow> {
-  late UiConfig uiConfig;
+  late UiConfig _uiConfig;
+  late RemoteFile _file;
 
   @override
   void initState() {
-    uiConfig = widget.uiConfig ?? UiConfig();
+    _uiConfig = widget.uiConfig ?? UiConfig();
+    _file =
+        Main.remoteFileByKey(widget.remoteKey) ??
+        RemoteFile(key: widget.remoteKey, etag: '');
     super.initState();
   }
 
@@ -56,18 +61,18 @@ class _InfoRowState extends State<InfoRow> {
       verticalDirection: widget.verticalDirection,
       spacing: widget.spacing,
       children: [
-        if (uiConfig.showTime)
+        if (_uiConfig.showTime)
           FutureBuilder<DateTime?>(
             future: () async {
-              if (!widget.refresh && widget.file.lastModified != null) {
-                return widget.file.lastModified;
+              if (!widget.refresh && _file.lastModified != null) {
+                return _file.lastModified;
               }
-              final lastModified = await widget.file.getLastModified();
+              final lastModified = await _file.getLastModified();
               return lastModified;
             }(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting &&
-                  widget.file.lastModified == null) {
+                  _file.lastModified == null) {
                 return Text('', style: widget.textStyle);
               }
               if (snapshot.hasError || snapshot.data == null) {
@@ -79,18 +84,18 @@ class _InfoRowState extends State<InfoRow> {
               );
             },
           ),
-        if (uiConfig.showSize)
+        if (_uiConfig.showSize)
           FutureBuilder<int>(
             future: () async {
-              if (!widget.refresh && widget.file.size != 0) {
-                return widget.file.size;
+              if (!widget.refresh && _file.size != 0) {
+                return _file.size;
               }
-              final size = await widget.file.getSize();
+              final size = await _file.getSize();
               return size;
             }(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting &&
-                  widget.file.size == 0) {
+                  _file.size == 0) {
                 return Text('', style: widget.textStyle);
               }
               if (snapshot.hasError || snapshot.data == null) {
@@ -102,19 +107,19 @@ class _InfoRowState extends State<InfoRow> {
               );
             },
           ),
-        if (uiConfig.showDownloadStatus)
+        if (_uiConfig.showDownloadStatus)
           DownloadStatusIcon(
-            file: widget.file,
+            remoteKey: widget.remoteKey,
             size: widget.iconSize,
             refresh: widget.refresh,
           ),
-        if (p.isDir(widget.file.key)) ...[
-          if (uiConfig.showContent)
+        if (p.isDir(widget.remoteKey)) ...[
+          if (_uiConfig.showContent)
             FutureBuilder<(int, int)>(
-              future: widget.file.getCount(recursive: true),
+              future: _file.getCount(recursive: true),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
-                    widget.file.count == (0, 0)) {
+                    _file.count == (0, 0)) {
                   return Text('', style: widget.textStyle);
                 }
                 if (snapshot.hasError || snapshot.data == null) {
@@ -136,22 +141,22 @@ class _InfoRowState extends State<InfoRow> {
                 );
               },
             ),
-        ] else if (uiConfig.showType)
-          Text(p.extension(widget.file.key), style: widget.textStyle),
+        ] else if (_uiConfig.showType)
+          Text(p.extension(widget.remoteKey), style: widget.textStyle),
       ],
     );
   }
 }
 
 class DownloadStatusIcon extends StatelessWidget {
-  final RemoteFile file;
+  final String remoteKey;
   final double size;
   final Color? activeColor;
   final bool refresh;
 
   const DownloadStatusIcon({
     super.key,
-    required this.file,
+    required this.remoteKey,
     this.size = 16,
     this.activeColor,
     this.refresh = false,
@@ -159,20 +164,24 @@ class DownloadStatusIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    RemoteFile? file;
     return FutureBuilder<void>(
       future: () async {
-        if (!refresh && file.downloaded != null) {
-          return file.downloaded;
+        file =
+            Main.remoteFileByKey(remoteKey) ??
+            RemoteFile(key: remoteKey, etag: '');
+        if (!refresh && file?.downloaded != null) {
+          return file!.downloaded;
         }
-        final downloaded = await file.getDownloaded();
+        final downloaded = await file!.getDownloaded();
         return downloaded;
       }(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
-            file.downloaded == null) {
+            file?.downloaded == null) {
           return Icon(Icons.hourglass_empty, size: size);
         }
-        if (file.downloaded == true) {
+        if (file?.downloaded == true) {
           return Icon(Icons.download_done, size: size);
         } else {
           return Icon(

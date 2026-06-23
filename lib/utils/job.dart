@@ -1203,6 +1203,7 @@ abstract class Job {
 
   void remove() {
     if (removable()) {
+      dispose();
       jobs.remove(this);
       onJobsChanged.notifyListeners();
     }
@@ -1214,9 +1215,16 @@ abstract class Job {
 
   void dismiss() {
     if (dismissible()) {
+      dispose();
       jobs.remove(this);
       onJobsChanged.notifyListeners();
     }
+  }
+
+  void dispose() {
+    status.dispose();
+    statusMsg.dispose();
+    bytesCompleted.dispose();
   }
 
   static void continueAll() {
@@ -1272,12 +1280,18 @@ abstract class Job {
   }
 
   static void clearCompleted() {
-    jobs.removeWhere((job) => job.status.value == JobStatus.completed);
+    jobs.toList().map((job) {
+      if (job.status.value == JobStatus.completed) job.dispose();
+      jobs.remove(job);
+    });
     onJobsChanged.notifyListeners();
   }
 
-  static void clear() {
-    jobs.clear();
+  static void disposeAll() {
+    jobs.toList().map((job) {
+      job.dispose();
+      jobs.remove(job);
+    });
     onJobsChanged.notifyListeners();
   }
 }

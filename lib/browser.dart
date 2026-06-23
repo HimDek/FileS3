@@ -483,7 +483,7 @@ class Browser extends StatefulWidget {
   final Widget title;
   final Widget? subtitle;
   final Function()? onInit;
-  final RemoteFile? initialDir;
+  final String initialDir;
   final Widget? drawer;
   final Widget? floatingActionButton;
   final Widget? bottomNavigationBar;
@@ -501,7 +501,7 @@ class Browser extends StatefulWidget {
     super.key,
     this.title = const Text('Select Path'),
     this.subtitle,
-    this.initialDir,
+    this.initialDir = '',
     this.onInit,
     this.drawer,
     this.floatingActionButton,
@@ -584,27 +584,25 @@ class BrowserState extends State<Browser> {
     }
   }
 
-  void Function()? _getSelectAction(RemoteFile item) =>
-      _selection.value.any((selected) => p.isWithin(selected, item.key)) ||
+  void Function()? _getSelectAction(String key) =>
+      _selection.value.any((selected) => p.isWithin(selected, key)) ||
           _selectionAction.value != SelectionAction.none
       ? null
       : () {
-          if (p.isDir(item.key)) {
-            if (_selection.value.any(
-              (selected) => p.isWithin(item.key, selected),
-            )) {
+          if (p.isDir(key)) {
+            if (_selection.value.any((selected) => p.isWithin(key, selected))) {
               // Deselect all children
               _selection.value = _selection.value
-                  .where((selected) => !p.isWithin(item.key, selected))
+                  .where((selected) => !p.isWithin(key, selected))
                   .toSet();
             }
           }
-          if (_selection.value.any((selected) => selected == item.key)) {
+          if (_selection.value.any((selected) => selected == key)) {
             _selection.value = _selection.value
-                .where((selected) => selected != item.key)
+                .where((selected) => selected != key)
                 .toSet();
           } else {
-            _selection.value = {..._selection.value, item.key};
+            _selection.value = {..._selection.value, key};
           }
         };
 
@@ -665,13 +663,13 @@ class BrowserState extends State<Browser> {
     );
   }
 
-  void _changeDirectory(RemoteFile dir) {
+  void _changeDirectory(String ndir) {
     final oldDir = _driveDir.value.key;
     _navIndex.value = 0;
     _controlsVisible.value = true;
-    String ndir = dir.key;
+    var dir = BrowserState.root;
     for (String item in _selection.value) {
-      if (p.isWithin(item, dir.key) || item == dir.key) {
+      if (p.isWithin(item, ndir) || item == ndir) {
         dir = () {
           while (p.isWithin(item, ndir) || item == ndir) {
             ndir = p.s3(p.dirname(ndir));
@@ -714,8 +712,18 @@ class BrowserState extends State<Browser> {
               url: url,
             )
           : p.isDir(file.key)
-          ? FileProps(key: file.key, size: file.size, file: file, url: url)
-          : FileProps(key: file.key, size: file.size, file: file, url: url);
+          ? FileProps(
+              key: file.key,
+              size: file.size,
+              lastModified: file.lastModified,
+              url: url,
+            )
+          : FileProps(
+              key: file.key,
+              size: file.size,
+              lastModified: file.lastModified,
+              url: url,
+            );
     });
     if (!_searching.value) {
       _currentProps.value = sort(
@@ -740,8 +748,18 @@ class BrowserState extends State<Browser> {
                   url: url,
                 )
               : p.isDir(file.key)
-              ? FileProps(key: file.key, size: file.size, file: file, url: url)
-              : FileProps(key: file.key, size: file.size, file: file, url: url);
+              ? FileProps(
+                  key: file.key,
+                  size: file.size,
+                  lastModified: file.lastModified,
+                  url: url,
+                )
+              : FileProps(
+                  key: file.key,
+                  size: file.size,
+                  lastModified: file.lastModified,
+                  url: url,
+                );
         }),
         _sortMode.value,
         _foldersFirst.value,
@@ -1035,14 +1053,14 @@ class BrowserState extends State<Browser> {
     );
   }
 
-  Future<void> _showContextMenu(RemoteFile? file) async {
+  Future<void> _showContextMenu(String? key) async {
     try {
       await showModalBottomSheet(
         context: context,
         enableDrag: true,
         showDragHandle: true,
         constraints: const BoxConstraints(maxHeight: 1400, maxWidth: 1400),
-        builder: (context) => _buildContextMenu(context, file?.key),
+        builder: (context) => _buildContextMenu(context, key),
       );
     } catch (e) {
       showSnackBar(SnackBar(content: Text('Error showing context menu: $e')));
@@ -1255,7 +1273,7 @@ class BrowserState extends State<Browser> {
   void initState() {
     super.initState();
     widget.onInit?.call();
-    _changeDirectory(widget.initialDir ?? BrowserState.root);
+    _changeDirectory(widget.initialDir);
 
     _profile.addListener(() {
       if (_profile.value != null) {
@@ -1435,8 +1453,7 @@ class BrowserState extends State<Browser> {
           }
           if (_driveDir.value.key.isNotEmpty) {
             final newKey = p.s3(p.dirname(_driveDir.value.key));
-            final file = Main.remoteFileByKey(newKey);
-            _changeDirectory(file ?? RemoteFile(key: newKey, etag: ''));
+            _changeDirectory(newKey);
             return;
           }
         },
@@ -1903,7 +1920,7 @@ class BrowserState extends State<Browser> {
                                       children: <Widget>[
                                         GestureDetector(
                                           onTap: () => _changeDirectory(
-                                            BrowserState.root,
+                                            BrowserState.root.key,
                                           ),
                                           child: Text(
                                             'FileS3',
@@ -1940,10 +1957,7 @@ class BrowserState extends State<Browser> {
                                                         }
                                                       }
                                                       _changeDirectory(
-                                                        Main.remoteFileByKey(
-                                                              p.s3(newPath),
-                                                            ) ??
-                                                            root,
+                                                        p.s3(newPath),
                                                       );
                                                     },
                                                     child: Text(
@@ -2056,7 +2070,7 @@ class BrowserState extends State<Browser> {
                           Main.onRemoteFilesChanged,
                         ]),
                         builder: (context, child) => InfoRow(
-                          file: _driveDir.value,
+                          remoteKey: _driveDir.value.key,
                           uiConfig: UiConfig(
                             showTime: true,
                             showSize: true,
@@ -2083,11 +2097,11 @@ class BrowserState extends State<Browser> {
                   changeDirectory: _changeDirectory,
                   getSelectAction: widget.onPick == null
                       ? _getSelectAction
-                      : (RemoteFile file) => () {},
+                      : (String key) => () {},
                   showContextMenu: widget.onPick == null
-                      ? (file) async {
+                      ? (key) async {
                           await Main.stopWatchers();
-                          await _showContextMenu(file);
+                          await _showContextMenu(key);
                         }
                       : null,
                 ),
@@ -2101,7 +2115,7 @@ class BrowserState extends State<Browser> {
                               _driveDir.value.key.isNotEmpty
                           ? () async {
                               await Main.stopWatchers();
-                              await _showContextMenu(_driveDir.value);
+                              await _showContextMenu(_driveDir.value.key);
                             }
                           : null,
                       child: child,

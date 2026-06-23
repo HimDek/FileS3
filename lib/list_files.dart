@@ -160,11 +160,11 @@ class ListFiles extends StatefulWidget {
   final Map<String, double> keysOffsetMap;
   final Map<String, double> groupOffsetMap;
   final void Function(String)? showGallery;
-  final Function(RemoteFile) changeDirectory;
-  final void Function()? Function(RemoteFile) getSelectAction;
-  final Function(RemoteFile)? showContextMenu;
+  final Function(String) changeDirectory;
+  final void Function()? Function(String) getSelectAction;
+  final Function(String)? showContextMenu;
 
-  static void Function()? setSelectActionDefault(RemoteFile file) => () {};
+  static void Function()? setSelectActionDefault(String key) => () {};
 
   const ListFiles({
     super.key,
@@ -243,7 +243,7 @@ class ListFilesState extends State<ListFiles> {
           break;
         case SortMode.dateAsc || SortMode.dateDesc:
           DateTime modified =
-              file.file?.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0);
+              file.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0);
           Duration diff = DateTime.now().difference(modified);
           if (diff.inHours < 1) {
             key = 'Last Hour';
@@ -429,26 +429,24 @@ class ListFilesState extends State<ListFiles> {
               ),
               subtitle:
                   uiConfigNotifier.dirListInfo ||
-                      p.s3(p.dirname(item.file!.key)).isEmpty
+                      p.s3(p.dirname(item.key)).isEmpty
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (uiConfigNotifier.dirListInfo)
                           SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
-                            child: InfoRow(file: item.file!),
+                            child: InfoRow(remoteKey: item.key),
                           ),
-                        if (p.s3(p.dirname(item.file!.key)).isEmpty)
+                        if (p.s3(p.dirname(item.key)).isEmpty)
                           Row(
                             children: [
-                              Text(
-                                '${Main.backupModeFromKey(item.file!.key).name}:',
-                              ),
+                              Text('${Main.backupModeFromKey(item.key).name}:'),
                               SizedBox(width: 4),
                               SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 child: Text(
-                                  Main.pathFromKey(item.file!.key) ?? 'Not set',
+                                  Main.pathFromKey(item.key) ?? 'Not set',
                                 ),
                               ),
                             ],
@@ -459,11 +457,11 @@ class ListFilesState extends State<ListFiles> {
               onTap:
                   _selectionNotifiers.anySelected.value &&
                       widget.selectionAction.value == SelectionAction.none
-                  ? widget.getSelectAction(item.file!)
+                  ? widget.getSelectAction(item.key)
                   : widget.showGallery != null
-                  ? () => widget.changeDirectory(item.file!)
+                  ? () => widget.changeDirectory(item.key)
                   : null,
-              onLongPress: widget.getSelectAction(item.file!),
+              onLongPress: widget.getSelectAction(item.key),
               trailing: _selectionNotifiers.anySelected.value
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
@@ -478,7 +476,7 @@ class ListFilesState extends State<ListFiles> {
                                 .value)
                           IconButton(
                             icon: Icon(Icons.zoom_out_map),
-                            onPressed: () => widget.changeDirectory(item.file!),
+                            onPressed: () => widget.changeDirectory(item.key),
                           ),
                         Icon(
                           _selectionNotifiers[item.key].explicitlySelected.value
@@ -501,7 +499,7 @@ class ListFilesState extends State<ListFiles> {
                   : widget.showContextMenu != null
                   ? GestureDetector(
                       onTap: () async {
-                        widget.showContextMenu!(item.file!);
+                        widget.showContextMenu!(item.key);
                       },
                       child: Icon(Icons.more_vert),
                     )
@@ -543,13 +541,13 @@ class ListFilesState extends State<ListFiles> {
                             from: widget.relativeto.value.key,
                           ),
                         )
-                      : item.file!.key,
+                      : item.key,
                 ),
               ),
               subtitle: uiConfigNotifier.fileListInfo
                   ? SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: InfoRow(file: item.file!),
+                      child: InfoRow(remoteKey: item.key),
                     )
                   : null,
               trailing: _selectionNotifiers.anySelected.value
@@ -561,8 +559,7 @@ class ListFilesState extends State<ListFiles> {
                             widget.showGallery != null)
                           IconButton(
                             icon: Icon(Icons.zoom_out_map),
-                            onPressed: () =>
-                                widget.showGallery!(item.file!.key),
+                            onPressed: () => widget.showGallery!(item.key),
                           ),
                         Icon(
                           _selectionNotifiers[item.key].explicitlySelected.value
@@ -585,7 +582,7 @@ class ListFilesState extends State<ListFiles> {
                   : widget.showContextMenu != null
                   ? GestureDetector(
                       onTap: () async {
-                        widget.showContextMenu!(item.file!);
+                        widget.showContextMenu!(item.key);
                       },
                       child: Icon(Icons.more_vert),
                     )
@@ -593,11 +590,11 @@ class ListFilesState extends State<ListFiles> {
               onTap:
                   _selectionNotifiers.anySelected.value &&
                       widget.selectionAction.value == SelectionAction.none
-                  ? widget.getSelectAction(item.file!)
+                  ? widget.getSelectAction(item.key)
                   : widget.showGallery != null
                   ? () => widget.showGallery!(item.key)
                   : null,
-              onLongPress: widget.getSelectAction(item.file!),
+              onLongPress: widget.getSelectAction(item.key),
             ),
             child: Hero(
               tag: item.key,
@@ -654,13 +651,13 @@ class ListFilesState extends State<ListFiles> {
               onTap:
                   _selectionNotifiers.anySelected.value &&
                       widget.selectionAction.value == SelectionAction.none
-                  ? widget.getSelectAction(item.file!)
+                  ? widget.getSelectAction(item.key)
                   : widget.showGallery != null
-                  ? () => widget.changeDirectory(item.file!)
+                  ? () => widget.changeDirectory(item.key)
                   : null,
-              onLongPress: widget.getSelectAction(item.file!),
+              onLongPress: widget.getSelectAction(item.key),
               topLeftBadge: uiConfigNotifier.showDownloadStatus.value
-                  ? DownloadStatusIcon(file: item.file!)
+                  ? DownloadStatusIcon(remoteKey: item.key)
                   : null,
               topRightBadge: _selectionNotifiers.anySelected.value
                   ? IconButton(
@@ -682,7 +679,7 @@ class ListFilesState extends State<ListFiles> {
                   : widget.showContextMenu != null
                   ? IconButton(
                       onPressed: () async {
-                        widget.showContextMenu!(item.file!);
+                        widget.showContextMenu!(item.key);
                       },
                       icon: Icon(Icons.more_vert),
                     )
@@ -694,7 +691,7 @@ class ListFilesState extends State<ListFiles> {
                       !_selectionNotifiers[item.key].inherentlySelected.value
                   ? IconButton(
                       icon: Icon(Icons.zoom_out_map),
-                      onPressed: () => widget.changeDirectory(item.file!),
+                      onPressed: () => widget.changeDirectory(item.key),
                     )
                   : null,
               child: child!,
@@ -732,7 +729,7 @@ class ListFilesState extends State<ListFiles> {
                                 from: widget.relativeto.value.key,
                               ),
                             )
-                          : item.file!.key,
+                          : item.key,
                     ),
                   ),
                 ],
@@ -740,15 +737,15 @@ class ListFilesState extends State<ListFiles> {
               onTap:
                   _selectionNotifiers.anySelected.value &&
                       widget.selectionAction.value == SelectionAction.none
-                  ? widget.getSelectAction(item.file!)
+                  ? widget.getSelectAction(item.key)
                   : widget.showGallery != null
                   ? () => widget.showGallery!(item.key)
                   : null,
-              onLongPress: widget.getSelectAction(item.file!),
+              onLongPress: widget.getSelectAction(item.key),
               topLeftBadge: uiConfigNotifier.showDownloadStatus.value
                   ? Padding(
                       padding: EdgeInsets.all(16),
-                      child: DownloadStatusIcon(file: item.file!),
+                      child: DownloadStatusIcon(remoteKey: item.key),
                     )
                   : null,
               topRightBadge: _selectionNotifiers.anySelected.value
@@ -771,7 +768,7 @@ class ListFilesState extends State<ListFiles> {
                   : widget.showContextMenu != null
                   ? IconButton(
                       onPressed: () async {
-                        widget.showContextMenu!(item.file!);
+                        widget.showContextMenu!(item.key);
                       },
                       icon: Icon(Icons.more_vert),
                     )
@@ -782,7 +779,7 @@ class ListFilesState extends State<ListFiles> {
                       widget.showGallery != null
                   ? IconButton(
                       icon: Icon(Icons.zoom_out_map),
-                      onPressed: () => widget.showGallery!(item.file!.key),
+                      onPressed: () => widget.showGallery!(item.key),
                     )
                   : null,
               child: child!,
@@ -931,16 +928,14 @@ class ListFilesState extends State<ListFiles> {
                                                     .explicitlySelected
                                                     .value) {
                                                   widget
-                                                      .getSelectAction(
-                                                        file.file!,
-                                                      )
+                                                      .getSelectAction(file.key)
                                                       ?.call();
                                                 }
                                               }
                                             } else {
                                               for (final file in group.value) {
                                                 widget
-                                                    .getSelectAction(file.file!)
+                                                    .getSelectAction(file.key)
                                                     ?.call();
                                               }
                                             }

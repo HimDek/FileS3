@@ -2852,7 +2852,7 @@ Widget buildFileContextMenu(
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: InfoRow(
-                      file: item,
+                      remoteKey: item.key,
                       uiConfig: UiConfig(
                         showTime: true,
                         showSize: true,
@@ -3083,7 +3083,7 @@ Widget buildDirectoryContextMenu(
               subtitle: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: InfoRow(
-                  file: file,
+                  remoteKey: file.key,
                   uiConfig: UiConfig(
                     showTime: true,
                     showSize: true,
