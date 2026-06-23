@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
@@ -154,13 +153,11 @@ class MyGridTile extends StatelessWidget {
 
 class ListFiles extends StatefulWidget {
   final ValueNotifier<Iterable<FileProps>> files;
-  final Map<String, GalleryProps> galleryFiles;
-  final Future<void> Function(Map<String, GalleryProps>)? setGalleryFiles;
   final ValueNotifier<ListOptions> listOptions;
   final ValueNotifier<RemoteFile> relativeto;
   final ValueNotifier<Set<String>> selection;
   final ValueNotifier<SelectionAction> selectionAction;
-  final ValueNotifier<Map<String, double>> keysOffsetMap;
+  final Map<String, double> keysOffsetMap;
   final Map<String, double> groupOffsetMap;
   final void Function(String)? showGallery;
   final Function(RemoteFile) changeDirectory;
@@ -172,8 +169,6 @@ class ListFiles extends StatefulWidget {
   const ListFiles({
     super.key,
     required this.files,
-    this.galleryFiles = const {},
-    this.setGalleryFiles,
     this.groupOffsetMap = const {},
     required this.listOptions,
     required this.relativeto,
@@ -282,7 +277,7 @@ class ListFilesState extends State<ListFiles> {
   }
 
   Future<void> buildKeysOffsetMap(BuildContext context) async {
-    widget.keysOffsetMap.value.clear();
+    widget.keysOffsetMap.clear();
     widget.groupOffsetMap.clear();
 
     final width = MediaQuery.of(context).size.width;
@@ -311,7 +306,7 @@ class ListFilesState extends State<ListFiles> {
           final listTileHeight = MediaQuery.of(context).size.width < 600
               ? 56.0
               : 72.0; // approximate heights for dense and standard ListTiles
-          widget.keysOffsetMap.value[file.key] = offset;
+          widget.keysOffsetMap[file.key] = offset;
           offset += listTileHeight;
         }
       } else {
@@ -320,7 +315,7 @@ class ListFilesState extends State<ListFiles> {
         while (iGroupValue.moveNext()) {
           final file = iGroupValue.current;
           final row = i ~/ columns;
-          widget.keysOffsetMap.value[file.key] = offset + row * tileHeight;
+          widget.keysOffsetMap[file.key] = offset + row * tileHeight;
           i++;
         }
 
@@ -330,7 +325,7 @@ class ListFilesState extends State<ListFiles> {
       }
 
       widget.groupOffsetMap[group.key] =
-          widget.keysOffsetMap.value[group.value.first.key]!;
+          widget.keysOffsetMap[group.value.first.key]!;
     }
   }
 
@@ -351,7 +346,7 @@ class ListFilesState extends State<ListFiles> {
           } else if (p.isDir(file.key) && p.isWithin(file.key, selected)) {
             partiallySelected = true;
           }
-          if (explicitlySelected && inherentlySelected && partiallySelected) {
+          if (explicitlySelected || inherentlySelected || partiallySelected) {
             break;
           }
         }
@@ -462,14 +457,14 @@ class ListFilesState extends State<ListFiles> {
                     )
                   : null,
               onTap:
-                  widget.selection.value.isNotEmpty &&
+                  _selectionNotifiers.anySelected.value &&
                       widget.selectionAction.value == SelectionAction.none
                   ? widget.getSelectAction(item.file!)
                   : widget.showGallery != null
                   ? () => widget.changeDirectory(item.file!)
                   : null,
               onLongPress: widget.getSelectAction(item.file!),
-              trailing: widget.selection.value.isNotEmpty
+              trailing: _selectionNotifiers.anySelected.value
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -557,16 +552,17 @@ class ListFilesState extends State<ListFiles> {
                       child: InfoRow(file: item.file!),
                     )
                   : null,
-              trailing: widget.selection.value.isNotEmpty
+              trailing: _selectionNotifiers.anySelected.value
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (widget.selectionAction.value ==
-                            SelectionAction.none)
+                                SelectionAction.none &&
+                            widget.showGallery != null)
                           IconButton(
                             icon: Icon(Icons.zoom_out_map),
                             onPressed: () =>
-                                widget.showGallery?.call(item.file!.key),
+                                widget.showGallery!(item.file!.key),
                           ),
                         Icon(
                           _selectionNotifiers[item.key].explicitlySelected.value
@@ -595,7 +591,7 @@ class ListFilesState extends State<ListFiles> {
                     )
                   : null,
               onTap:
-                  widget.selection.value.isNotEmpty &&
+                  _selectionNotifiers.anySelected.value &&
                       widget.selectionAction.value == SelectionAction.none
                   ? widget.getSelectAction(item.file!)
                   : widget.showGallery != null
@@ -656,7 +652,7 @@ class ListFilesState extends State<ListFiles> {
                 ],
               ),
               onTap:
-                  widget.selection.value.isNotEmpty &&
+                  _selectionNotifiers.anySelected.value &&
                       widget.selectionAction.value == SelectionAction.none
                   ? widget.getSelectAction(item.file!)
                   : widget.showGallery != null
@@ -666,7 +662,7 @@ class ListFilesState extends State<ListFiles> {
               topLeftBadge: uiConfigNotifier.showDownloadStatus.value
                   ? DownloadStatusIcon(file: item.file!)
                   : null,
-              topRightBadge: widget.selection.value.isNotEmpty
+              topRightBadge: _selectionNotifiers.anySelected.value
                   ? IconButton(
                       icon: Icon(
                         _selectionNotifiers[item.key].explicitlySelected.value
@@ -692,7 +688,7 @@ class ListFilesState extends State<ListFiles> {
                     )
                   : null,
               bottomLeftBadge:
-                  widget.selection.value.isNotEmpty &&
+                  _selectionNotifiers.anySelected.value &&
                       widget.selectionAction.value == SelectionAction.none &&
                       !_selectionNotifiers[item.key].explicitlySelected.value &&
                       !_selectionNotifiers[item.key].inherentlySelected.value
@@ -742,7 +738,7 @@ class ListFilesState extends State<ListFiles> {
                 ],
               ),
               onTap:
-                  widget.selection.value.isNotEmpty &&
+                  _selectionNotifiers.anySelected.value &&
                       widget.selectionAction.value == SelectionAction.none
                   ? widget.getSelectAction(item.file!)
                   : widget.showGallery != null
@@ -755,7 +751,7 @@ class ListFilesState extends State<ListFiles> {
                       child: DownloadStatusIcon(file: item.file!),
                     )
                   : null,
-              topRightBadge: widget.selection.value.isNotEmpty
+              topRightBadge: _selectionNotifiers.anySelected.value
                   ? IconButton(
                       icon: Icon(
                         _selectionNotifiers[item.key].explicitlySelected.value
@@ -781,11 +777,12 @@ class ListFilesState extends State<ListFiles> {
                     )
                   : null,
               bottomLeftBadge:
-                  widget.selection.value.isNotEmpty &&
-                      widget.selectionAction.value == SelectionAction.none
+                  _selectionNotifiers.anySelected.value &&
+                      widget.selectionAction.value == SelectionAction.none &&
+                      widget.showGallery != null
                   ? IconButton(
                       icon: Icon(Icons.zoom_out_map),
-                      onPressed: () => widget.showGallery?.call(item.file!.key),
+                      onPressed: () => widget.showGallery!(item.file!.key),
                     )
                   : null,
               child: child!,
@@ -843,28 +840,11 @@ class ListFilesState extends State<ListFiles> {
     _group.value = widget.listOptions.value.group;
     super.initState();
 
-    Listenable.merge([widget.files, widget.relativeto]).addListener(() {
+    Listenable.merge([
+      widget.files,
+      //widget.relativeto, //Change in relativeTo already triggers a change in files
+    ]).addListener(() {
       unawaited(makeGroups());
-      unawaited(
-        widget.setGalleryFiles?.call({
-          for (var f in widget.files.value.where((f) => !p.isDir(f.key)))
-            f.key: GalleryProps(
-              file:
-                  f.file ??
-                  RemoteFile(
-                    key: f.key,
-                    size: f.size,
-                    etag: f.job!.md5.toString(),
-                  ),
-              title: p.isWithin(widget.relativeto.value.key, f.key)
-                  ? p.s3(p.relative(f.key, from: widget.relativeto.value.key))
-                  : f.key,
-              url: f.url!,
-              path: Main.pathFromKey(f.key) ?? f.key,
-              cachePath: Main.cachePathFromKey(f.key),
-            ),
-        }),
-      );
     });
 
     Listenable.merge([
@@ -939,16 +919,17 @@ class ListFilesState extends State<ListFiles> {
                                     widget.selectionAction,
                                   ]),
                                   builder: (context, _) =>
-                                      widget.selection.value.isNotEmpty
+                                      _selectionNotifiers.anySelected.value
                                       ? GestureDetector(
                                           onTap: () {
-                                            if (group.value.any(
-                                              (f) => !widget.selection.value
-                                                  .contains(f.key),
-                                            )) {
+                                            if (_selectionNotifiers[group.key]
+                                                .explicitlySelected
+                                                .value) {
                                               for (final file in group.value) {
-                                                if (!widget.selection.value
-                                                    .contains(file.key)) {
+                                                if (!_selectionNotifiers[file
+                                                        .key]
+                                                    .explicitlySelected
+                                                    .value) {
                                                   widget
                                                       .getSelectAction(
                                                         file.file!,
@@ -965,19 +946,15 @@ class ListFilesState extends State<ListFiles> {
                                             }
                                           },
                                           child: Icon(
-                                            group.value.any(
-                                                  (f) => !widget.selection.value
-                                                      .contains(f.key),
-                                                )
-                                                ? Icons.circle_outlined
-                                                : Icons.check_circle,
+                                            _selectionNotifiers[group.key]
+                                                    .explicitlySelected
+                                                    .value
+                                                ? Icons.check_circle
+                                                : Icons.circle_outlined,
                                             color:
                                                 widget.selectionAction.value ==
                                                     SelectionAction.none
-                                                ? widget
-                                                              .listOptions
-                                                              .value
-                                                              .viewMode ==
+                                                ? _viewMode.value ==
                                                           ViewMode.grid
                                                       ? Theme.of(
                                                           context,

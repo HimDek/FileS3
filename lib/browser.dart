@@ -524,7 +524,7 @@ class Browser extends StatefulWidget {
 class BrowserState extends State<Browser> {
   static RemoteFile root = RemoteFile(key: '', etag: '');
 
-  final Map<String, GalleryProps> _galleryFiles = <String, GalleryProps>{};
+  final Map<String, double> _keysOffsetMap = {};
   final Map<String, double> _groupOffsetMap = <String, double>{};
 
   final TextEditingController _searchController = TextEditingController();
@@ -560,7 +560,6 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<Iterable> _currentItems = ValueNotifier<Iterable>([]);
   final ValueNotifier<Iterable<FileProps>> _currentProps =
       ValueNotifier<Iterable<FileProps>>([]);
-  final ValueNotifier<Map<String, double>> _keysOffsetMap = ValueNotifier({});
   final ManualNotifier _rebuildContext = ManualNotifier();
 
   Iterable<String> get _allSelectableItems =>
@@ -583,11 +582,6 @@ class BrowserState extends State<Browser> {
     if (_driveDir.value.key == '') {
       _fileCount.value = 0;
     }
-  }
-
-  Future<void> _setGalleryFiles(Map<String, GalleryProps> files) async {
-    _galleryFiles.clear();
-    _galleryFiles.addAll(files);
   }
 
   void Function()? _getSelectAction(RemoteFile item) =>
@@ -625,24 +619,44 @@ class BrowserState extends State<Browser> {
   }
 
   Future<String?> _pushGallery(String key) async {
-    String? result = await Navigator.of(context).push<String>(
+    int i = 0, index = 0;
+    final files = _currentProps.value.where((f) => !p.isDir(f.key)).map((f) {
+      if (f.key == key) {
+        index = i;
+      }
+      i++;
+      return GalleryProps(
+        key: f.key,
+        title: p.isWithin(_driveDir.value.key, f.key)
+            ? p.s3(p.relative(f.key, from: _driveDir.value.key))
+            : f.key,
+        url: f.url!,
+        path: Main.pathFromKey(f.key) ?? f.key,
+        cachePath: Main.cachePathFromKey(f.key),
+      );
+    }).toList();
+
+    final result = await Navigator.of(context).push<String>(
       PageRouteBuilder<String>(
         opaque: false,
         pageBuilder: (context, animation, secondaryAnimation) => Gallery(
-          files: _galleryFiles,
-          initialKey: key,
-          keysOffsetMap: _keysOffsetMap.value,
+          files: files,
+          initialIndex: index,
+          keysOffsetMap: _keysOffsetMap,
           scrollController: _scrollController,
           buildContextMenu: _buildContextMenu,
           rebuildContext: _rebuildContext.notifyListeners,
         ),
       ),
     );
+
+    _scrollToFile(result ?? '');
+
     return result;
   }
 
-  void _scrollToFile(RemoteFile file) {
-    final offset = _keysOffsetMap.value[file.key];
+  void _scrollToFile(String key) {
+    final offset = _keysOffsetMap[key];
     if (offset == null) return;
 
     _scrollController.jumpTo(
@@ -651,7 +665,7 @@ class BrowserState extends State<Browser> {
   }
 
   void _changeDirectory(RemoteFile dir) {
-    final oldDir = _driveDir.value;
+    final oldDir = _driveDir.value.key;
     _navIndex.value = 0;
     _controlsVisible.value = true;
     String ndir = dir.key;
@@ -2057,8 +2071,6 @@ class BrowserState extends State<Browser> {
                 ),
                 ListFiles(
                   files: _currentProps,
-                  galleryFiles: _galleryFiles,
-                  setGalleryFiles: _setGalleryFiles,
                   groupOffsetMap: _groupOffsetMap,
                   keysOffsetMap: _keysOffsetMap,
                   listOptions: _listOptions,

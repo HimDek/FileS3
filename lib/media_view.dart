@@ -20,7 +20,7 @@ import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 
 class GalleryProps {
-  final RemoteFile file;
+  final String key;
   final String title;
   final String? description;
   final String url;
@@ -28,7 +28,7 @@ class GalleryProps {
   final String cachePath;
 
   GalleryProps({
-    required this.file,
+    required this.key,
     required this.title,
     this.description,
     required this.url,
@@ -934,22 +934,22 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
 }
 
 class Gallery extends StatefulWidget {
-  final Map<String, GalleryProps> files;
-  final String initialKey;
+  final List<GalleryProps> files;
+  final int initialIndex;
   final Map<String, double> keysOffsetMap;
   final ScrollController scrollController;
   final Widget Function(BuildContext, RemoteFile) buildContextMenu;
   final Function() rebuildContext;
 
-  Gallery({
+  const Gallery({
     super.key,
     required this.files,
-    initialKey,
+    this.initialIndex = 0,
     required this.keysOffsetMap,
     required this.scrollController,
     required this.buildContextMenu,
     required this.rebuildContext,
-  }) : initialKey = initialKey ?? files.keys.first;
+  });
 
   @override
   GalleryState createState() => GalleryState();
@@ -961,13 +961,10 @@ class GalleryState extends State<Gallery> {
   static const double _defaultBottomSheetSize = 0.13;
   static const double _maxBottomSheetSize = 0.7;
 
-  final Map<String, int> indexMap = {};
-  final Map<int, String> keyMap = {};
-
   late PageController _pageController;
   final DraggableScrollableController _contextMenuSheetController =
       DraggableScrollableController();
-  final ValueNotifier<String> _currentKey = ValueNotifier<String>('');
+  final ValueNotifier<int> _currentIndex = ValueNotifier<int>(0);
   final ValueNotifier<bool> _allowPaging = ValueNotifier<bool>(true);
   final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _allowDragging = ValueNotifier<bool>(true);
@@ -1011,20 +1008,10 @@ class GalleryState extends State<Gallery> {
 
   @override
   void initState() {
-    _currentKey.value = widget.initialKey;
-
-    final entries = widget.files.keys;
-    int i = 0;
-    final iEntries = entries.iterator;
-    while (iEntries.moveNext()) {
-      final entry = iEntries.current;
-      indexMap[entry] = i;
-      keyMap[i] = entry;
-      i++;
-    }
+    _currentIndex.value = widget.initialIndex;
 
     _pageController = PageController(
-      initialPage: indexMap[_currentKey.value] ?? 0,
+      initialPage: widget.initialIndex,
       viewportFraction: 1,
     );
 
@@ -1054,18 +1041,18 @@ class GalleryState extends State<Gallery> {
     widget.scrollController.jumpTo(
       max(
         0,
-        widget.keysOffsetMap[_currentKey.value]! -
+        widget.keysOffsetMap[widget.files[_currentIndex.value].key]! -
             MediaQuery.of(context).size.height / 3,
       ),
     );
-    Navigator.of(context).pop(_currentKey.value);
+    Navigator.of(context).pop(widget.files[_currentIndex.value].key);
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     _contextMenuSheetController.dispose();
-    _currentKey.dispose();
+    _currentIndex.dispose();
     _allowPaging.dispose();
     _chromeVisible.dispose();
     _allowDragging.dispose();
@@ -1114,10 +1101,7 @@ class GalleryState extends State<Gallery> {
                       : const NeverScrollableScrollPhysics(),
                   itemCount: widget.files.length,
                   onPageChanged: (i) {
-                    setState(
-                      () => _currentKey.value =
-                          keyMap[i] ?? widget.files.keys.first,
-                    );
+                    setState(() => _currentIndex.value = i);
                   },
                   itemBuilder: (context, index) => PointerGestureRouter(
                     allowTap: () => _allowPaging.value,
@@ -1148,15 +1132,15 @@ class GalleryState extends State<Gallery> {
                       child: Transform.scale(
                         scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
                         child: InteractiveMediaView(
-                          heroTag: keyMap[index],
-                          remoteKey: keyMap[index],
-                          url: widget.files[keyMap[index]]!.url,
-                          path: widget.files[keyMap[index]]!.path,
-                          cachePath: Main.cachePathFromKey(keyMap[index]!),
+                          heroTag: widget.files[index].key,
+                          remoteKey: widget.files[index].key,
+                          url: widget.files[index].url,
+                          path: widget.files[index].path,
+                          cachePath: widget.files[index].cachePath,
                           showControls: _chromeVisible.value,
                           setPaging: _setPaging,
                           setDragging: _setDragging,
-                          isActive: index == (indexMap[keyMap[index]] ?? 0),
+                          isActive: index == _currentIndex.value,
                           onCached: widget.rebuildContext,
                         ),
                       ),
@@ -1180,7 +1164,7 @@ class GalleryState extends State<Gallery> {
                     child: AppBar(
                       backgroundColor: Colors.black,
                       title: Text(
-                        "${(indexMap[_currentKey.value] ?? 0) + 1} / ${widget.files.length}",
+                        "${(_currentIndex.value + 1)} / ${widget.files.length}",
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1239,12 +1223,34 @@ class GalleryState extends State<Gallery> {
                           ),
                         ),
                       ),
-                      SliverToBoxAdapter(
-                        child: widget.buildContextMenu(
-                          context,
-                          widget.files[_currentKey.value]!.file,
-                        ),
-                      ),
+                      Main.remoteFileByKey(
+                                widget.files[_currentIndex.value].key,
+                              ) !=
+                              null
+                          ? SliverToBoxAdapter(
+                              child: widget.buildContextMenu(
+                                context,
+                                Main.remoteFileByKey(
+                                  widget.files[_currentIndex.value].key,
+                                )!,
+                              ),
+                            )
+                          : SliverToBoxAdapter(
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Text(
+                                    'File not found',
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                     ],
                   ),
                 );
@@ -1271,7 +1277,7 @@ class MediaPreview extends StatefulWidget {
 class MediaPreviewState extends State<MediaPreview> {
   Widget fallback(String mediaType) => Icon(mediaTypeIcon(mediaType));
 
-  Future<void> setImageProvider() async {
+  void setImageProvider() {
     thumbnailCache[widget.item.key] ??= HybridImageProvider(
       url: widget.item.url,
       path: Main.pathFromKey(widget.item.key),
@@ -1299,51 +1305,41 @@ class MediaPreviewState extends State<MediaPreview> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<void>(
-      future: () async {
-        if (getMediaType(widget.item.key) != null &&
-            getMediaType(widget.item.key)!.startsWith('image/') &&
-            thumbnailCache[widget.item.key] == null) {
-          await setImageProvider();
-        }
-      }(),
-      builder: (context, snapshot) =>
-          snapshot.connectionState != ConnectionState.done ||
-              thumbnailCache[widget.item.key] == null
-          ? fallback(
+    if (getMediaType(widget.item.key)?.startsWith('image/') ?? false) {
+      setImageProvider();
+    }
+    return thumbnailCache[widget.item.key] == null
+        ? fallback(getMediaType(widget.item.key) ?? 'application/octet-stream')
+        : Image(
+            image: thumbnailCache[widget.item.key]!,
+            width: widget.width ?? 256,
+            height: widget.height ?? 256,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              if (loadingProgress.expectedTotalBytes != null &&
+                  loadingProgress.cumulativeBytesLoaded >=
+                      loadingProgress.expectedTotalBytes!) {
+                return child;
+              }
+              return Stack(
+                fit: StackFit.loose,
+                alignment: Alignment.center,
+                children: [
+                  child,
+                  CircularProgressIndicator(
+                    value: loadingProgress.expectedTotalBytes != null
+                        ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                        : null,
+                  ),
+                ],
+              );
+            },
+            errorBuilder: (context, error, stackTrace) => fallback(
               getMediaType(widget.item.key) ?? 'application/octet-stream',
-            )
-          : Image(
-              image: thumbnailCache[widget.item.key]!,
-              width: widget.width ?? 256,
-              height: widget.height ?? 256,
-              fit: BoxFit.cover,
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                if (loadingProgress.expectedTotalBytes != null &&
-                    loadingProgress.cumulativeBytesLoaded >=
-                        loadingProgress.expectedTotalBytes!) {
-                  return child;
-                }
-                return Stack(
-                  fit: StackFit.loose,
-                  alignment: Alignment.center,
-                  children: [
-                    child,
-                    CircularProgressIndicator(
-                      value: loadingProgress.expectedTotalBytes != null
-                          ? loadingProgress.cumulativeBytesLoaded /
-                                loadingProgress.expectedTotalBytes!
-                          : null,
-                    ),
-                  ],
-                );
-              },
-              errorBuilder: (context, error, stackTrace) => fallback(
-                getMediaType(widget.item.key) ?? 'application/octet-stream',
-              ),
             ),
-    );
+          );
   }
 }
 
