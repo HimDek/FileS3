@@ -203,6 +203,41 @@ class S3FileManager {
     return response.headers;
   }
 
+  Future<({String etag, int size})> headObject(String key) async {
+    final now = DateTime.now().toUtc();
+
+    final headers = buildSignedHeaders(
+      key: key,
+      method: 'HEAD',
+      amzDate: formatAmzDate(now),
+      shortDate: formatDate(now),
+      contentHash: S3FileManager.emptySha256,
+    );
+
+    final uri = getUri(key);
+    final res = await _client
+        .head(uri, headers: headers)
+        .timeout(
+          const Duration(minutes: 1),
+          onTimeout: () {
+            throw TimeoutException('Request timed out');
+          },
+        );
+
+    if (res.statusCode != 200) {
+      throw Exception('HEAD failed: ${res.statusCode}');
+    }
+
+    final etag = res.headers['etag']?.replaceAll('"', '');
+    final length = res.headers['content-length'];
+
+    if (etag == null || length == null) {
+      throw Exception('HEAD missing ETag or Content-Length');
+    }
+
+    return (etag: etag, size: int.parse(length));
+  }
+
   String getUrl(String key, {int? validForSeconds}) {
     final now = DateTime.now().toUtc();
     final amzDate = formatAmzDate(now);
@@ -412,41 +447,6 @@ class S3FileManager {
       default:
         return 'application/octet-stream';
     }
-  }
-
-  Future<({String etag, int size})> headObject(String key) async {
-    final now = DateTime.now().toUtc();
-
-    final headers = buildSignedHeaders(
-      key: key,
-      method: 'HEAD',
-      amzDate: formatAmzDate(now),
-      shortDate: formatDate(now),
-      contentHash: S3FileManager.emptySha256,
-    );
-
-    final uri = getUri(key);
-    final res = await _client
-        .head(uri, headers: headers)
-        .timeout(
-          const Duration(minutes: 1),
-          onTimeout: () {
-            throw TimeoutException('Request timed out');
-          },
-        );
-
-    if (res.statusCode != 200) {
-      throw Exception('HEAD failed: ${res.statusCode}');
-    }
-
-    final etag = res.headers['etag']?.replaceAll('"', '');
-    final length = res.headers['content-length'];
-
-    if (etag == null || length == null) {
-      throw Exception('HEAD missing ETag or Content-Length');
-    }
-
-    return (etag: etag, size: int.parse(length));
   }
 
   Uri getUri(String key) {

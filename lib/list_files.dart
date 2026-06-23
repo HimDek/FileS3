@@ -922,7 +922,7 @@ class ListFilesState extends State<ListFiles> {
                                       _selectionNotifiers.anySelected.value
                                       ? GestureDetector(
                                           onTap: () {
-                                            if (_selectionNotifiers[group.key]
+                                            if (!_selectionNotifiers[group.key]
                                                 .explicitlySelected
                                                 .value) {
                                               for (final file in group.value) {
