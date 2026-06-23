@@ -162,7 +162,7 @@ Future<_SyncAnalysisResult> _syncAnalyze(
   bool recursive = true,
 }) async {
   final files = await _syncPool.withResource<Iterable<String>>(
-    () => compute(_listCallback, (path: localRootPath, recursive: recursive)),
+    () => _listCallback((path: localRootPath, recursive: recursive)),
   );
 
   final remoteFilesMap = Map<String, _RemoteFileForComparator>.fromEntries(
@@ -1408,14 +1408,6 @@ class Watcher {
         remoteFiles,
         recursive: recursive,
       );
-
-      try {
-        throw Exception("Debug Exception");
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint("Debug Exception caught: $e");
-        }
-      }
 
       for (String path in [...result.newFile, ...result.modifiedLocally]) {
         final key = Main.keyFromPath(path) ?? '';
