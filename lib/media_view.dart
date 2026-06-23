@@ -5,36 +5,33 @@ import 'dart:convert';
 import 'package:file_magic_number/file_magic_number.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:open_file/open_file.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie_audio/chewie_audio.dart';
 import 'package:chewie/chewie.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:files3/utils/hybrid_image_provider.dart';
-import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 
 class GalleryProps {
-  final String key;
-  final String title;
-  final String? description;
-  final String url;
-  final String path;
-  final String cachePath;
+  final String? key;
+  final String? title;
+  final String? url;
+  String? path;
+  final String? cachePath;
 
-  GalleryProps({
-    required this.key,
-    required this.title,
-    this.description,
-    required this.url,
-    required this.path,
-    required this.cachePath,
-  });
+  GalleryProps({this.key, this.title, this.url, this.path, this.cachePath})
+    : assert(
+        path != null || url != null,
+        'At least path or url must be provided',
+      ),
+      assert(
+        key != null || title != null,
+        'At least key or title must be provided',
+      );
 }
 
 enum DragDirection { none, vertical, horizontal }
@@ -159,9 +156,9 @@ class _PointerGestureRouterState extends State<PointerGestureRouter> {
 }
 
 class AudioVideoInteractiveMedia extends StatefulWidget {
-  final String path;
-  final String cachePath;
-  final String url;
+  final String? path;
+  final String? cachePath;
+  final String? url;
   final String mediaType;
   final String? heroTag;
   final bool staypaused;
@@ -173,7 +170,10 @@ class AudioVideoInteractiveMedia extends StatefulWidget {
     required this.mediaType,
     this.heroTag,
     this.staypaused = false,
-  });
+  }) : assert(
+         path != null || url != null,
+         'At least path or url must be provided',
+       );
 
   @override
   AudioVideoInteractiveMediaState createState() =>
@@ -182,10 +182,13 @@ class AudioVideoInteractiveMedia extends StatefulWidget {
 
 class AudioVideoInteractiveMediaState
     extends State<AudioVideoInteractiveMedia> {
+  bool _pathExists = false;
+  bool _cacheExists = false;
+
   late ChewieAudioController _chewieAudioController;
   late ChewieController _chewieController;
   late VideoPlayerController _videoController;
-  late Future<dynamic> _loader;
+  late Future<bool> _loader;
 
   @override
   void initState() {
@@ -203,15 +206,20 @@ class AudioVideoInteractiveMediaState
     super.dispose();
   }
 
-  Future<ChewieAudioController> _loadAudio() async {
-    if (await File(widget.path).exists()) {
-      _videoController = VideoPlayerController.file(File(widget.path));
-    } else if (await File(widget.cachePath).exists()) {
-      _videoController = VideoPlayerController.file(File(widget.cachePath));
-    } else {
+  Future<bool> _loadAudio() async {
+    _pathExists = widget.path != null && await File(widget.path!).exists();
+    _cacheExists =
+        widget.cachePath != null && await File(widget.cachePath!).exists();
+    if (_pathExists) {
+      _videoController = VideoPlayerController.file(File(widget.path!));
+    } else if (_cacheExists) {
+      _videoController = VideoPlayerController.file(File(widget.cachePath!));
+    } else if (widget.url != null) {
       _videoController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.url),
+        Uri.parse(widget.url!),
       );
+    } else {
+      return false;
     }
     await _videoController.initialize();
     _chewieAudioController = ChewieAudioController(
@@ -229,18 +237,23 @@ class AudioVideoInteractiveMediaState
         _chewieAudioController.pause();
       }
     });
-    return _chewieAudioController;
+    return true;
   }
 
-  Future<VideoPlayerController> _loadVideo() async {
-    if (await File(widget.path).exists()) {
-      _videoController = VideoPlayerController.file(File(widget.path));
-    } else if (await File(widget.cachePath).exists()) {
-      _videoController = VideoPlayerController.file(File(widget.cachePath));
-    } else {
+  Future<bool> _loadVideo() async {
+    _pathExists = widget.path != null && await File(widget.path!).exists();
+    _cacheExists =
+        widget.cachePath != null && await File(widget.cachePath!).exists();
+    if (_pathExists) {
+      _videoController = VideoPlayerController.file(File(widget.path!));
+    } else if (_cacheExists) {
+      _videoController = VideoPlayerController.file(File(widget.cachePath!));
+    } else if (widget.url != null) {
       _videoController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.url),
+        Uri.parse(widget.url!),
       );
+    } else {
+      return false;
     }
     await _videoController.initialize();
     _chewieController = ChewieController(
@@ -272,7 +285,7 @@ class AudioVideoInteractiveMediaState
         _chewieController.pause();
       }
     });
-    return _videoController;
+    return true;
   }
 
   @override
@@ -296,6 +309,18 @@ class AudioVideoInteractiveMediaState
           case ConnectionState.active:
             return Center(child: CircularProgressIndicator());
           case ConnectionState.done:
+            if (snapshot.data != true) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.error_outline, size: 64),
+                    SizedBox(height: 16),
+                    Text('Failed to load media'),
+                  ],
+                ),
+              );
+            }
             return widget.mediaType.toLowerCase().startsWith('audio/')
                 ? _buildAudioPlayer()
                 : _buildVideo();
@@ -330,23 +355,26 @@ class AudioVideoInteractiveMediaState
 }
 
 class PdfInteractiveMedia extends StatefulWidget {
-  final String path;
-  final String cachePath;
-  final String url;
+  final String? path;
+  final String? cachePath;
+  final String? url;
   final String? heroTag;
   final bool showControls;
   final Function(bool paging)? setPaging;
   final Function()? onCached;
   const PdfInteractiveMedia({
     super.key,
-    required this.path,
-    required this.cachePath,
-    required this.url,
+    this.path,
+    this.cachePath,
+    this.url,
     this.heroTag,
     this.showControls = true,
     this.setPaging,
     this.onCached,
-  });
+  }) : assert(
+         path != null || url != null,
+         'At least path or url must be provided',
+       );
 
   @override
   PdfInteractiveMediaState createState() => PdfInteractiveMediaState();
@@ -354,6 +382,9 @@ class PdfInteractiveMedia extends StatefulWidget {
 
 class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
   final TextEditingController _searchController = TextEditingController();
+
+  bool _pathExists = false;
+  bool _cacheExists = false;
 
   bool _pdfReady = false;
   int _pageCount = 0;
@@ -400,10 +431,9 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
       _currentZoom = controller.currentZoom;
       setState(() {});
 
-      if (!(await File(widget.path).exists()) &&
-          !(await File(widget.cachePath).exists())) {
+      if (!_pathExists && !_cacheExists && widget.cachePath != null) {
         final encodedPdf = await document.encodePdf();
-        File(widget.cachePath).writeAsBytes(encodedPdf);
+        File(widget.cachePath!).writeAsBytes(encodedPdf);
         widget.onCached?.call();
       }
     },
@@ -601,9 +631,12 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
   }
 
   Future<void> _loadPdf() async {
-    if (_pdfPath == null && File(widget.path).existsSync()) {
+    _pathExists = widget.path != null && await File(widget.path!).exists();
+    _cacheExists =
+        widget.cachePath != null && await File(widget.cachePath!).exists();
+    if (_pdfPath == null && _pathExists) {
       _pdfPath = widget.path;
-    } else if (_pdfPath == null && File(widget.cachePath).existsSync()) {
+    } else if (_pdfPath == null && _cacheExists) {
       _pdfPath = widget.cachePath;
     } else {
       _pdfUrl = widget.url;
@@ -704,9 +737,9 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
 }
 
 class TextInteractiveMedia extends StatefulWidget {
-  final String path;
-  final String cachePath;
-  final String url;
+  final String? path;
+  final String? cachePath;
+  final String? url;
   final String? heroTag;
   const TextInteractiveMedia({
     super.key,
@@ -714,14 +747,19 @@ class TextInteractiveMedia extends StatefulWidget {
     required this.cachePath,
     required this.url,
     this.heroTag,
-  });
+  }) : assert(
+         path != null || url != null,
+         'At least path or url must be provided',
+       );
 
   @override
   TextInteractiveMediaState createState() => TextInteractiveMediaState();
 }
 
 class TextInteractiveMediaState extends State<TextInteractiveMedia> {
-  late Future<String> _loader;
+  bool _pathExists = false;
+  bool _cacheExists = false;
+  late Future<String?> _loader;
 
   @override
   void initState() {
@@ -729,22 +767,27 @@ class TextInteractiveMediaState extends State<TextInteractiveMedia> {
     _loader = _loadText();
   }
 
-  Future<String> _loadText() async {
-    if (await File(widget.path).exists()) {
-      return await File(widget.path).readAsString();
-    } else if (await File(widget.cachePath).exists()) {
-      return await File(widget.cachePath).readAsString();
-    } else {
-      final uri = Uri.parse(widget.url);
+  Future<String?> _loadText() async {
+    _pathExists = widget.path != null && await File(widget.path!).exists();
+    _cacheExists =
+        widget.cachePath != null && await File(widget.cachePath!).exists();
+    if (_pathExists) {
+      return await File(widget.path!).readAsString();
+    } else if (_cacheExists) {
+      return await File(widget.cachePath!).readAsString();
+    } else if (widget.url != null) {
+      final uri = Uri.parse(widget.url!);
       final response = await HttpClient().getUrl(uri);
       final res = await response.close();
       return await res.transform(const Utf8Decoder()).join();
+    } else {
+      return null;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String>(
+    return FutureBuilder<String?>(
       future: _loader,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
@@ -753,7 +796,7 @@ class TextInteractiveMediaState extends State<TextInteractiveMedia> {
         if (snapshot.hasError) {
           return Center(child: Text('Error loading text'));
         }
-        if (snapshot.hasData) {
+        if (snapshot.data != null) {
           return Hero(
             tag: widget.heroTag ?? widget.key.hashCode,
             child: Padding(
@@ -773,56 +816,93 @@ class TextInteractiveMediaState extends State<TextInteractiveMedia> {
 
 class InteractiveMediaView extends StatefulWidget {
   final String? remoteKey;
-  final String url;
-  final String path;
-  final String cachePath;
+  final String? url;
+  final String? path;
+  final String? cachePath;
   final String? heroTag;
   final bool showControls;
   final Function(bool paging)? setPaging;
   final Function(bool dragging)? setDragging;
   final bool isActive;
   final Function()? onCached;
+  final Function(String path)? onPathChanged;
 
   const InteractiveMediaView({
     super.key,
     this.remoteKey,
-    required this.url,
-    required this.path,
-    required this.cachePath,
+    this.url,
+    this.path,
+    this.cachePath,
     this.heroTag,
     this.showControls = true,
     this.setPaging,
     this.setDragging,
     this.isActive = false,
     this.onCached,
-  });
+    this.onPathChanged,
+  }) : assert(
+         path != null || url != null,
+         'At least path or url must be provided',
+       );
 
   @override
   InteractiveMediaViewState createState() => InteractiveMediaViewState();
 }
 
 class InteractiveMediaViewState extends State<InteractiveMediaView> {
+  bool _loading = false;
   String mediaType = 'application/octet-stream';
+  String? _path;
 
+  final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
   final PhotoViewController _photoViewController = PhotoViewController();
 
   Widget fallback(_, String mediaType) => Icon(mediaTypeIcon(mediaType));
 
   Future<void> updateMediaType() async {
     if (mounted) {
-      mediaType =
-          getMediaType(widget.path) ??
-          await FileMagicNumber.detectFileTypeFromPathOrBlob(widget.path).then(
-            (type) => type != FileMagicNumberType.unknown
-                ? mimeTypeFromMagic(type)
-                : 'application/octet-stream',
-          );
-      setState(() {});
+      setState(() {
+        _loading = true;
+      });
+    }
+    try {
+      if (widget.path != null || widget.cachePath != null) {
+        mediaType =
+            getMediaType(widget.path ?? widget.cachePath!) ??
+            await FileMagicNumber.detectFileTypeFromPathOrBlob(
+              widget.path ?? widget.cachePath!,
+            ).then(
+              (type) => type != FileMagicNumberType.unknown
+                  ? mimeTypeFromMagic(type)
+                  : 'application/octet-stream',
+            );
+      } else if (widget.url != null) {
+        _path = (await uriToFile(
+          widget.url!,
+          onProgress: (d, t) => _progress.value = d / t,
+        )).path;
+        widget.onPathChanged?.call(_path!);
+        mediaType = await FileMagicNumber.detectFileTypeFromPathOrBlob(_path!)
+            .then(
+              (type) => type != FileMagicNumberType.unknown
+                  ? mimeTypeFromMagic(type)
+                  : 'application/octet-stream',
+            );
+      }
+    } catch (e) {
+      mediaType = 'application/octet-stream';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
   @override
   void initState() {
+    _path = widget.path;
     super.initState();
     updateMediaType();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -838,6 +918,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
 
   @override
   void dispose() {
+    _progress.dispose();
     _photoViewController.dispose();
     super.dispose();
   }
@@ -849,7 +930,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             controller: _photoViewController,
             imageProvider: HybridImageProvider(
               url: widget.url,
-              path: widget.path,
+              path: _path,
               cachePath: widget.cachePath,
               cacheKey: widget.remoteKey,
               onCached: widget.onCached,
@@ -883,7 +964,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
               ],
             ),
             heroAttributes: PhotoViewHeroAttributes(
-              tag: widget.heroTag ?? widget.remoteKey ?? widget.path,
+              tag: widget.heroTag ?? widget.remoteKey ?? _path ?? widget.url!,
             ),
             basePosition: Alignment.center,
             enableRotation: true,
@@ -893,42 +974,53 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
           )
         : mediaType.toLowerCase() == 'application/pdf'
         ? PdfInteractiveMedia(
-            path: widget.path,
+            path: _path,
             cachePath: widget.cachePath,
             url: widget.url,
-            heroTag: widget.heroTag ?? widget.remoteKey ?? widget.path,
+            heroTag: widget.heroTag ?? widget.remoteKey ?? _path ?? widget.url,
             showControls: widget.showControls,
             setPaging: widget.setPaging,
             onCached: widget.onCached,
           )
         : mediaType.startsWith('audio/')
         ? AudioVideoInteractiveMedia(
-            path: widget.path,
+            path: _path,
             cachePath: widget.cachePath,
             url: widget.url,
             mediaType: mediaType,
-            heroTag: widget.heroTag ?? widget.remoteKey ?? widget.path,
+            heroTag: widget.heroTag ?? widget.remoteKey ?? _path ?? widget.url,
             staypaused: !widget.isActive,
           )
         : mediaType.startsWith('video/')
         ? AudioVideoInteractiveMedia(
-            path: widget.path,
+            path: _path,
             cachePath: widget.cachePath,
             url: widget.url,
             mediaType: mediaType,
-            heroTag: widget.heroTag ?? widget.remoteKey ?? widget.path,
+            heroTag: widget.heroTag ?? widget.remoteKey ?? _path ?? widget.url,
             staypaused: !widget.isActive,
           )
         : mediaType.startsWith('text/')
         ? TextInteractiveMedia(
-            path: widget.path,
+            path: _path,
             cachePath: widget.cachePath,
             url: widget.url,
-            heroTag: widget.heroTag ?? widget.remoteKey ?? widget.path,
+            heroTag: widget.heroTag ?? widget.remoteKey ?? _path,
           )
         : Hero(
-            tag: widget.heroTag ?? widget.remoteKey ?? widget.path,
-            child: fallback(context, mediaType),
+            tag: widget.heroTag ?? widget.remoteKey ?? _path ?? widget.url!,
+            child: _loading
+                ? Center(
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _progress,
+                      builder: (context, value, child) {
+                        return CircularProgressIndicator(
+                          value: 0 < value && value < 1 ? value : null,
+                        );
+                      },
+                    ),
+                  )
+                : fallback(context, mediaType),
           );
   }
 }
@@ -937,18 +1029,18 @@ class Gallery extends StatefulWidget {
   final List<GalleryProps> files;
   final int initialIndex;
   final Map<String, double> keysOffsetMap;
-  final ScrollController scrollController;
-  final Widget Function(BuildContext, RemoteFile) buildContextMenu;
-  final Function() rebuildContext;
+  final ScrollController? scrollController;
+  final Widget Function(BuildContext, int)? buildContextMenu;
+  final Function()? rebuildContext;
 
   const Gallery({
     super.key,
     required this.files,
     this.initialIndex = 0,
-    required this.keysOffsetMap,
-    required this.scrollController,
-    required this.buildContextMenu,
-    required this.rebuildContext,
+    this.keysOffsetMap = const {},
+    this.scrollController,
+    this.buildContextMenu,
+    this.rebuildContext,
   });
 
   @override
@@ -1038,13 +1130,18 @@ class GalleryState extends State<Gallery> {
 
   void popWithCurrentKey() {
     _chromeVisible.value = false;
-    widget.scrollController.jumpTo(
-      max(
-        0,
-        widget.keysOffsetMap[widget.files[_currentIndex.value].key]! -
-            MediaQuery.of(context).size.height / 3,
-      ),
-    );
+    if (widget.scrollController != null &&
+        widget.keysOffsetMap.containsKey(
+          widget.files[_currentIndex.value].key,
+        )) {
+      widget.scrollController!.jumpTo(
+        max(
+          0,
+          widget.keysOffsetMap[widget.files[_currentIndex.value].key]! -
+              MediaQuery.of(context).size.height / 3,
+        ),
+      );
+    }
     Navigator.of(context).pop(widget.files[_currentIndex.value].key);
   }
 
@@ -1142,6 +1239,10 @@ class GalleryState extends State<Gallery> {
                           setDragging: _setDragging,
                           isActive: index == _currentIndex.value,
                           onCached: widget.rebuildContext,
+                          onPathChanged: (path) {
+                            widget.files[index].path = path;
+                            widget.rebuildContext?.call();
+                          },
                         ),
                       ),
                     ),
@@ -1179,83 +1280,63 @@ class GalleryState extends State<Gallery> {
                 ),
               ),
             ),
-            DraggableScrollableSheet(
-              controller: _contextMenuSheetController,
-              initialChildSize: _chromeVisible.value && _allowDragging.value
-                  ? _defaultBottomSheetSize
-                  : 0.0,
-              minChildSize: 0,
-              maxChildSize: _maxBottomSheetSize,
-              snap: true,
-              snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
-              snapAnimationDuration: const Duration(milliseconds: 100),
-              builder: (context, scrollController) {
-                return Container(
-                  clipBehavior: Clip.hardEdge,
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius:
-                        Theme.of(context).bottomSheetTheme.shape
-                            is RoundedRectangleBorder
-                        ? (Theme.of(context).bottomSheetTheme.shape
-                                  as RoundedRectangleBorder)
-                              .borderRadius
-                        : const BorderRadius.only(
-                            topLeft: Radius.circular(32),
-                            topRight: Radius.circular(32),
-                          ),
-                  ),
-                  child: CustomScrollView(
-                    controller: scrollController,
-                    slivers: [
-                      PinnedHeaderSliver(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          color: Colors.black,
-                          alignment: Alignment.center,
+            if (widget.buildContextMenu != null &&
+                widget.files[_currentIndex.value].key != null)
+              DraggableScrollableSheet(
+                controller: _contextMenuSheetController,
+                initialChildSize: _chromeVisible.value && _allowDragging.value
+                    ? _defaultBottomSheetSize
+                    : 0.0,
+                minChildSize: 0,
+                maxChildSize: _maxBottomSheetSize,
+                snap: true,
+                snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
+                snapAnimationDuration: const Duration(milliseconds: 100),
+                builder: (context, scrollController) {
+                  return Container(
+                    clipBehavior: Clip.hardEdge,
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius:
+                          Theme.of(context).bottomSheetTheme.shape
+                              is RoundedRectangleBorder
+                          ? (Theme.of(context).bottomSheetTheme.shape
+                                    as RoundedRectangleBorder)
+                                .borderRadius
+                          : const BorderRadius.only(
+                              topLeft: Radius.circular(32),
+                              topRight: Radius.circular(32),
+                            ),
+                    ),
+                    child: CustomScrollView(
+                      controller: scrollController,
+                      slivers: [
+                        PinnedHeaderSliver(
                           child: Container(
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              borderRadius: BorderRadius.circular(2),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            color: Colors.black,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 40,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.onSurface,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      Main.remoteFileByKey(
-                                widget.files[_currentIndex.value].key,
-                              ) !=
-                              null
-                          ? SliverToBoxAdapter(
-                              child: widget.buildContextMenu(
-                                context,
-                                Main.remoteFileByKey(
-                                  widget.files[_currentIndex.value].key,
-                                )!,
-                              ),
-                            )
-                          : SliverToBoxAdapter(
-                              child: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: Text(
-                                    'File not found',
-                                    style: TextStyle(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurface,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                        SliverToBoxAdapter(
+                          child: widget.buildContextMenu!(
+                            context,
+                            _currentIndex.value,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
           ],
         ),
         backgroundColor: Colors.black,
@@ -1277,17 +1358,20 @@ class MediaPreview extends StatefulWidget {
 class MediaPreviewState extends State<MediaPreview> {
   Widget fallback(String mediaType) => Icon(mediaTypeIcon(mediaType));
 
-  void setImageProvider() {
-    thumbnailCache[widget.item.key] ??= HybridImageProvider(
-      url: widget.item.url,
-      path: Main.pathFromKey(widget.item.key),
-      cachePath: Main.cachePathFromKey(widget.item.key),
-      thumbPath: "${Main.cachePathFromKey(widget.item.key)}_thumb",
-      thumbnail: true,
-      maxWidth: widget.width?.toInt(),
-      maxHeight: widget.height?.toInt(),
-      cacheKey: widget.item.key,
-    );
+  Future<void> setImageProvider() async {
+    if (getMediaType(widget.item.key)?.startsWith('image/') ?? false) {
+      thumbnailCache[widget.item.key] ??= HybridImageProvider(
+        url: widget.item.url,
+        path: Main.pathFromKey(widget.item.key),
+        cachePath: Main.cachePathFromKey(widget.item.key),
+        thumbPath: Main.thumbPathFromKey(widget.item.key),
+        thumbnail: true,
+        maxWidth: widget.width?.toInt(),
+        maxHeight: widget.height?.toInt(),
+        cacheKey: widget.item.key,
+      );
+      setState(() {});
+    }
   }
 
   @override
@@ -1301,13 +1385,11 @@ class MediaPreviewState extends State<MediaPreview> {
   @override
   void initState() {
     super.initState();
+    setImageProvider();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (getMediaType(widget.item.key)?.startsWith('image/') ?? false) {
-      setImageProvider();
-    }
     return thumbnailCache[widget.item.key] == null
         ? fallback(getMediaType(widget.item.key) ?? 'application/octet-stream')
         : Image(
@@ -1340,313 +1422,5 @@ class MediaPreviewState extends State<MediaPreview> {
               getMediaType(widget.item.key) ?? 'application/octet-stream',
             ),
           );
-  }
-}
-
-class ExternalFileView extends StatefulWidget {
-  final String path;
-  final void Function()? upload;
-
-  const ExternalFileView({super.key, required this.path, this.upload});
-
-  @override
-  State<ExternalFileView> createState() => ExternalFileViewState();
-}
-
-class ExternalFileViewState extends State<ExternalFileView> {
-  static const double _defaultBottomSheetSize = 0.13;
-  static const double _maxBottomSheetSize = 0.5;
-
-  final DraggableScrollableController _contextMenuSheetController =
-      DraggableScrollableController();
-  final ValueNotifier<bool> _allowPaging = ValueNotifier<bool>(true);
-  final ValueNotifier<bool> _chromeVisible = ValueNotifier<bool>(true);
-  final ValueNotifier<bool> _allowDragging = ValueNotifier<bool>(true);
-  final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
-  final ValueNotifier<String?> _path = ValueNotifier<String?>(null);
-
-  String? _mediaType;
-
-  void _setPaging(bool paging) {
-    _allowPaging.value = paging;
-    _chromeVisible.value = _allowPaging.value ? _chromeVisible.value : false;
-  }
-
-  void _setDragging(bool dragging) {
-    _allowDragging.value = dragging;
-  }
-
-  void _expandBottomSheet() {
-    _chromeVisible.value = true;
-    _contextMenuSheetController.animateTo(
-      _maxBottomSheetSize,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOut,
-    );
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  }
-
-  void _collapseBottomSheet() {
-    _contextMenuSheetController.animateTo(
-      _defaultBottomSheetSize,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOut,
-    );
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  }
-
-  void _hideBottomSheet() {
-    _contextMenuSheetController.animateTo(
-      0.0,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeIn,
-    );
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
-  }
-
-  void _uriToPath() async {
-    if (RegExp(r'^[a-zA-Z]+://').hasMatch(widget.path)) {
-      _path.value = (await uriToFile(
-        widget.path,
-        onProgress: (d, t) => _progress.value = d / t,
-      )).path;
-    }
-  }
-
-  @override
-  void initState() {
-    _uriToPath();
-    super.initState();
-
-    _mediaType = getMediaType(widget.path);
-
-    _chromeVisible.addListener(() {
-      if (_chromeVisible.value &&
-          _contextMenuSheetController.size <= _defaultBottomSheetSize) {
-        _collapseBottomSheet();
-      } else if (!_chromeVisible.value &&
-          _contextMenuSheetController.size > 0) {
-        _hideBottomSheet();
-      }
-    });
-
-    _contextMenuSheetController.addListener(() {
-      if (_contextMenuSheetController.size <= 0 && _chromeVisible.value) {
-        _chromeVisible.value = false;
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _contextMenuSheetController.dispose();
-    _allowPaging.dispose();
-    _chromeVisible.dispose();
-    _allowDragging.dispose();
-    _progress.dispose();
-    _path.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          ListenableBuilder(
-            listenable: Listenable.merge([
-              _allowPaging,
-              _chromeVisible,
-              _path,
-              _progress,
-            ]),
-            builder: (context, _) => AnimatedPadding(
-              padding: _chromeVisible.value
-                  ? EdgeInsets.only(
-                      top: kToolbarHeight + MediaQuery.of(context).padding.top,
-                      bottom:
-                          kToolbarHeight +
-                          MediaQuery.of(context).padding.bottom,
-                    )
-                  : EdgeInsets.zero,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: PointerGestureRouter(
-                allowTap: () => _allowPaging.value,
-                allowVerticalDrag: () => false,
-                onTap: () {
-                  _chromeVisible.value = !_chromeVisible.value;
-                },
-                child: Center(
-                  child: _path.value != null
-                      ? InteractiveMediaView(
-                          url: RegExp(r'^[a-zA-Z]+://').hasMatch(widget.path)
-                              ? widget.path
-                              : "file://${widget.path}",
-                          path: _path.value!,
-                          cachePath: _path.value!,
-                          showControls: _chromeVisible.value,
-                          setPaging: _setPaging,
-                          setDragging: _setDragging,
-                        )
-                      : CircularProgressIndicator(value: _progress.value),
-                ),
-              ),
-            ),
-          ),
-          ListenableBuilder(
-            listenable: Listenable.merge([_chromeVisible, _path]),
-            builder: (context, _) => SizedBox(
-              height: kToolbarHeight + MediaQuery.of(context).padding.top,
-              child: AnimatedSlide(
-                duration: const Duration(milliseconds: 300),
-                offset: _chromeVisible.value
-                    ? Offset.zero
-                    : const Offset(0, -1),
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 300),
-                  opacity: _chromeVisible.value ? 1.0 : 0.0,
-                  child: AppBar(
-                    backgroundColor: Colors.black,
-                    title: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Text(p.basename(_path.value ?? widget.path)),
-                    ),
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.more_vert_rounded),
-                        onPressed: _expandBottomSheet,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          DraggableScrollableSheet(
-            controller: _contextMenuSheetController,
-            initialChildSize: _chromeVisible.value && _allowDragging.value
-                ? _defaultBottomSheetSize
-                : 0.0,
-            minChildSize: 0,
-            maxChildSize: _maxBottomSheetSize,
-            snap: true,
-            snapSizes: const [_defaultBottomSheetSize, _maxBottomSheetSize],
-            snapAnimationDuration: const Duration(milliseconds: 100),
-            builder: (context, scrollController) {
-              return ListenableBuilder(
-                listenable: _path,
-                builder: (context, _) => Container(
-                  clipBehavior: Clip.hardEdge,
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius:
-                        Theme.of(context).bottomSheetTheme.shape
-                            is RoundedRectangleBorder
-                        ? (Theme.of(context).bottomSheetTheme.shape
-                                  as RoundedRectangleBorder)
-                              .borderRadius
-                        : const BorderRadius.only(
-                            topLeft: Radius.circular(32),
-                            topRight: Radius.circular(32),
-                          ),
-                  ),
-                  child: CustomScrollView(
-                    controller: scrollController,
-                    slivers: [
-                      PinnedHeaderSliver(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          color: Colors.black,
-                          alignment: Alignment.center,
-                          child: Container(
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Column(
-                          children: [
-                            ListTile(
-                              visualDensity: VisualDensity.comfortable,
-                              leading: Icon(mediaTypeIcon(_mediaType)),
-                              title: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Text(widget.path),
-                              ),
-                              subtitle: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: [
-                                    if (_path.value != null) ...[
-                                      Text(
-                                        bytesToReadable(
-                                          File(_path.value!).lengthSync(),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                    ],
-                                    Text(
-                                      p.extension(_path.value ?? widget.path),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            ListTile(
-                              visualDensity: VisualDensity.comfortable,
-                              leading: const Icon(Icons.open_in_new),
-                              title: const Text('Open with...'),
-                              subtitle: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Text(_path.value ?? widget.path),
-                              ),
-                              onTap: _path.value != null
-                                  ? () {
-                                      OpenFile.open(_path.value!);
-                                    }
-                                  : null,
-                            ),
-                            ListTile(
-                              visualDensity: VisualDensity.comfortable,
-                              leading: const Icon(Icons.share),
-                              title: const Text('Share'),
-                              onTap: _path.value != null
-                                  ? () {
-                                      SharePlus.instance.share(
-                                        ShareParams(
-                                          files: <XFile>[XFile(_path.value!)],
-                                        ),
-                                      );
-                                    }
-                                  : null,
-                            ),
-                            if (widget.upload != null)
-                              ListTile(
-                                visualDensity: VisualDensity.comfortable,
-                                leading: const Icon(Icons.upload),
-                                title: const Text('Upload'),
-                                onTap: _path.value != null
-                                    ? widget.upload
-                                    : null,
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      backgroundColor: Colors.black,
-    );
   }
 }

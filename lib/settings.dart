@@ -1225,6 +1225,8 @@ class SettingsPageState extends State<SettingsPage> {
   late UiConfig _uiConfig;
   late TransferConfig _downloadConfig;
   late int _cacheSize;
+  late int _thumbCacheSize;
+  late int _downloadCacheSize;
 
   bool _colorModePopupVisible = false;
   bool _maxTransfersPopupVisible = false;
@@ -1345,7 +1347,9 @@ class SettingsPageState extends State<SettingsPage> {
     super.initState();
     _uiConfig = ConfigManager.loadUiConfig();
     _downloadConfig = ConfigManager.loadTransferConfig();
-    _cacheSize = Job.cacheSize();
+    _cacheSize = Main.cacheSize();
+    _thumbCacheSize = Main.thumbCacheSize();
+    _downloadCacheSize = Main.downloadCacheSize();
     _getPackageInfo();
   }
 
@@ -1764,7 +1768,7 @@ class SettingsPageState extends State<SettingsPage> {
               ),
 
               SliverM3ECardList(
-                itemCount: 2,
+                itemCount: 4,
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 padding: EdgeInsets.zero,
                 color: Colors.transparent,
@@ -1843,27 +1847,100 @@ class SettingsPageState extends State<SettingsPage> {
                       );
                     case 1:
                       return ListTile(
-                        title: Text('Downloads & Thumbnail Cache'),
-                        subtitle: Text(bytesToReadable(Job.cacheSize())),
+                        title: Text('Temporary Files'),
+                        subtitle: Text(bytesToReadable(_cacheSize)),
                         leading: Icon(Icons.history_rounded),
                         trailing: TextButton(
                           onPressed: _cacheSize > 0
                               ? () async {
                                   if (await confirmDialog(
                                     context,
-                                    title: 'Confirm Clear Cache',
+                                    title: 'Confirm Clear Temporary Files',
                                     content: Text(
-                                      'Are you sure you want to clear the cache?',
+                                      'Are you sure you want to clear the temporary files?',
                                     ),
                                     okText: 'Clear',
                                     cancelText: 'Cancel',
                                   )) {
-                                    Job.clearCache();
+                                    Main.clearCache();
                                     showSnackBar(
-                                      SnackBar(content: Text('Cache cleared')),
+                                      SnackBar(
+                                        content: Text(
+                                          'Temporary files cleared',
+                                        ),
+                                      ),
                                     );
                                     setState(() {
-                                      _cacheSize = Job.cacheSize();
+                                      _cacheSize = Main.cacheSize();
+                                    });
+                                  }
+                                }
+                              : null,
+                          child: Text('Clear'),
+                        ),
+                      );
+                    case 2:
+                      return ListTile(
+                        title: Text('Thumbnail Cache'),
+                        subtitle: Text(bytesToReadable(_thumbCacheSize)),
+                        leading: Icon(Icons.history_rounded),
+                        trailing: TextButton(
+                          onPressed: _thumbCacheSize > 0
+                              ? () async {
+                                  if (await confirmDialog(
+                                    context,
+                                    title: 'Confirm Clear Thumbnail Cache',
+                                    content: Text(
+                                      'Are you sure you want to clear the thumbnail cache?',
+                                    ),
+                                    okText: 'Clear',
+                                    cancelText: 'Cancel',
+                                  )) {
+                                    Main.clearThumbCache();
+                                    showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Thumbnail cache cleared',
+                                        ),
+                                      ),
+                                    );
+                                    setState(() {
+                                      _thumbCacheSize = Main.thumbCacheSize();
+                                    });
+                                  }
+                                }
+                              : null,
+                          child: Text('Clear'),
+                        ),
+                      );
+                    case 3:
+                      return ListTile(
+                        title: Text('Downloads Cache'),
+                        subtitle: Text(bytesToReadable(_downloadCacheSize)),
+                        leading: Icon(Icons.history_rounded),
+                        trailing: TextButton(
+                          onPressed: _downloadCacheSize > 0
+                              ? () async {
+                                  if (await confirmDialog(
+                                    context,
+                                    title: 'Confirm Clear Downloads Cache',
+                                    content: Text(
+                                      'Are you sure you want to clear the downloads cache?',
+                                    ),
+                                    okText: 'Clear',
+                                    cancelText: 'Cancel',
+                                  )) {
+                                    Main.clearDownloadCache();
+                                    showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Downloads cache cleared',
+                                        ),
+                                      ),
+                                    );
+                                    setState(() {
+                                      _downloadCacheSize =
+                                          Main.downloadCacheSize();
                                     });
                                   }
                                 }

@@ -644,7 +644,8 @@ class BrowserState extends State<Browser> {
           initialIndex: index,
           keysOffsetMap: _keysOffsetMap,
           scrollController: _scrollController,
-          buildContextMenu: _buildContextMenu,
+          buildContextMenu: (BuildContext context, int index) =>
+              _buildContextMenu(context, files[index].key),
           rebuildContext: _rebuildContext.notifyListeners,
         ),
       ),
@@ -943,7 +944,8 @@ class BrowserState extends State<Browser> {
           }
         };
 
-  Widget _buildContextMenu(BuildContext context, RemoteFile? file) {
+  Widget _buildContextMenu(BuildContext context, String? key) {
+    final file = key == null ? null : Main.remoteFileByKey(key);
     return ListenableBuilder(
       listenable: Listenable.merge([
         loading,
@@ -1040,7 +1042,7 @@ class BrowserState extends State<Browser> {
         enableDrag: true,
         showDragHandle: true,
         constraints: const BoxConstraints(maxHeight: 1400, maxWidth: 1400),
-        builder: (context) => _buildContextMenu(context, file),
+        builder: (context) => _buildContextMenu(context, file?.key),
       );
     } catch (e) {
       showSnackBar(SnackBar(content: Text('Error showing context menu: $e')));

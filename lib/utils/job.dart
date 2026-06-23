@@ -207,6 +207,7 @@ class Node {
 abstract class Main {
   static String _documentsDir = '';
   static String _cacheDir = '';
+  static String _thumbCacheDir = '';
   static String _downloadCacheDir = '';
   static final Node _directoryTree = Node();
   static final List<RemoteFile?> _remoteFiles = <RemoteFile?>[];
@@ -220,6 +221,8 @@ abstract class Main {
 
   static String get cacheDir => _cacheDir;
 
+  static String get thumbCacheDir => _thumbCacheDir;
+
   static String get downloadCacheDir => _downloadCacheDir;
 
   static String get documentsDir => _documentsDir;
@@ -232,6 +235,59 @@ abstract class Main {
         (file) => !_ignoreKeyRegexps.any((regexp) => regexp.hasMatch(file.key)),
       );
   static Map<String, Profile> get profiles => _profiles;
+
+  static void clearCache() {
+    final directory = Directory(_cacheDir);
+    if (directory.existsSync()) {
+      directory.deleteSync(recursive: true);
+    }
+  }
+
+  static int cacheSize() {
+    return dirSize(Directory(_cacheDir));
+  }
+
+  static void clearThumbCache() {
+    final directory = Directory(_thumbCacheDir);
+    if (directory.existsSync()) {
+      directory.deleteSync(recursive: true);
+    }
+  }
+
+  static int thumbCacheSize() {
+    return dirSize(Directory(_thumbCacheDir));
+  }
+
+  static void clearDownloadCache() {
+    final directory = Directory(_downloadCacheDir);
+    if (directory.existsSync()) {
+      directory.deleteSync(recursive: true);
+    }
+  }
+
+  static int downloadCacheSize() {
+    return dirSize(Directory(_downloadCacheDir));
+  }
+
+  static void dirClear(Directory directory) {
+    if (directory.existsSync()) {
+      directory.deleteSync(recursive: true);
+    }
+  }
+
+  static int dirSize(Directory directory) {
+    int totalSize = 0;
+
+    if (directory.existsSync()) {
+      for (var file in directory.listSync(recursive: true)) {
+        if (file is File) {
+          totalSize += file.lengthSync();
+        }
+      }
+    }
+
+    return totalSize;
+  }
 
   static void remoteFilesSet(List<RemoteFile> files) {
     remoteFilesClear(notify: false);
@@ -396,6 +452,14 @@ abstract class Main {
     return _watcherMap[dirKey];
   }
 
+  static String thumbPathFromKey(String key) {
+    return p.joinAll([
+      _thumbCacheDir,
+      for (String part in p.split(p.s3(key)))
+        sha1.convert(utf8.encode(part)).toString(),
+    ]);
+  }
+
   static String cachePathFromKey(String key) {
     return p.joinAll([
       _downloadCacheDir,
@@ -405,10 +469,7 @@ abstract class Main {
   }
 
   static String tagPathFromKey(String key) {
-    return p.join(
-      _downloadCacheDir,
-      'file_${sha1.convert(utf8.encode(p.s3(key))).toString()}.tag',
-    );
+    return "${cachePathFromKey(key)}.tag";
   }
 
   static BackupMode backupModeFromKey(String key) {
@@ -940,11 +1001,15 @@ abstract class Main {
   static Future<void> init({bool background = false}) async {
     if (_cacheDir.isEmpty) {
       final directory = await getApplicationCacheDirectory();
-      _cacheDir = directory.path;
+      _cacheDir = p.join(directory.path, 'tmp');
+    }
+    if (_thumbCacheDir.isEmpty) {
+      final directory = await getApplicationCacheDirectory();
+      _thumbCacheDir = p.join(directory.path, 'thumbnails');
     }
     if (_downloadCacheDir.isEmpty) {
       final directory = await getApplicationCacheDirectory();
-      _downloadCacheDir = p.join(directory.path, 'Downloads');
+      _downloadCacheDir = p.join(directory.path, 'downloads');
     }
     if (_documentsDir.isEmpty) {
       final directory = await getApplicationDocumentsDirectory();
@@ -1214,28 +1279,6 @@ abstract class Job {
   static void clear() {
     jobs.clear();
     onJobsChanged.notifyListeners();
-  }
-
-  static void clearCache() {
-    final directory = Directory(Main.cacheDir);
-    if (directory.existsSync()) {
-      directory.deleteSync(recursive: true);
-    }
-  }
-
-  static int cacheSize() {
-    final directory = Directory(Main.cacheDir);
-    int totalSize = 0;
-
-    if (directory.existsSync()) {
-      for (var file in directory.listSync(recursive: true)) {
-        if (file is File) {
-          totalSize += file.lengthSync();
-        }
-      }
-    }
-
-    return totalSize;
   }
 }
 

@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:open_file/open_file.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -549,18 +551,107 @@ class _HomeState extends State<Home> {
     _openedFile.addListener(() async {
       String? openedFile = _openedFile.value;
       if (openedFile != null) {
+        RegExp urlPattern = RegExp(r'^[a-zA-Z]+://');
+        ManualNotifier rebuildNotifier = ManualNotifier();
+        final files = [
+          GalleryProps(
+            key: openedFile,
+            path: urlPattern.hasMatch(openedFile) ? null : openedFile,
+            url: urlPattern.hasMatch(openedFile) ? openedFile : null,
+          ),
+        ];
         await Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => ExternalFileView(
-              path: openedFile,
-              upload: () {
-                _sharedFiles.value = [openedFile];
+            builder: (context) => Gallery(
+              files: files,
+              buildContextMenu: (context, index) {
+                return ListenableBuilder(
+                  listenable: rebuildNotifier,
+                  builder: (context, _) => Column(
+                    children:
+                        files[index].path != null &&
+                            File(files[index].path!).existsSync()
+                        ? [
+                            ListTile(
+                              visualDensity: VisualDensity.comfortable,
+                              leading: Icon(
+                                mediaTypeIcon(getMediaType(files[index].path!)),
+                              ),
+                              title: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(files[index].path!),
+                              ),
+                              subtitle: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      bytesToReadable(
+                                        File(files[index].path!).lengthSync(),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(p.extension(files[index].path!)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            ListTile(
+                              visualDensity: VisualDensity.comfortable,
+                              leading: const Icon(Icons.open_in_new),
+                              title: const Text('Open with...'),
+                              subtitle: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(files[index].path!),
+                              ),
+                              onTap: () {
+                                OpenFile.open(files[index].path!);
+                              },
+                            ),
+                            ListTile(
+                              visualDensity: VisualDensity.comfortable,
+                              leading: const Icon(Icons.share),
+                              title: const Text('Share'),
+                              onTap: () {
+                                SharePlus.instance.share(
+                                  ShareParams(
+                                    files: <XFile>[XFile(files[index].path!)],
+                                  ),
+                                );
+                              },
+                            ),
+                            ListTile(
+                              visualDensity: VisualDensity.comfortable,
+                              leading: const Icon(Icons.upload),
+                              title: const Text('Upload'),
+                              onTap: () {
+                                _sharedFiles.value = [files[index].path!];
+                              },
+                            ),
+                          ]
+                        : [
+                            ListTile(
+                              visualDensity: VisualDensity.comfortable,
+                              leading: const Icon(Icons.info_outline),
+                              title: const Text('Loading...'),
+                              subtitle: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(openedFile),
+                              ),
+                            ),
+                          ],
+                  ),
+                );
+              },
+              rebuildContext: () {
+                rebuildNotifier.notifyListeners();
               },
             ),
           ),
         );
         _openedFile.value = null;
         receive_intent.ReceiveIntent.setResult(200);
+        rebuildNotifier.dispose();
       }
     });
 

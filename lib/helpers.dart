@@ -1000,7 +1000,7 @@ class DeletionRegistrar {
 
   DeletionRegistrar({required this.profile}) {
     _key = p.join(profile.name, 'deletion-register.ini');
-    _file = File(p.join(Main.documentsDir, _key));
+    _file = File(p.join(Main.documentsDir, 'deletion-registers', _key));
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);

@@ -192,7 +192,7 @@ class S3TransferTask {
     final remoteEtag = head.etag;
     final total = head.size;
 
-    final tempFile = File(Main.cachePathFromKey(key));
+    final tempFile = File('${Main.cachePathFromKey(key)}.tmp');
     final tagFile = File(Main.tagPathFromKey(key));
     String localEtag = remoteEtag;
 
