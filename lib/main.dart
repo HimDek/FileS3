@@ -1,9 +1,8 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:files3/external_files.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:open_file/open_file.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -17,7 +16,6 @@ import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/browser.dart';
-import 'package:files3/media_view.dart';
 
 /// ===============================
 /// SHARED ASYNC JOB
@@ -218,7 +216,6 @@ class _HomeState extends State<Home> {
   final ValueNotifier<List<String>> _sharedFiles = ValueNotifier<List<String>>(
     [],
   );
-  final ValueNotifier<String?> _openedFile = ValueNotifier<String?>(null);
 
   Future<void> _createDirectory(String dir) async {
     loading.value = true;
@@ -486,7 +483,7 @@ class _HomeState extends State<Home> {
         final uri = intent.data;
 
         if (uri != null) {
-          _openedFile.value = uri;
+          _sharedFiles.value = [uri];
         }
         break;
     }
@@ -502,156 +499,58 @@ class _HomeState extends State<Home> {
       if (sharedFiles.isNotEmpty) {
         await Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => PathPicker(
-              title: Text('Select Upload Location'),
-              subtitle: SingleChildScrollView(
-                child: Text(
-                  '${sharedFiles.length} file${sharedFiles.length > 1 ? 's' : ''}: ${sharedFiles.map((e) => p.basename(e)).join(', ')}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              onInit: RegExp(r'^[a-zA-Z]+://').hasMatch(sharedFiles.first)
-                  ? () async {
-                      loading.value = true;
-                      int totalCount = sharedFiles.length;
-                      int progressCount = 0;
-                      sharedFiles = await Future.wait(
-                        sharedFiles.map((e) async {
-                          String f = (await uriToFile(
-                            e,
-                            onProgress: (d, t) => progress.value =
-                                (progressCount + d / t) / totalCount,
-                          )).path;
-                          progressCount += 1;
-                          return f;
-                        }),
-                      );
-                      loading.value = false;
-                    }
-                  : null,
-              onPick: (path) async {
-                loading.value = true;
-                for (final sharedFile in sharedFiles) {
-                  final fileName = p.basename(sharedFile);
-                  final remoteKey = p
-                      .join(path.key, fileName)
-                      .replaceAll('\\', '/');
-                  await Main.uploadFile(remoteKey, File(sharedFile));
-                }
-                loading.value = false;
+            builder: (context) => ExternalFiles(
+              path: sharedFiles,
+              upload: (paths) async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => PathPicker(
+                      title: Text('Select Upload Location'),
+                      subtitle: SingleChildScrollView(
+                        child: Text(
+                          '${paths.length} file${paths.length > 1 ? 's' : ''}: ${paths.map((e) => p.basename(e)).join(', ')}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      onInit: RegExp(r'^[a-zA-Z]+://').hasMatch(paths.first)
+                          ? () async {
+                              loading.value = true;
+                              int totalCount = paths.length;
+                              int progressCount = 0;
+                              paths = await Future.wait(
+                                paths.map((e) async {
+                                  String f = (await uriToFile(
+                                    e,
+                                    onProgress: (d, t) => progress.value =
+                                        (progressCount + d / t) / totalCount,
+                                  )).path;
+                                  progressCount += 1;
+                                  return f;
+                                }),
+                              );
+                              loading.value = false;
+                            }
+                          : null,
+                      onPick: (path) async {
+                        loading.value = true;
+                        for (final sharedFile in paths) {
+                          final fileName = p.basename(sharedFile);
+                          final remoteKey = p
+                              .join(path.key, fileName)
+                              .replaceAll('\\', '/');
+                          await Main.uploadFile(remoteKey, File(sharedFile));
+                        }
+                        loading.value = false;
+                      },
+                    ),
+                  ),
+                );
               },
             ),
           ),
         );
         _sharedFiles.value = [];
         receive_intent.ReceiveIntent.setResult(200);
-      }
-    });
-
-    _openedFile.addListener(() async {
-      String? openedFile = _openedFile.value;
-      if (openedFile != null) {
-        RegExp urlPattern = RegExp(r'^[a-zA-Z]+://');
-        ManualNotifier rebuildNotifier = ManualNotifier();
-        final files = [
-          GalleryProps(
-            key: openedFile,
-            path: urlPattern.hasMatch(openedFile) ? null : openedFile,
-            url: urlPattern.hasMatch(openedFile) ? openedFile : null,
-          ),
-        ];
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => Gallery(
-              files: files,
-              buildContextMenu: (context, index) {
-                return ListenableBuilder(
-                  listenable: rebuildNotifier,
-                  builder: (context, _) => Column(
-                    children:
-                        files[index].path != null &&
-                            File(files[index].path!).existsSync()
-                        ? [
-                            ListTile(
-                              visualDensity: VisualDensity.comfortable,
-                              leading: Icon(
-                                mediaTypeIcon(getMediaType(files[index].path!)),
-                              ),
-                              title: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Text(files[index].path!),
-                              ),
-                              subtitle: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      bytesToReadable(
-                                        File(files[index].path!).lengthSync(),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(p.extension(files[index].path!)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            ListTile(
-                              visualDensity: VisualDensity.comfortable,
-                              leading: const Icon(Icons.open_in_new),
-                              title: const Text('Open with...'),
-                              subtitle: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Text(files[index].path!),
-                              ),
-                              onTap: () {
-                                OpenFile.open(files[index].path!);
-                              },
-                            ),
-                            ListTile(
-                              visualDensity: VisualDensity.comfortable,
-                              leading: const Icon(Icons.share),
-                              title: const Text('Share'),
-                              onTap: () {
-                                SharePlus.instance.share(
-                                  ShareParams(
-                                    files: <XFile>[XFile(files[index].path!)],
-                                  ),
-                                );
-                              },
-                            ),
-                            ListTile(
-                              visualDensity: VisualDensity.comfortable,
-                              leading: const Icon(Icons.upload),
-                              title: const Text('Upload'),
-                              onTap: () {
-                                _sharedFiles.value = [files[index].path!];
-                              },
-                            ),
-                          ]
-                        : [
-                            ListTile(
-                              visualDensity: VisualDensity.comfortable,
-                              leading: const Icon(Icons.info_outline),
-                              title: const Text('Loading...'),
-                              subtitle: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Text(openedFile),
-                              ),
-                            ),
-                          ],
-                  ),
-                );
-              },
-              rebuildContext: () {
-                rebuildNotifier.notifyListeners();
-              },
-            ),
-          ),
-        );
-        _openedFile.value = null;
-        receive_intent.ReceiveIntent.setResult(200);
-        rebuildNotifier.dispose();
       }
     });
 
@@ -686,7 +585,6 @@ class _HomeState extends State<Home> {
   void dispose() {
     _intentSub.cancel();
     _sharedFiles.dispose();
-    _openedFile.dispose();
     super.dispose();
   }
 

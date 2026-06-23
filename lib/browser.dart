@@ -667,7 +667,7 @@ class BrowserState extends State<Browser> {
     final oldDir = _driveDir.value.key;
     _navIndex.value = 0;
     _controlsVisible.value = true;
-    var dir = BrowserState.root;
+    var dir = ndir;
     for (String item in _selection.value) {
       if (p.isWithin(item, ndir) || item == ndir) {
         dir = () {
@@ -677,11 +677,13 @@ class BrowserState extends State<Browser> {
               break;
             }
           }
-          return Main.remoteFileByKey(ndir) ?? BrowserState.root;
+          return ndir;
         }();
       }
     }
-    _driveDir.value = ndir.isEmpty ? BrowserState.root : dir;
+    _driveDir.value = ndir.isEmpty
+        ? BrowserState.root
+        : Main.remoteFileByKey(dir) ?? BrowserState.root;
     _profile.value = Main.profileFromKey(_driveDir.value.key);
     _updateCounts();
     _scrollToFile(oldDir);

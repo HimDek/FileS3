@@ -61,7 +61,8 @@ Future<File> uriToFile(
     bytes ?? Uint8List(0),
   );
 
-  String destinationPath = p.join(Main.cacheDir, p.basename(uriString));
+  final b = p.basename(uriString);
+  String destinationPath = p.join(Main.cacheDir, b);
 
   if (!destinationPath.endsWith('.${type.toString().split('.').last}') &&
       type != FileMagicNumberType.unknown &&

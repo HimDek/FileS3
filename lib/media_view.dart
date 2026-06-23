@@ -1081,20 +1081,24 @@ class GalleryState extends State<Gallery> {
   }
 
   void _collapseBottomSheet() {
-    _contextMenuSheetController.animateTo(
-      _defaultBottomSheetSize,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOut,
-    );
+    if (_contextMenuSheetController.isAttached) {
+      _contextMenuSheetController.animateTo(
+        _defaultBottomSheetSize,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOut,
+      );
+    }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
   void _hideBottomSheet() {
-    _contextMenuSheetController.animateTo(
-      0.0,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeIn,
-    );
+    if (_contextMenuSheetController.isAttached) {
+      _contextMenuSheetController.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeIn,
+      );
+    }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
   }
 
@@ -1346,11 +1350,16 @@ class GalleryState extends State<Gallery> {
 }
 
 class MediaPreview extends StatefulWidget {
-  final FileProps item;
+  final FileProps? item;
+  final String? path;
   final double? width;
   final double? height;
 
-  const MediaPreview({super.key, required this.item, this.width, this.height});
+  const MediaPreview({super.key, this.item, this.path, this.width, this.height})
+    : assert(
+        item != null || path != null,
+        'Either item or path must be provided',
+      );
   @override
   MediaPreviewState createState() => MediaPreviewState();
 }
@@ -1359,16 +1368,17 @@ class MediaPreviewState extends State<MediaPreview> {
   Widget fallback(String mediaType) => Icon(mediaTypeIcon(mediaType));
 
   Future<void> setImageProvider() async {
-    if (getMediaType(widget.item.key)?.startsWith('image/') ?? false) {
-      thumbnailCache[widget.item.key] ??= HybridImageProvider(
-        url: widget.item.url,
-        path: Main.pathFromKey(widget.item.key),
-        cachePath: Main.cachePathFromKey(widget.item.key),
-        thumbPath: Main.thumbPathFromKey(widget.item.key),
+    final String? key = widget.item?.key;
+    if (getMediaType(key ?? widget.path!)?.startsWith('image/') ?? false) {
+      thumbnailCache[key ?? widget.path!] ??= HybridImageProvider(
+        url: widget.item?.url,
+        path: key != null ? Main.pathFromKey(key) : widget.path!,
+        cachePath: key != null ? Main.cachePathFromKey(key) : null,
+        thumbPath: key != null ? Main.thumbPathFromKey(key) : null,
         thumbnail: true,
         maxWidth: widget.width?.toInt(),
         maxHeight: widget.height?.toInt(),
-        cacheKey: widget.item.key,
+        cacheKey: widget.item?.key ?? widget.path!,
       );
       setState(() {});
     }
@@ -1377,7 +1387,8 @@ class MediaPreviewState extends State<MediaPreview> {
   @override
   void didUpdateWidget(covariant MediaPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.key != widget.item.key) {
+    if ((oldWidget.item?.key ?? oldWidget.path) !=
+        (widget.item?.key ?? widget.path)) {
       setImageProvider();
     }
   }
@@ -1390,10 +1401,13 @@ class MediaPreviewState extends State<MediaPreview> {
 
   @override
   Widget build(BuildContext context) {
-    return thumbnailCache[widget.item.key] == null
-        ? fallback(getMediaType(widget.item.key) ?? 'application/octet-stream')
+    return thumbnailCache[widget.item?.key ?? widget.path!] == null
+        ? fallback(
+            getMediaType(widget.item?.key ?? widget.path!) ??
+                'application/octet-stream',
+          )
         : Image(
-            image: thumbnailCache[widget.item.key]!,
+            image: thumbnailCache[widget.item?.key ?? widget.path!]!,
             width: widget.width ?? 256,
             height: widget.height ?? 256,
             fit: BoxFit.cover,
@@ -1419,7 +1433,8 @@ class MediaPreviewState extends State<MediaPreview> {
               );
             },
             errorBuilder: (context, error, stackTrace) => fallback(
-              getMediaType(widget.item.key) ?? 'application/octet-stream',
+              getMediaType(widget.item?.key ?? widget.path!) ??
+                  'application/octet-stream',
             ),
           );
   }

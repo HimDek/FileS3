@@ -1384,22 +1384,23 @@ class FilesContextOption {
                     Text(
                       'Are you sure you want to delete the local copies of ${removableFiles.length} uploaded files? Only uploaded files will be deleted from the device and can be downloaded again later.',
                     ),
-                    Container(
-                      height: 200,
-                      padding: EdgeInsets.only(top: 16),
-                      child: removableFiles.isEmpty
-                          ? const Text('No files to delete')
-                          : ListView.builder(
-                              itemCount: removableFiles.length,
-                              itemBuilder: (context, index) {
-                                final file = removableFiles[index];
-                                return SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Text(Main.pathFromKey(file) ?? file),
-                                );
-                              },
-                            ),
-                    ),
+                    // Container(
+                    //   height: 200,
+                    //   padding: EdgeInsets.only(top: 16),
+                    //   child: removableFiles.isEmpty
+                    //       ? const Text('No files to delete')
+                    //       : ListView.builder(
+                    //           shrinkWrap: true,
+                    //           itemCount: removableFiles.length,
+                    //           itemBuilder: (context, index) {
+                    //             final file = removableFiles[index];
+                    //             return SingleChildScrollView(
+                    //               scrollDirection: Axis.horizontal,
+                    //               child: Text(Main.pathFromKey(file) ?? file),
+                    //             );
+                    //           },
+                    //         ),
+                    // ),
                   ],
                 ),
                 actions: [
@@ -1446,22 +1447,23 @@ class FilesContextOption {
                     Text(
                       'Are you sure you want to delete the local copies of ${downloadedFiles.length} downloaded files? This action cannot be undone.',
                     ),
-                    Container(
-                      height: 200,
-                      padding: EdgeInsets.only(top: 16),
-                      child: downloadedFiles.isEmpty
-                          ? const Text('No files to delete')
-                          : ListView.builder(
-                              itemCount: downloadedFiles.length,
-                              itemBuilder: (context, index) {
-                                final file = downloadedFiles[index];
-                                return SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Text(Main.pathFromKey(file) ?? file),
-                                );
-                              },
-                            ),
-                    ),
+                    // Container(
+                    //   height: 200,
+                    //   padding: EdgeInsets.only(top: 16),
+                    //   child: downloadedFiles.isEmpty
+                    //       ? const Text('No files to delete')
+                    //       : ListView.builder(
+                    //           shrinkWrap: true,
+                    //           itemCount: downloadedFiles.length,
+                    //           itemBuilder: (context, index) {
+                    //             final file = downloadedFiles[index];
+                    //             return SingleChildScrollView(
+                    //               scrollDirection: Axis.horizontal,
+                    //               child: Text(Main.pathFromKey(file) ?? file),
+                    //             );
+                    //           },
+                    //         ),
+                    // ),
                   ],
                 ),
                 actions: [
@@ -1516,6 +1518,7 @@ class FilesContextOption {
                     //   child: handler.files.isEmpty
                     //       ? const Text('No files to delete')
                     //       : ListView.builder(
+                    //           shrinkWrap: true,
                     //           itemCount: handler.files.length,
                     //           itemBuilder: (context, index) {
                     //             final file = handler.files[index];
@@ -1574,22 +1577,23 @@ class FilesContextOption {
                     Text(
                       'Are you sure you want to delete the cached copies of the following ${cacheFiles.length} selected files? This action cannot be undone.',
                     ),
-                    Container(
-                      height: 200,
-                      padding: EdgeInsets.only(top: 16),
-                      child: cacheFiles.isEmpty
-                          ? const Text('No cached files to delete')
-                          : ListView.builder(
-                              itemCount: cacheFiles.length,
-                              itemBuilder: (context, index) {
-                                final file = cacheFiles[index];
-                                return SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Text(Main.pathFromKey(file) ?? file),
-                                );
-                              },
-                            ),
-                    ),
+                    // Container(
+                    //   height: 200,
+                    //   padding: EdgeInsets.only(top: 16),
+                    //   child: cacheFiles.isEmpty
+                    //       ? const Text('No cached files to delete')
+                    //       : ListView.builder(
+                    //           shrinkWrap: true,
+                    //           itemCount: cacheFiles.length,
+                    //           itemBuilder: (context, index) {
+                    //             final file = cacheFiles[index];
+                    //             return SingleChildScrollView(
+                    //               scrollDirection: Axis.horizontal,
+                    //               child: Text(Main.pathFromKey(file) ?? file),
+                    //             );
+                    //           },
+                    //         ),
+                    // ),
                   ],
                 ),
                 actions: [
@@ -1794,24 +1798,24 @@ class DirectoryContextOption {
                     Text(
                       'Are you sure you want to delete the local copies of ${removableFiles.length} uploaded files in ${p.basename(handler.file.key)}? Only uploaded files will be deleted from the device and can be downloaded again later.',
                     ),
-                    Container(
-                      height: 200,
-                      padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final file in removableFiles)
-                                Text(Main.pathFromKey(file) ?? file),
-                              if (removableFiles.isEmpty)
-                                const Text('No files to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Container(
+                    //   height: 200,
+                    //   padding: EdgeInsets.only(top: 16),
+                    //   child: SingleChildScrollView(
+                    //     child: SingleChildScrollView(
+                    //       scrollDirection: Axis.horizontal,
+                    //       child: Column(
+                    //         crossAxisAlignment: CrossAxisAlignment.start,
+                    //         children: [
+                    //           for (final file in removableFiles)
+                    //             Text(Main.pathFromKey(file) ?? file),
+                    //           if (removableFiles.isEmpty)
+                    //             const Text('No files to delete'),
+                    //         ],
+                    //       ),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
                 actions: [
@@ -2103,24 +2107,24 @@ class DirectoriesContextOption {
                     Text(
                       'Are you sure you want to delete the local copies of ${removableFiles.length} uploaded files in the selected folders? Only uploaded files will be deleted from the device and can be downloaded again later.',
                     ),
-                    Container(
-                      height: 200,
-                      padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final file in removableFiles)
-                                Text(Main.pathFromKey(file) ?? file),
-                              if (removableFiles.isEmpty)
-                                const Text('No files to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Container(
+                    //   height: 200,
+                    //   padding: EdgeInsets.only(top: 16),
+                    //   child: SingleChildScrollView(
+                    //     child: SingleChildScrollView(
+                    //       scrollDirection: Axis.horizontal,
+                    //       child: Column(
+                    //         crossAxisAlignment: CrossAxisAlignment.start,
+                    //         children: [
+                    //           for (final file in removableFiles)
+                    //             Text(Main.pathFromKey(file) ?? file),
+                    //           if (removableFiles.isEmpty)
+                    //             const Text('No files to delete'),
+                    //         ],
+                    //       ),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
                 actions: [
@@ -2173,24 +2177,24 @@ class DirectoriesContextOption {
                     Text(
                       'Are you sure you want to delete the local copies of the ${localDirectories.length} selected directories? This action cannot be undone.',
                     ),
-                    Container(
-                      height: 200,
-                      padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final directory in localDirectories)
-                                Text(Main.pathFromKey(directory) ?? directory),
-                              if (localDirectories.isEmpty)
-                                const Text('No directories to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Container(
+                    //   height: 200,
+                    //   padding: EdgeInsets.only(top: 16),
+                    //   child: SingleChildScrollView(
+                    //     child: SingleChildScrollView(
+                    //       scrollDirection: Axis.horizontal,
+                    //       child: Column(
+                    //         crossAxisAlignment: CrossAxisAlignment.start,
+                    //         children: [
+                    //           for (final directory in localDirectories)
+                    //             Text(Main.pathFromKey(directory) ?? directory),
+                    //           if (localDirectories.isEmpty)
+                    //             const Text('No directories to delete'),
+                    //         ],
+                    //       ),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
                 actions: [
@@ -2239,24 +2243,24 @@ class DirectoriesContextOption {
                     Text(
                       'Are you sure you want to delete ${handler.directories.length} selected folders from your device and S3? This action cannot be undone.',
                     ),
-                    Container(
-                      height: 200,
-                      padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final directory in handler.directories)
-                                Text(Main.pathFromKey(directory) ?? directory),
-                              if (handler.directories.isEmpty)
-                                const Text('No directories to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Container(
+                    //   height: 200,
+                    //   padding: EdgeInsets.only(top: 16),
+                    //   child: SingleChildScrollView(
+                    //     child: SingleChildScrollView(
+                    //       scrollDirection: Axis.horizontal,
+                    //       child: Column(
+                    //         crossAxisAlignment: CrossAxisAlignment.start,
+                    //         children: [
+                    //           for (final directory in handler.directories)
+                    //             Text(Main.pathFromKey(directory) ?? directory),
+                    //           if (handler.directories.isEmpty)
+                    //             const Text('No directories to delete'),
+                    //         ],
+                    //       ),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
                 actions: [
@@ -2307,24 +2311,24 @@ class DirectoriesContextOption {
                     Text(
                       'Are you sure you want to delete the cached copies of the following ${cachedDirectories.length} selected folders? This action cannot be undone.',
                     ),
-                    Container(
-                      height: 200,
-                      padding: EdgeInsets.only(top: 16),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              for (final directory in cachedDirectories)
-                                Text(Main.pathFromKey(directory) ?? directory),
-                              if (cachedDirectories.isEmpty)
-                                const Text('No cached directories to delete'),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Container(
+                    //   height: 200,
+                    //   padding: EdgeInsets.only(top: 16),
+                    //   child: SingleChildScrollView(
+                    //     child: SingleChildScrollView(
+                    //       scrollDirection: Axis.horizontal,
+                    //       child: Column(
+                    //         crossAxisAlignment: CrossAxisAlignment.start,
+                    //         children: [
+                    //           for (final directory in cachedDirectories)
+                    //             Text(Main.pathFromKey(directory) ?? directory),
+                    //           if (cachedDirectories.isEmpty)
+                    //             const Text('No cached directories to delete'),
+                    //         ],
+                    //       ),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
                 actions: [
@@ -2504,22 +2508,23 @@ class BulkContextOption {
               Text(
                 'Are you sure you want to delete the local copies of ${removableFiles.length} files? Only uploaded files will be deleted from the device and can be downloaded again later.',
               ),
-              Container(
-                height: 200,
-                padding: const EdgeInsets.only(top: 16),
-                child: removableFiles.isEmpty
-                    ? const Text('No files to delete')
-                    : ListView.builder(
-                        itemCount: removableFiles.length,
-                        itemBuilder: (context, index) {
-                          final file = removableFiles[index];
-                          return SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Text(Main.pathFromKey(file) ?? file),
-                          );
-                        },
-                      ),
-              ),
+              // Container(
+              //   height: 200,
+              //   padding: const EdgeInsets.only(top: 16),
+              //   child: removableFiles.isEmpty
+              //       ? const Text('No files to delete')
+              //       : ListView.builder(
+              //           shrinkWrap: true,
+              //           itemCount: removableFiles.length,
+              //           itemBuilder: (context, index) {
+              //             final file = removableFiles[index];
+              //             return SingleChildScrollView(
+              //               scrollDirection: Axis.horizontal,
+              //               child: Text(Main.pathFromKey(file) ?? file),
+              //             );
+              //           },
+              //         ),
+              // ),
             ],
           ),
           actions: [
@@ -2571,26 +2576,27 @@ class BulkContextOption {
               Text(
                 'Are you sure you want to delete the local copies of ${localDirectories.length + downloadedFiles.length} selected items? This action cannot be undone.',
               ),
-              Container(
-                height: 200,
-                padding: const EdgeInsets.only(top: 16),
-                child: localDirectories.isEmpty && downloadedFiles.isEmpty
-                    ? const Text('No items to delete')
-                    : ListView.builder(
-                        itemCount:
-                            localDirectories.length + downloadedFiles.length,
-                        itemBuilder: (context, index) {
-                          final file = index < localDirectories.length
-                              ? localDirectories[index]
-                              : downloadedFiles[index -
-                                    localDirectories.length];
-                          return SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Text(Main.pathFromKey(file) ?? file),
-                          );
-                        },
-                      ),
-              ),
+              // Container(
+              //   height: 200,
+              //   padding: const EdgeInsets.only(top: 16),
+              //   child: localDirectories.isEmpty && downloadedFiles.isEmpty
+              //       ? const Text('No items to delete')
+              //       : ListView.builder(
+              //           shrinkWrap: true,
+              //           itemCount:
+              //               localDirectories.length + downloadedFiles.length,
+              //           itemBuilder: (context, index) {
+              //             final file = index < localDirectories.length
+              //                 ? localDirectories[index]
+              //                 : downloadedFiles[index -
+              //                       localDirectories.length];
+              //             return SingleChildScrollView(
+              //               scrollDirection: Axis.horizontal,
+              //               child: Text(Main.pathFromKey(file) ?? file),
+              //             );
+              //           },
+              //         ),
+              // ),
             ],
           ),
           actions: [
@@ -2650,6 +2656,7 @@ class BulkContextOption {
                   //   child: directories.isEmpty && files.isEmpty
                   //       ? const Text('No items to delete')
                   //       : ListView.builder(
+                  //           shrinkWrap: true,
                   //           itemCount: directories.length + files.length,
                   //           itemBuilder: (context, index) {
                   //             final file = index < directories.length
@@ -2717,26 +2724,27 @@ class BulkContextOption {
                     Text(
                       'Are you sure you want to delete the cached copies of ${cachedDirectories.length} selected folders and ${cacheFiles.length} selected files? This action cannot be undone.',
                     ),
-                    Container(
-                      height: 200,
-                      padding: const EdgeInsets.only(top: 16),
-                      child: cachedDirectories.isEmpty && cacheFiles.isEmpty
-                          ? const Text('Nothing to delete')
-                          : ListView.builder(
-                              itemCount:
-                                  cachedDirectories.length + cacheFiles.length,
-                              itemBuilder: (context, index) {
-                                final file = index < cachedDirectories.length
-                                    ? cachedDirectories[index]
-                                    : cacheFiles[index -
-                                          cachedDirectories.length];
-                                return SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Text(file),
-                                );
-                              },
-                            ),
-                    ),
+                    // Container(
+                    //   height: 200,
+                    //   padding: const EdgeInsets.only(top: 16),
+                    //   child: cachedDirectories.isEmpty && cacheFiles.isEmpty
+                    //       ? const Text('Nothing to delete')
+                    //       : ListView.builder(
+                    //           shrinkWrap: true,
+                    //           itemCount:
+                    //               cachedDirectories.length + cacheFiles.length,
+                    //           itemBuilder: (context, index) {
+                    //             final file = index < cachedDirectories.length
+                    //                 ? cachedDirectories[index]
+                    //                 : cacheFiles[index -
+                    //                       cachedDirectories.length];
+                    //             return SingleChildScrollView(
+                    //               scrollDirection: Axis.horizontal,
+                    //               child: Text(file),
+                    //             );
+                    //           },
+                    //         ),
+                    // ),
                   ],
                 ),
                 actions: [
