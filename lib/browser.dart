@@ -151,7 +151,10 @@ class MyBrowserState extends BrowserState {
                   final XFile? file = await openFile();
                   if (file != null) {
                     Main.uploadFile(
-                      p.join(_driveDir.value.key, p.basename(file.path)),
+                      p.s3.join(
+                        _driveDir.value.key,
+                        p.context.basename(file.path),
+                      ),
                       File(file.path),
                     );
                   }
@@ -189,7 +192,10 @@ class MyBrowserState extends BrowserState {
                   final String? directoryPath = await getDirectoryPath();
                   if (directoryPath != null) {
                     widget.uploadDirectory?.call(
-                      p.join(_driveDir.value.key, p.basename(directoryPath)),
+                      p.s3.join(
+                        _driveDir.value.key,
+                        p.context.basename(directoryPath),
+                      ),
                       Directory(directoryPath),
                     );
                   }
@@ -251,24 +257,27 @@ class MyBrowserState extends BrowserState {
                   );
                   if (dir != null && dir.isNotEmpty) {
                     if (Main.remoteFileByKey(
-                              p.join(_driveDir.value.key, dir),
+                              p.s3.join(_driveDir.value.key, dir),
                             ) !=
                             null ||
                         Main.remoteFileByKey(
-                              p.asDir(p.join(_driveDir.value.key, dir)),
+                              p.asDir(
+                                p.s3.join(_driveDir.value.key, dir),
+                                context: p.s3,
+                              ),
                             ) !=
                             null) {
                       showSnackBar(
                         SnackBar(
                           content: Text(
-                            '"${p.join(_driveDir.value.key, dir)}" already exists.',
+                            '"${p.s3.join(_driveDir.value.key, dir)}" already exists.',
                           ),
                         ),
                       );
                       return;
                     }
                     await widget.createDirectory?.call(
-                      p.join(_driveDir.value.key, dir),
+                      p.s3.join(_driveDir.value.key, dir),
                     );
                   }
                 },
@@ -585,15 +594,17 @@ class BrowserState extends State<Browser> {
   }
 
   void Function()? _getSelectAction(String key) =>
-      _selection.value.any((selected) => p.isWithin(selected, key)) ||
+      _selection.value.any((selected) => p.s3.isWithin(selected, key)) ||
           _selectionAction.value != SelectionAction.none
       ? null
       : () {
           if (p.isDir(key)) {
-            if (_selection.value.any((selected) => p.isWithin(key, selected))) {
+            if (_selection.value.any(
+              (selected) => p.s3.isWithin(key, selected),
+            )) {
               // Deselect all children
               _selection.value = _selection.value
-                  .where((selected) => !p.isWithin(key, selected))
+                  .where((selected) => !p.s3.isWithin(key, selected))
                   .toSet();
             }
           }
@@ -625,11 +636,11 @@ class BrowserState extends State<Browser> {
       i++;
       return GalleryProps(
         key: f.key,
-        title: p.isWithin(_driveDir.value.key, f.key)
-            ? p.s3(p.relative(f.key, from: _driveDir.value.key))
+        title: p.s3.isWithin(_driveDir.value.key, f.key)
+            ? p.s3.relative(f.key, from: _driveDir.value.key)
             : f.key,
         url: f.url!,
-        path: Main.pathFromKey(f.key) ?? f.key,
+        path: Main.pathFromKey(f.key),
         cachePath: Main.cachePathFromKey(f.key),
       );
     }).toList();
@@ -669,10 +680,10 @@ class BrowserState extends State<Browser> {
     _controlsVisible.value = true;
     var dir = ndir;
     for (String item in _selection.value) {
-      if (p.isWithin(item, ndir) || item == ndir) {
+      if (p.s3.isWithin(item, ndir) || item == ndir) {
         dir = () {
-          while (p.isWithin(item, ndir) || item == ndir) {
-            ndir = p.s3(p.dirname(ndir));
+          while (p.s3.isWithin(item, ndir) || item == ndir) {
+            ndir = p.s3.dirname(ndir);
             if (ndir == '') {
               break;
             }
@@ -791,8 +802,7 @@ class BrowserState extends State<Browser> {
                 Job.activeJobs
                     .where(
                       (job) =>
-                          p.s3(p.dirname(job.remoteKey)) ==
-                          p.s3(_driveDir.value.key),
+                          p.s3.dirname(job.remoteKey) == _driveDir.value.key,
                     )
                     .cast<dynamic>(),
               )
@@ -815,13 +825,13 @@ class BrowserState extends State<Browser> {
           (file) => !Job.activeJobs.any((job) => job.remoteKey == file.key),
         ),
         ...Job.activeJobs.where(
-          (job) => p.isWithin(p.s3(_driveDir.value.key), p.s3(job.remoteKey)),
+          (job) => p.s3.isWithin(_driveDir.value.key, job.remoteKey),
         ),
       ],
       cutoff: 40,
       getter: (item) {
         String key = item is Job ? item.remoteKey : (item as RemoteFile).key;
-        return p.s3(key).toLowerCase();
+        return key.toLowerCase();
       },
     ).map((result) => result.choice);
 
@@ -919,7 +929,7 @@ class BrowserState extends State<Browser> {
             final selection = _selection.value;
             if (_selectionAction.value == SelectionAction.copy) {
               final items = selection.where(
-                (item) => p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
+                (item) => p.s3.dirname(item) != _driveDir.value.key,
               );
               int progressCount = 0;
               final totalItems = items.length;
@@ -927,7 +937,10 @@ class BrowserState extends State<Browser> {
               for (final item in items) {
                 progressCount += 1;
                 progress.value = progressCount / totalItems;
-                final newKey = p.join(_driveDir.value.key, p.basename(item));
+                final newKey = p.s3.join(
+                  _driveDir.value.key,
+                  p.s3.basename(item),
+                );
                 if (item == newKey) {
                   continue;
                 }
@@ -940,19 +953,17 @@ class BrowserState extends State<Browser> {
             } else {
               final dirs = selection.where(
                 (item) =>
-                    p.isDir(item) &&
-                    p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
+                    p.isDir(item) && p.s3.dirname(item) != _driveDir.value.key,
               );
               final files = selection.where(
                 (item) =>
-                    !p.isDir(item) &&
-                    p.s3(p.dirname(item)) != p.s3(_driveDir.value.key),
+                    !p.isDir(item) && p.s3.dirname(item) != _driveDir.value.key,
               );
               final dirsDestinations = dirs.map(
-                (item) => p.join(_driveDir.value.key, p.basename(item)),
+                (item) => p.s3.join(_driveDir.value.key, p.s3.basename(item)),
               );
               final filesDestinations = files.map(
-                (item) => p.join(_driveDir.value.key, p.basename(item)),
+                (item) => p.s3.join(_driveDir.value.key, p.s3.basename(item)),
               );
               Main.moveDirectories(dirs.map((item) => item), dirsDestinations);
               Main.moveFiles(files.map((item) => item), filesDestinations);
@@ -1454,7 +1465,7 @@ class BrowserState extends State<Browser> {
             return;
           }
           if (_driveDir.value.key.isNotEmpty) {
-            final newKey = p.s3(p.dirname(_driveDir.value.key));
+            final newKey = p.s3.dirname(_driveDir.value.key);
             _changeDirectory(newKey);
             return;
           }
@@ -1794,8 +1805,9 @@ class BrowserState extends State<Browser> {
                                   uiConfigNotifier.showDirectorySummary.value;
                               final bool showTitle = _driveDir.value.key != '';
                               final bool showBackupConfig =
-                                  Main.pathFromKey(_driveDir.value.key) !=
-                                      null &&
+                                  !p.isAbsolute(
+                                    Main.pathFromKey(_driveDir.value.key),
+                                  ) &&
                                   uiConfigNotifier
                                       .showDirectoryBackupConfig
                                       .value;
@@ -1839,8 +1851,9 @@ class BrowserState extends State<Browser> {
                                 final bool showTitle =
                                     _driveDir.value.key != '';
                                 final bool showBackupConfig =
-                                    Main.pathFromKey(_driveDir.value.key) !=
-                                        null &&
+                                    !p.isAbsolute(
+                                      Main.pathFromKey(_driveDir.value.key),
+                                    ) &&
                                     uiConfigNotifier
                                         .showDirectoryBackupConfig
                                         .value;
@@ -1898,7 +1911,9 @@ class BrowserState extends State<Browser> {
                       children: [
                         if (uiConfigNotifier.showDirectorySummary.value ||
                             _driveDir.value.key != '' ||
-                            (Main.pathFromKey(_driveDir.value.key) != null &&
+                            (!p.isAbsolute(
+                                  Main.pathFromKey(_driveDir.value.key),
+                                ) &&
                                 uiConfigNotifier
                                     .showDirectoryBackupConfig
                                     .value))
@@ -1931,7 +1946,7 @@ class BrowserState extends State<Browser> {
                                             ).textTheme.bodyLarge,
                                           ),
                                         ),
-                                        ...p
+                                        ...p.s3
                                             .split(_driveDir.value.key)
                                             .where((dir) => dir.isNotEmpty)
                                             .map(
@@ -1945,7 +1960,7 @@ class BrowserState extends State<Browser> {
                                                     onTap: () {
                                                       String newPath = '';
                                                       for (final part
-                                                          in p.split(
+                                                          in p.s3.split(
                                                             _driveDir.value.key,
                                                           )) {
                                                         if (part.isEmpty) {
@@ -1953,14 +1968,13 @@ class BrowserState extends State<Browser> {
                                                         }
                                                         newPath += p.asDir(
                                                           part,
+                                                          context: p.s3,
                                                         );
                                                         if (part == dir) {
                                                           break;
                                                         }
                                                       }
-                                                      _changeDirectory(
-                                                        p.s3(newPath),
-                                                      );
+                                                      _changeDirectory(newPath);
                                                     },
                                                     child: Text(
                                                       dir,
@@ -1969,8 +1983,12 @@ class BrowserState extends State<Browser> {
                                                           .bodyLarge
                                                           ?.copyWith(
                                                             color:
-                                                                p.asDir(dir) ==
-                                                                    p.basename(
+                                                                p.asDir(
+                                                                      dir,
+                                                                      context:
+                                                                          p.s3,
+                                                                    ) ==
+                                                                    p.s3.basename(
                                                                       _driveDir
                                                                           .value
                                                                           .key,
@@ -1990,8 +2008,9 @@ class BrowserState extends State<Browser> {
                                       ],
                                     ),
                                   ),
-                                if (Main.pathFromKey(_driveDir.value.key) !=
-                                        null &&
+                                if (!p.isAbsolute(
+                                      Main.pathFromKey(_driveDir.value.key),
+                                    ) &&
                                     uiConfigNotifier
                                         .showDirectoryBackupConfig
                                         .value)
@@ -2010,9 +2029,8 @@ class BrowserState extends State<Browser> {
                                           child: GestureDetector(
                                             child: Text(
                                               Main.pathFromKey(
-                                                    _driveDir.value.key,
-                                                  ) ??
-                                                  '',
+                                                _driveDir.value.key,
+                                              ),
                                               style: Theme.of(
                                                 context,
                                               ).textTheme.labelSmall,
@@ -2021,9 +2039,8 @@ class BrowserState extends State<Browser> {
                                               launchUrl(
                                                 Uri.file(
                                                   Main.pathFromKey(
-                                                        _driveDir.value.key,
-                                                      ) ??
-                                                      _driveDir.value.key,
+                                                    _driveDir.value.key,
+                                                  ),
                                                 ),
                                               );
                                             },

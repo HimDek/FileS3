@@ -63,7 +63,7 @@ class _ExternalFilesState extends State<ExternalFiles> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                Text(p.extension(_files[index].path!)),
+                                Text(p.context.extension(_files[index].path!)),
                               ],
                             ),
                           ),
@@ -252,7 +252,7 @@ class _ExternalFilesState extends State<ExternalFiles> {
                           const SizedBox(width: 8),
                         if (_files[index].path != null &&
                             File(_files[index].path!).existsSync())
-                          Text(p.extension(_files[index].path!)),
+                          Text(p.context.extension(_files[index].path!)),
                       ],
                     ),
                   ),
@@ -337,7 +337,7 @@ class _ExternalFilesState extends State<ExternalFiles> {
                         scrollDirection: Axis.horizontal,
                         reverse: true,
                         child: Text(
-                          p.basename(
+                          p.context.basename(
                             _files[index].path ??
                                 _files[index].url ??
                                 'Unknown',

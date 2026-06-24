@@ -61,8 +61,8 @@ Future<File> uriToFile(
     bytes ?? Uint8List(0),
   );
 
-  final b = p.basename(uriString);
-  String destinationPath = p.join(Main.cacheDir, b);
+  final b = p.posix.basename(uriString);
+  String destinationPath = p.context.join(Main.cacheDir, b);
 
   if (!destinationPath.endsWith('.${type.toString().split('.').last}') &&
       type != FileMagicNumberType.unknown &&
@@ -223,7 +223,7 @@ saveAsDialog = (BuildContext context, {String suggestedName = ''}) async {
   }
   final String? directory = await getDirectoryPath(canCreateDirectories: true);
   if (directory != null) {
-    final String path = p.join(directory, fileName);
+    final String path = p.context.join(directory, fileName);
     if (File(path).existsSync()) {
       final bool overwrite =
           await showDialog<bool>(
@@ -417,9 +417,9 @@ String? getMediaType(String name) {
   };
 
   if (name.contains('.')) {
-    final ext = p.extension(name);
+    final ext = name.split('.').last.toLowerCase();
     for (var entry in types.entries) {
-      if (entry.value.contains(ext)) {
+      if (entry.value.contains(".$ext")) {
         return entry.key;
       }
     }
@@ -493,18 +493,18 @@ List<FileProps> sort(
         return b.size.compareTo(a.size);
       case SortMode.typeAsc:
         String aExt = a.key.contains('.')
-            ? p.extension(a.key).toLowerCase()
+            ? p.s3.extension(a.key).toLowerCase()
             : '';
         String bExt = b.key.contains('.')
-            ? p.extension(b.key).toLowerCase()
+            ? p.s3.extension(b.key).toLowerCase()
             : '';
         return aExt.compareTo(bExt);
       case SortMode.typeDesc:
         String aExt = a.key.contains('.')
-            ? p.extension(a.key).toLowerCase()
+            ? p.s3.extension(a.key).toLowerCase()
             : '';
         String bExt = b.key.contains('.')
-            ? p.extension(b.key).toLowerCase()
+            ? p.s3.extension(b.key).toLowerCase()
             : '';
         return bExt.compareTo(aExt);
     }
@@ -591,7 +591,7 @@ abstract class IniManager {
   static ValueNotifier<Config?> config = ValueNotifier<Config?>(null);
 
   static void init(String dir) {
-    _file = File(p.join(dir, 'config.ini'));
+    _file = File(p.context.join(dir, 'config.ini'));
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
@@ -614,8 +614,10 @@ abstract class IniManager {
       final dirPath = config.value!.get('directories', key).toString();
       for (String k in config.value!.options('directories') ?? []) {
         if (k != key &&
-            p.canonicalize(config.value!.get('directories', k).toString()) ==
-                p.canonicalize(dirPath)) {
+            p.context.equals(
+              config.value!.get('directories', k).toString(),
+              dirPath,
+            )) {
           if (keepKey != k) {
             config.value!.removeOption('directories', k);
           }
@@ -739,11 +741,11 @@ abstract class ConfigManager {
       IniManager.config.value?.removeOption('modes', key);
     } else {
       IniManager.config.value?.set('modes', key, mode.value.toString());
-      if (mode == BackupMode.sync && p.split(key).length == 1) {
+      if (mode == BackupMode.sync && p.s3.split(key).length == 1) {
         final toremove = <String>[];
         for (var dir
             in IniManager.config.value?.options('modes') ?? <String>[]) {
-          if (p.isWithin(key, dir) && dir != key) {
+          if (p.s3.isWithin(key, dir) && dir != key) {
             toremove.add(dir);
           }
         }
@@ -1002,8 +1004,14 @@ class DeletionRegistrar {
   DateTime _lastPulled = DateTime.fromMillisecondsSinceEpoch(0).toUtc();
 
   DeletionRegistrar({required this.profile}) {
-    _key = p.join(profile.name, 'deletion-register.ini');
-    _file = File(p.join(Main.documentsDir, 'deletion-registers', _key));
+    _key = p.s3.join(profile.name, 'deletion-register.ini');
+    _file = File(
+      p.context.joinAll([
+        Main.documentsDir,
+        'deletion-registers',
+        ...p.s3.split(_key),
+      ]),
+    );
 
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);

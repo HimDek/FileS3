@@ -142,7 +142,7 @@ class _InfoRowState extends State<InfoRow> {
               },
             ),
         ] else if (_uiConfig.showType)
-          Text(p.extension(widget.remoteKey), style: widget.textStyle),
+          Text(p.s3.extension(widget.remoteKey), style: widget.textStyle),
       ],
     );
   }

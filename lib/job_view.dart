@@ -64,15 +64,13 @@ class JobViewState extends State<JobView> {
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(
-                    p.isWithin(
+                    p.s3.isWithin(
                           widget.relativeTo?.key ?? '',
                           widget.job.remoteKey,
                         )
-                        ? p.s3(
-                            p.relative(
-                              widget.job.remoteKey,
-                              from: widget.relativeTo?.key ?? '',
-                            ),
+                        ? p.s3.relative(
+                            widget.job.remoteKey,
+                            from: widget.relativeTo?.key ?? '',
                           )
                         : widget.job.remoteKey,
                   ),
@@ -112,15 +110,13 @@ class JobViewState extends State<JobView> {
                   title: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Text(
-                      p.isWithin(
+                      p.s3.isWithin(
                             widget.relativeTo?.key ?? '',
                             widget.job.remoteKey,
                           )
-                          ? p.s3(
-                              p.relative(
-                                widget.job.remoteKey,
-                                from: widget.relativeTo?.key ?? '',
-                              ),
+                          ? p.s3.relative(
+                              widget.job.remoteKey,
+                              from: widget.relativeTo?.key ?? '',
                             )
                           : widget.job.remoteKey,
                     ),

@@ -208,11 +208,10 @@ class ListFilesState extends State<ListFiles> {
       String key;
       switch (groupBy) {
         case SortMode.nameAsc || SortMode.nameDesc:
-          String fileKey = p.isWithin(widget.relativeto.value.key, file.key)
-              ? p.s3(
-                  p.asDir(
-                    p.relative(file.key, from: widget.relativeto.value.key),
-                  ),
+          String fileKey = p.s3.isWithin(widget.relativeto.value.key, file.key)
+              ? p.asDir(
+                  p.s3.relative(file.key, from: widget.relativeto.value.key),
+                  context: p.s3,
                 )
               : file.key;
           key = fileKey.isNotEmpty ? fileKey[0].toUpperCase() : '#';
@@ -257,8 +256,8 @@ class ListFilesState extends State<ListFiles> {
           }
           break;
         case SortMode.typeAsc || SortMode.typeDesc:
-          key = p.extension(file.key).isNotEmpty
-              ? p.extension(file.key).toUpperCase()
+          key = p.s3.extension(file.key).isNotEmpty
+              ? p.s3.extension(file.key).toUpperCase()
               : p.isDir(file.key)
               ? 'Folders'
               : 'No Extension';
@@ -341,9 +340,9 @@ class ListFilesState extends State<ListFiles> {
           anySelected = true;
           if (file.key == selected) {
             explicitlySelected = true;
-          } else if (p.isWithin(selected, file.key)) {
+          } else if (p.s3.isWithin(selected, file.key)) {
             inherentlySelected = true;
-          } else if (p.isDir(file.key) && p.isWithin(file.key, selected)) {
+          } else if (p.isDir(file.key) && p.s3.isWithin(file.key, selected)) {
             partiallySelected = true;
           }
           if (explicitlySelected || inherentlySelected || partiallySelected) {
@@ -410,26 +409,24 @@ class ListFilesState extends State<ListFiles> {
                 height: 32,
                 width: 32,
                 child: Icon(
-                  p.split(item.key).length > 1
+                  p.s3.split(item.key).length > 1
                       ? Icons.folder
                       : Icons.cloud_circle_rounded,
                 ),
               ),
               title: Text(
-                p.isWithin(widget.relativeto.value.key, item.key)
-                    ? p.s3(
-                        p.asDir(
-                          p.relative(
-                            item.key,
-                            from: widget.relativeto.value.key,
-                          ),
+                p.s3.isWithin(widget.relativeto.value.key, item.key)
+                    ? p.asDir(
+                        p.s3.relative(
+                          item.key,
+                          from: widget.relativeto.value.key,
                         ),
+                        context: p.s3,
                       )
                     : item.key,
               ),
               subtitle:
-                  uiConfigNotifier.dirListInfo ||
-                      p.s3(p.dirname(item.key)).isEmpty
+                  uiConfigNotifier.dirListInfo || p.s3.dirname(item.key).isEmpty
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -438,16 +435,14 @@ class ListFilesState extends State<ListFiles> {
                             scrollDirection: Axis.horizontal,
                             child: InfoRow(remoteKey: item.key),
                           ),
-                        if (p.s3(p.dirname(item.key)).isEmpty)
+                        if (p.s3.dirname(item.key).isEmpty)
                           Row(
                             children: [
                               Text('${Main.backupModeFromKey(item.key).name}:'),
                               SizedBox(width: 4),
                               SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
-                                child: Text(
-                                  Main.pathFromKey(item.key) ?? 'Not set',
-                                ),
+                                child: Text(Main.pathFromKey(item.key)),
                               ),
                             ],
                           ),
@@ -534,12 +529,10 @@ class ListFilesState extends State<ListFiles> {
               title: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Text(
-                  p.isWithin(widget.relativeto.value.key, item.key)
-                      ? p.s3(
-                          p.relative(
-                            item.key,
-                            from: widget.relativeto.value.key,
-                          ),
+                  p.s3.isWithin(widget.relativeto.value.key, item.key)
+                      ? p.s3.relative(
+                          item.key,
+                          from: widget.relativeto.value.key,
                         )
                       : item.key,
                 ),
@@ -634,14 +627,13 @@ class ListFilesState extends State<ListFiles> {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Text(
-                      p.isWithin(widget.relativeto.value.key, item.key)
-                          ? p.s3(
-                              p.asDir(
-                                p.relative(
-                                  item.key,
-                                  from: widget.relativeto.value.key,
-                                ),
+                      p.s3.isWithin(widget.relativeto.value.key, item.key)
+                          ? p.asDir(
+                              p.s3.relative(
+                                item.key,
+                                from: widget.relativeto.value.key,
                               ),
+                              context: p.s3,
                             )
                           : item.key,
                     ),
@@ -697,7 +689,7 @@ class ListFilesState extends State<ListFiles> {
               child: child!,
             ),
             child: Icon(
-              p.split(item.key).length > 1
+              p.s3.split(item.key).length > 1
                   ? Icons.folder
                   : Icons.cloud_circle_rounded,
             ),
@@ -722,12 +714,10 @@ class ListFilesState extends State<ListFiles> {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Text(
-                      p.isWithin(widget.relativeto.value.key, item.key)
-                          ? p.s3(
-                              p.relative(
-                                item.key,
-                                from: widget.relativeto.value.key,
-                              ),
+                      p.s3.isWithin(widget.relativeto.value.key, item.key)
+                          ? p.s3.relative(
+                              item.key,
+                              from: widget.relativeto.value.key,
                             )
                           : item.key,
                     ),

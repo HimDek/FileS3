@@ -45,8 +45,14 @@ class Profile {
       accessible.value = true;
     } catch (e) {
       accessible.value = false;
-      if (p.equals(name, dir) && Main.remoteFileByKey("$name/") == null) {
-        Main.remoteFilesAdd(RemoteFile(key: "$name/", etag: ""));
+      if (p.s3.equals(name, dir) &&
+          Main.remoteFileByKey(p.asDir(name, context: p.s3)) == null) {
+        Main.remoteFilesAdd(
+          RemoteFile(
+            key: p.asDir(name, context: p.s3),
+            etag: "",
+          ),
+        );
       }
       if (kDebugMode) {
         debugPrint("Error refreshing remote files: $e");

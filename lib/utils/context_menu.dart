@@ -59,11 +59,10 @@ class FileContextActionHandler extends ContextActionHandler {
   }
 
   bool get rootExists =>
-      _rootExistsCache ??= p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
+      _rootExistsCache ??= p.isAbsolute(Main.pathFromKey(file.key));
 
   bool get downloaded => _downloadedCache ??=
-      !p.isDir(file.key) &&
-      File(Main.pathFromKey(file.key) ?? file.key).existsSync();
+      !p.isDir(file.key) && File(Main.pathFromKey(file.key)).existsSync();
 
   bool get cacheExists => _cacheExistsCache ??=
       !p.isDir(file.key) && File(Main.cachePathFromKey(file.key)).existsSync();
@@ -77,9 +76,9 @@ class FileContextActionHandler extends ContextActionHandler {
 
   dynamic Function()? open() {
     final link = getLink(file, null);
-    return File(Main.pathFromKey(file.key) ?? file.key).existsSync()
+    return File(Main.pathFromKey(file.key)).existsSync()
         ? () {
-            OpenFile.open(Main.pathFromKey(file.key) ?? file.key);
+            OpenFile.open(Main.pathFromKey(file.key));
           }
         : cacheExists
         ? () {
@@ -120,9 +119,9 @@ class FileContextActionHandler extends ContextActionHandler {
   }
 
   XFile Function()? getXFile() {
-    return File(Main.pathFromKey(file.key) ?? file.key).existsSync()
+    return File(Main.pathFromKey(file.key)).existsSync()
         ? () {
-            return XFile(Main.pathFromKey(file.key) ?? file.key);
+            return XFile(Main.pathFromKey(file.key));
           }
         : cacheExists
         ? () {
@@ -142,12 +141,12 @@ class FileContextActionHandler extends ContextActionHandler {
         ? null
         : () async {
             try {
-              final newKey = p.join(
-                p.s3(p.dirname(file.key)),
+              final newKey = p.s3.join(
+                p.s3.dirname(file.key),
                 newName.replaceAll('/', '_').replaceAll('\\', '_'),
               );
               await moveFiles!([file.key], [newKey]);
-              return 'Renamed ${p.basename(file.key)} to $newName';
+              return 'Renamed ${p.s3.basename(file.key)} to $newName';
             } finally {
               invalidateCache();
             }
@@ -159,7 +158,7 @@ class FileContextActionHandler extends ContextActionHandler {
         ? () async {
             try {
               await deleteLocalFile!(file.key);
-              return 'Deleted local copy of ${p.basename(file.key)}';
+              return 'Deleted local copy of ${p.s3.basename(file.key)}';
             } finally {
               invalidateCache();
             }
@@ -172,7 +171,7 @@ class FileContextActionHandler extends ContextActionHandler {
         ? () async {
             try {
               await deleteLocalFile!(file.key);
-              return 'Deleted local copy of ${p.basename(file.key)}';
+              return 'Deleted local copy of ${p.s3.basename(file.key)}';
             } finally {
               invalidateCache();
             }
@@ -186,7 +185,7 @@ class FileContextActionHandler extends ContextActionHandler {
         ? () async {
             try {
               await deleteFiles!([file.key]);
-              return 'Deleted ${p.basename(file.key)}';
+              return 'Deleted ${p.s3.basename(file.key)}';
             } finally {
               invalidateCache();
             }
@@ -200,7 +199,7 @@ class FileContextActionHandler extends ContextActionHandler {
         ? () async {
             try {
               await deleteCacheFile!(file.key);
-              return 'Deleted cache of ${p.basename(file.key)}';
+              return 'Deleted cache of ${p.s3.basename(file.key)}';
             } finally {
               invalidateCache();
             }
@@ -242,13 +241,13 @@ class FilesContextActionHandler extends ContextActionHandler {
   }
 
   List<bool> get rootExists => _rootExistsCache ??= List.unmodifiable(
-    files.map((file) => p.isAbsolute(Main.pathFromKey(file) ?? file)),
+    files.map((file) => p.isAbsolute(Main.pathFromKey(file))),
   );
 
   List<String> get downloadedFiles =>
       _downloadedFilesCache ??= List.unmodifiable(
         files.where(
-          (f) => !p.isDir(f) && File(Main.pathFromKey(f) ?? f).existsSync(),
+          (f) => !p.isDir(f) && File(Main.pathFromKey(f)).existsSync(),
         ),
       );
 
@@ -270,7 +269,7 @@ class FilesContextActionHandler extends ContextActionHandler {
     files.where(
       (f) =>
           !p.isDir(f) &&
-          File(Main.pathFromKey(f) ?? f).existsSync() &&
+          File(Main.pathFromKey(f)).existsSync() &&
           Main.backupModeFromKey(f) == BackupMode.upload,
     ),
   );
@@ -285,7 +284,7 @@ class FilesContextActionHandler extends ContextActionHandler {
         : () {
             try {
               for (String file in files.where(
-                (file) => !File(Main.pathFromKey(file) ?? file).existsSync(),
+                (file) => !File(Main.pathFromKey(file)).existsSync(),
               )) {
                 downloadFile!(Main.remoteFileByKey(file)!);
               }
@@ -303,7 +302,7 @@ class FilesContextActionHandler extends ContextActionHandler {
               for (final file in files) {
                 saveFile!(
                   Main.remoteFileByKey(file)!,
-                  p.join(path, p.basename(file)),
+                  p.s3.join(path, p.s3.basename(file)),
                 );
               }
             } finally {
@@ -320,12 +319,12 @@ class FilesContextActionHandler extends ContextActionHandler {
             return files
                 .where(
                   (file) =>
-                      File((Main.pathFromKey(file) ?? file)).existsSync() ||
+                      File((Main.pathFromKey(file))).existsSync() ||
                       File(Main.cachePathFromKey(file)).existsSync(),
                 )
                 .map((file) {
-                  if (File(Main.pathFromKey(file) ?? file).existsSync()) {
-                    return XFile(Main.pathFromKey(file) ?? file);
+                  if (File(Main.pathFromKey(file)).existsSync()) {
+                    return XFile(Main.pathFromKey(file));
                   } else if (File(Main.cachePathFromKey(file)).existsSync()) {
                     return XFile(Main.cachePathFromKey(file));
                   } else {
@@ -467,15 +466,14 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   );
 
   bool get rootExists =>
-      _rootExistsCache ??= p.isAbsolute(Main.pathFromKey(file.key) ?? file.key);
+      _rootExistsCache ??= p.context.isAbsolute(Main.pathFromKey(file.key));
 
-  bool get localExists => _localExistsCache ??= Directory(
-    Main.pathFromKey(file.key) ?? file.key,
-  ).existsSync();
+  bool get localExists =>
+      _localExistsCache ??= Directory(Main.pathFromKey(file.key)).existsSync();
 
   List<String> get downloadedFiles =>
       _downloadedFilesCache ??= List.unmodifiable(
-        files.where((f) => File(Main.pathFromKey(f) ?? f).existsSync()),
+        files.where((f) => File(Main.pathFromKey(f)).existsSync()),
       );
 
   bool get cacheExist => _cacheExistCache ??= Directory(
@@ -496,15 +494,15 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         .where(
           (f) =>
               !p.isDir(f) &&
-              File(Main.pathFromKey(f) ?? f).existsSync() &&
+              File(Main.pathFromKey(f)).existsSync() &&
               Main.backupModeFromKey(f) == BackupMode.upload,
         ),
   );
 
   void Function()? open() {
-    return Directory(Main.pathFromKey(file.key) ?? file.key).existsSync()
+    return Directory(Main.pathFromKey(file.key)).existsSync()
         ? () {
-            launchUrl(Uri.file(Main.pathFromKey(file.key) ?? file.key));
+            launchUrl(Uri.file(Main.pathFromKey(file.key)));
           }
         : null;
   }
@@ -536,26 +534,25 @@ class DirectoryContextActionHandler extends ContextActionHandler {
             } finally {
               invalidateCache();
             }
-            return 'Saving ${p.basename(file.key)} to $path';
+            return 'Saving ${p.s3.basename(file.key)} to $path';
           };
   }
 
   Future<String> Function()? rename(String newName) {
-    return moveDirectories == null || p.s3(p.dirname(file.key)).isEmpty
+    return moveDirectories == null || p.s3.dirname(file.key).isEmpty
         ? null
         : () async {
             try {
               final key = file.key;
-              final newKey = p.s3(
-                p.asDir(
-                  p.join(
-                    p.s3(p.dirname(key)),
-                    newName.replaceAll('/', '_').replaceAll('\\', '_'),
-                  ),
+              final newKey = p.asDir(
+                p.s3.join(
+                  p.s3.dirname(key),
+                  newName.replaceAll('/', '_').replaceAll('\\', '_'),
                 ),
+                context: p.s3,
               );
               await moveDirectories!([key], [newKey]);
-              return 'Renamed ${p.basename(file.key)} to $newName';
+              return 'Renamed ${p.s3.basename(file.key)} to $newName';
             } finally {
               invalidateCache();
             }
@@ -574,7 +571,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
               for (final file in removableFiles) {
                 deleteLocalDirectory!(file);
               }
-              return 'Deleted local copies of ${removableFiles.length} uploaded files in ${p.basename(file.key)}';
+              return 'Deleted local copies of ${removableFiles.length} uploaded files in ${p.s3.basename(file.key)}';
             } finally {
               invalidateCache();
             }
@@ -587,7 +584,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         ? () async {
             try {
               deleteLocalDirectory!(file.key);
-              return 'Deleted local copy of ${p.basename(file.key)}';
+              return 'Deleted local copy of ${p.s3.basename(file.key)}';
             } finally {
               invalidateCache();
             }
@@ -601,7 +598,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         ? () async {
             try {
               deleteDirectories!([file.key]);
-              return 'Deleted ${p.basename(file.key)}';
+              return 'Deleted ${p.s3.basename(file.key)}';
             } finally {
               invalidateCache();
             }
@@ -615,7 +612,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         ? () async {
             try {
               deleteCacheDirectory!(file.key);
-              return 'Deleted cache of ${p.basename(file.key)}';
+              return 'Deleted cache of ${p.s3.basename(file.key)}';
             } finally {
               invalidateCache();
             }
@@ -673,19 +670,19 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
   }());
 
   List<bool> get rootExists => _rootExistsCache ??= List.unmodifiable(
-    directories.map((dir) => p.isAbsolute(Main.pathFromKey(dir) ?? dir)),
+    directories.map((dir) => p.context.isAbsolute(Main.pathFromKey(dir))),
   );
 
   List<String> get localDirectories =>
       _localDirectoriesCache ??= List.unmodifiable(
         directories.where(
-          (dir) => Directory(Main.pathFromKey(dir) ?? dir).existsSync(),
+          (dir) => Directory(Main.pathFromKey(dir)).existsSync(),
         ),
       );
 
   List<String> get downloadedFiles =>
       _downloadedFilesCache ??= List.unmodifiable(
-        files.where((f) => File(Main.pathFromKey(f) ?? f).existsSync()),
+        files.where((f) => File(Main.pathFromKey(f)).existsSync()),
       );
 
   List<String> get cachedDirectories =>
@@ -712,7 +709,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
                 .where(
                   (f) =>
                       !p.isDir(f.key) &&
-                      File(Main.pathFromKey(f.key) ?? f.key).existsSync() &&
+                      File(Main.pathFromKey(f.key)).existsSync() &&
                       Main.backupModeFromKey(f.key) == BackupMode.upload,
                 )
                 .map((f) => f.key),
@@ -732,7 +729,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
         : () {
             try {
               for (final dir in directories.where(
-                (dir) => Directory(Main.pathFromKey(dir) ?? dir).existsSync(),
+                (dir) => Directory(Main.pathFromKey(dir)).existsSync(),
               )) {
                 downloadDirectory!(Main.remoteFileByKey(dir)!);
               }
@@ -750,7 +747,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
               for (final dir in directories) {
                 saveDirectory!(
                   Main.remoteFileByKey(dir)!,
-                  p.join(path, p.basename(dir)),
+                  p.s3.join(path, p.s3.basename(dir)),
                 );
               }
             } finally {
@@ -770,7 +767,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
             try {
               for (final dir in directories) {
                 for (final file in removableFiles) {
-                  if (p.isWithin(dir, file)) {
+                  if (p.s3.isWithin(dir, file)) {
                     deleteLocalDirectory!(file);
                   }
                 }
@@ -912,13 +909,13 @@ class FileContextOption {
             FileSaveLocation? saveLocation;
             try {
               saveLocation = await getSaveLocation(
-                suggestedName: p.basename(handler.file.key),
+                suggestedName: p.s3.basename(handler.file.key),
                 canCreateDirectories: true,
               );
             } catch (e) {
               saveLocation = await saveAsDialog(
                 context,
-                suggestedName: p.basename(handler.file.key),
+                suggestedName: p.s3.basename(handler.file.key),
               );
             }
             final String Function()? handle = handler.saveAs(
@@ -1021,11 +1018,11 @@ class FileContextOption {
         : () async {
             final newName = await renameDialog(
               context,
-              p.basename(handler.file.key),
+              p.s3.basename(handler.file.key),
             );
             if (newName != null &&
                 newName.isNotEmpty &&
-                newName != p.basename(handler.file.key)) {
+                newName != p.s3.basename(handler.file.key)) {
               showSnackBar(
                 SnackBar(content: Text(await handler.rename(newName)!())),
               );
@@ -1050,7 +1047,7 @@ class FileContextOption {
                 builder: (context) => AlertDialog(
                   title: const Text('Remove from Device'),
                   content: Text(
-                    'Are you sure you want to delete the local copy of ${p.basename(handler.file.key)}? This file has been uploaded and can be downloaded again later.',
+                    'Are you sure you want to delete the local copy of ${p.s3.basename(handler.file.key)}? This file has been uploaded and can be downloaded again later.',
                   ),
                   actions: [
                     TextButton(
@@ -1088,7 +1085,7 @@ class FileContextOption {
                 builder: (context) => AlertDialog(
                   title: const Text('Delete Local Copy'),
                   content: Text(
-                    'Are you sure you want to delete the local copy of ${p.basename(handler.file.key)}? This action cannot be undone.',
+                    'Are you sure you want to delete the local copy of ${p.s3.basename(handler.file.key)}? This action cannot be undone.',
                   ),
                   actions: [
                     TextButton(
@@ -1126,7 +1123,7 @@ class FileContextOption {
                 builder: (context) => AlertDialog(
                   title: const Text('Permanently Delete File'),
                   content: Text(
-                    'Are you sure you want to delete ${p.basename(handler.file.key)} from your device and S3? This action cannot be undone.',
+                    'Are you sure you want to delete ${p.s3.basename(handler.file.key)} from your device and S3? This action cannot be undone.',
                   ),
                   actions: [
                     TextButton(
@@ -1164,7 +1161,7 @@ class FileContextOption {
                 builder: (context) => AlertDialog(
                   title: const Text('Delete Cache'),
                   content: Text(
-                    'Are you sure you want to delete the cached copy of ${p.basename(handler.file.key)}? This action cannot be undone.',
+                    'Are you sure you want to delete the cached copy of ${p.s3.basename(handler.file.key)}? This action cannot be undone.',
                   ),
                   actions: [
                     TextButton(
@@ -1396,7 +1393,7 @@ class FilesContextOption {
                     //             final file = removableFiles[index];
                     //             return SingleChildScrollView(
                     //               scrollDirection: Axis.horizontal,
-                    //               child: Text(Main.pathFromKey(file) ?? file),
+                    //               child: Text(Main.pathFromKey(file)),
                     //             );
                     //           },
                     //         ),
@@ -1459,7 +1456,7 @@ class FilesContextOption {
                     //             final file = downloadedFiles[index];
                     //             return SingleChildScrollView(
                     //               scrollDirection: Axis.horizontal,
-                    //               child: Text(Main.pathFromKey(file) ?? file),
+                    //               child: Text(Main.pathFromKey(file)),
                     //             );
                     //           },
                     //         ),
@@ -1524,7 +1521,7 @@ class FilesContextOption {
                     //             final file = handler.files[index];
                     //             return SingleChildScrollView(
                     //               scrollDirection: Axis.horizontal,
-                    //               child: Text(Main.pathFromKey(file) ?? file),
+                    //               child: Text(Main.pathFromKey(file)),
                     //             );
                     //           },
                     //         ),
@@ -1589,7 +1586,7 @@ class FilesContextOption {
                     //             final file = cacheFiles[index];
                     //             return SingleChildScrollView(
                     //               scrollDirection: Axis.horizontal,
-                    //               child: Text(Main.pathFromKey(file) ?? file),
+                    //               child: Text(Main.pathFromKey(file)),
                     //             );
                     //           },
                     //         ),
@@ -1717,7 +1714,7 @@ class DirectoryContextOption {
             final handle = handler.saveAs(
               directory == null
                   ? null
-                  : p.join(directory, p.basename(handler.file.key)),
+                  : p.s3.join(directory, p.s3.basename(handler.file.key)),
             );
             if (handle != null) {
               showSnackBar(SnackBar(content: Text(handle())));
@@ -1764,11 +1761,11 @@ class DirectoryContextOption {
         : () async {
             final newName = await renameDialog(
               context,
-              p.basenameWithoutExtension(handler.file.key),
+              p.s3.basenameWithoutExtension(handler.file.key),
             );
             if (newName != null &&
                 newName.isNotEmpty &&
-                newName != p.basename(handler.file.key)) {
+                newName != p.s3.basename(handler.file.key)) {
               showSnackBar(
                 SnackBar(content: Text(await handler.rename(newName)!())),
               );
@@ -1796,7 +1793,7 @@ class DirectoryContextOption {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Are you sure you want to delete the local copies of ${removableFiles.length} uploaded files in ${p.basename(handler.file.key)}? Only uploaded files will be deleted from the device and can be downloaded again later.',
+                      'Are you sure you want to delete the local copies of ${removableFiles.length} uploaded files in ${p.s3.basename(handler.file.key)}? Only uploaded files will be deleted from the device and can be downloaded again later.',
                     ),
                     // Container(
                     //   height: 200,
@@ -1808,7 +1805,7 @@ class DirectoryContextOption {
                     //         crossAxisAlignment: CrossAxisAlignment.start,
                     //         children: [
                     //           for (final file in removableFiles)
-                    //             Text(Main.pathFromKey(file) ?? file),
+                    //             Text(Main.pathFromKey(file)),
                     //           if (removableFiles.isEmpty)
                     //             const Text('No files to delete'),
                     //         ],
@@ -1862,7 +1859,7 @@ class DirectoryContextOption {
               builder: (context) => AlertDialog(
                 title: const Text('Delete Local Copy'),
                 content: Text(
-                  'Are you sure you want to delete the local copy of ${p.basename(handler.file.key)}? This action cannot be undone.',
+                  'Are you sure you want to delete the local copy of ${p.s3.basename(handler.file.key)}? This action cannot be undone.',
                 ),
                 actions: [
                   TextButton(
@@ -1899,7 +1896,7 @@ class DirectoryContextOption {
               builder: (context) => AlertDialog(
                 title: const Text('Permanently Delete Folder'),
                 content: Text(
-                  'Are you sure you want to delete ${p.basename(handler.file.key)} from your device and S3? This action cannot be undone.',
+                  'Are you sure you want to delete ${p.s3.basename(handler.file.key)} from your device and S3? This action cannot be undone.',
                 ),
                 actions: [
                   TextButton(
@@ -1937,7 +1934,7 @@ class DirectoryContextOption {
               builder: (context) => AlertDialog(
                 title: const Text('Delete Cache'),
                 content: Text(
-                  'Are you sure you want to delete the cached copy of ${p.basename(handler.file.key)}? This action cannot be undone.',
+                  'Are you sure you want to delete the cached copy of ${p.s3.basename(handler.file.key)}? This action cannot be undone.',
                 ),
                 actions: [
                   TextButton(
@@ -2117,7 +2114,7 @@ class DirectoriesContextOption {
                     //         crossAxisAlignment: CrossAxisAlignment.start,
                     //         children: [
                     //           for (final file in removableFiles)
-                    //             Text(Main.pathFromKey(file) ?? file),
+                    //             Text(Main.pathFromKey(file)),
                     //           if (removableFiles.isEmpty)
                     //             const Text('No files to delete'),
                     //         ],
@@ -2520,7 +2517,7 @@ class BulkContextOption {
               //             final file = removableFiles[index];
               //             return SingleChildScrollView(
               //               scrollDirection: Axis.horizontal,
-              //               child: Text(Main.pathFromKey(file) ?? file),
+              //               child: Text(Main.pathFromKey(file)),
               //             );
               //           },
               //         ),
@@ -2592,7 +2589,7 @@ class BulkContextOption {
               //                       localDirectories.length];
               //             return SingleChildScrollView(
               //               scrollDirection: Axis.horizontal,
-              //               child: Text(Main.pathFromKey(file) ?? file),
+              //               child: Text(Main.pathFromKey(file)),
               //             );
               //           },
               //         ),
@@ -2664,7 +2661,7 @@ class BulkContextOption {
                   //                 : files[index - directories.length];
                   //             return SingleChildScrollView(
                   //               scrollDirection: Axis.horizontal,
-                  //               child: Text(Main.pathFromKey(file) ?? file),
+                  //               child: Text(Main.pathFromKey(file)),
                   //             );
                   //           },
                   //         ),
@@ -3103,7 +3100,7 @@ Widget buildDirectoryContextMenu(
               ),
               onTap:
                   Main.profileFromKey(file.key) == null ||
-                      p.split(file.key).length != 1
+                      p.s3.split(file.key).length != 1
                   ? null
                   : () {
                       Navigator.of(context).pop();
@@ -3118,7 +3115,7 @@ Widget buildDirectoryContextMenu(
             ),
           ),
         ),
-        if (p.split(file.key).length == 1)
+        if (p.s3.split(file.key).length == 1)
           ProfileBackupConfig(
             initialBackupMode: Main.backupModeFromKey(file.key),
             initialLocalDir: Main.pathFromKey(file.key),

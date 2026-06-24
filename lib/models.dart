@@ -230,9 +230,7 @@ class RemoteFile implements RemoteFileFields {
         key,
         recursive: true,
       ).where((file) => !p.isDir(file.key))) {
-        file.downloaded = await File(
-          Main.pathFromKey(file.key) ?? file.key,
-        ).exists();
+        file.downloaded = await File(Main.pathFromKey(file.key)).exists();
         if (!file.downloaded!) {
           downloaded = false;
           break;
@@ -240,7 +238,7 @@ class RemoteFile implements RemoteFileFields {
       }
       this.downloaded = downloaded;
     } else {
-      downloaded = await File(Main.pathFromKey(key) ?? key).exists();
+      downloaded = await File(Main.pathFromKey(key)).exists();
     }
     return downloaded!;
   }

@@ -63,7 +63,7 @@ class S3FileManager {
   }
 
   Future<dynamic> createDirectory(String dir) async {
-    String key = p.asDir(dir);
+    String key = p.asDir(dir, context: p.s3);
 
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
@@ -98,9 +98,9 @@ class S3FileManager {
   }
 
   Future<Iterable<RemoteFile>> listObjects(String dir) async {
-    String? prefix = p.join(
+    String? prefix = p.s3.join(
       _prefix,
-      p.s3(p.relative(dir, from: _profile.name)),
+      p.s3.relative(dir, from: _profile.name),
     );
     prefix = prefix.isEmpty ? null : prefix;
     final ListObjectsOutput resp = await _s3.listObjects(
@@ -112,9 +112,9 @@ class S3FileManager {
         .where((item) => item.key != null)
         .map(
           (item) => RemoteFile(
-            key: p.join(
+            key: p.s3.join(
               _profile.name,
-              p.s3(p.relative(item.key!, from: _prefix)),
+              p.s3.relative(item.key!, from: _prefix),
             ),
             size: item.size ?? 0,
             etag: item.eTag != null && item.eTag!.isNotEmpty
@@ -127,9 +127,9 @@ class S3FileManager {
   }
 
   Future<dynamic> copyFile(String sourceKey, String destinationKey) async {
-    String prefixedSourceKey = p.join(
+    String prefixedSourceKey = p.s3.join(
       _prefix,
-      p.relative(sourceKey, from: _profile.name),
+      p.s3.relative(sourceKey, from: _profile.name),
     );
 
     final copySource =
@@ -245,7 +245,7 @@ class S3FileManager {
 
     final credentialScope = '$shortDate/$_region/s3/aws4_request';
     final encodedPath =
-        '/${p.join(_prefix, p.s3(p.relative(key, from: _profile.name))).split('/').map(awsEncode).join('/')}';
+        '/${p.s3.join(_prefix, p.s3.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}';
 
     final queryParams = <String, String>{
       'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
@@ -347,7 +347,7 @@ class S3FileManager {
 
     // 5. Canonical URI (already encoded)
     final encodedPath =
-        '/${p.join(_prefix, p.s3(p.relative(key, from: _profile.name))).split('/').map(awsEncode).join('/')}';
+        '/${p.s3.join(_prefix, p.s3.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}';
 
     // 6. Assemble canonical request
     final canonicalRequest = [
@@ -454,7 +454,7 @@ class S3FileManager {
       scheme: 'https',
       host: _host,
       path:
-          '/${p.join(_prefix, p.s3(p.relative(key, from: _profile.name))).split('/').map(awsEncode).join('/')}',
+          '/${p.s3.join(_prefix, p.s3.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}',
     );
   }
 

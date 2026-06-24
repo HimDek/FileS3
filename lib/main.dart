@@ -221,8 +221,13 @@ class _HomeState extends State<Home> {
     loading.value = true;
     try {
       await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
-      Main.remoteFilesAdd(RemoteFile(key: p.asDir(dir), etag: ''));
-      if (p.split(dir).length == 1) {
+      Main.remoteFilesAdd(
+        RemoteFile(
+          key: p.asDir(dir, context: p.s3),
+          etag: '',
+        ),
+      );
+      if (p.s3.split(dir).length == 1) {
         await Main.addWatcher(dir);
       }
     } catch (e) {
@@ -233,12 +238,12 @@ class _HomeState extends State<Home> {
 
   void _deleteLocal(String key) {
     if (p.isDir(key)) {
-      final dir = Directory(Main.pathFromKey(key) ?? key);
+      final dir = Directory(Main.pathFromKey(key));
       if (dir.existsSync()) {
         if (Main.backupModeFromKey(key) != BackupMode.upload) {
           ConfigManager.setBackupMode(
             key,
-            Main.backupModeFromKey(p.s3(p.dirname(key))) == BackupMode.upload
+            Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.upload
                 ? null
                 : BackupMode.upload,
           );
@@ -250,12 +255,12 @@ class _HomeState extends State<Home> {
         cacheDir.deleteSync(recursive: true);
       }
     } else {
-      final file = File(Main.pathFromKey(key) ?? key);
+      final file = File(Main.pathFromKey(key));
       if (file.existsSync()) {
         if (Main.backupModeFromKey(key) != BackupMode.upload) {
           ConfigManager.setBackupMode(
             key,
-            Main.backupModeFromKey(p.s3(p.dirname(key))) == BackupMode.upload
+            Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.upload
                 ? null
                 : BackupMode.upload,
           );
@@ -279,7 +284,7 @@ class _HomeState extends State<Home> {
   }
 
   void _downloadFile(RemoteFile file, {String? localPath}) {
-    final mfile = File(Main.pathFromKey(file.key) ?? file.key);
+    final mfile = File(Main.pathFromKey(file.key));
     final cacheFile = File(Main.cachePathFromKey(file.key));
 
     if (!mfile.existsSync()) {
@@ -288,7 +293,7 @@ class _HomeState extends State<Home> {
               Main.pathFromKey(file.key)) {
         ConfigManager.setBackupMode(
           file.key,
-          Main.backupModeFromKey(p.s3(p.dirname(file.key))) == BackupMode.sync
+          Main.backupModeFromKey(p.s3.dirname(file.key)) == BackupMode.sync
               ? null
               : BackupMode.sync,
         );
@@ -296,7 +301,7 @@ class _HomeState extends State<Home> {
       if (cacheFile.existsSync()) {
         renameOrCopyAndDelete(
           cacheFile,
-          localPath ?? Main.pathFromKey(file.key) ?? file.key,
+          localPath ?? Main.pathFromKey(file.key),
         );
       } else {
         Main.downloadFile(file, localPath: localPath);
@@ -309,7 +314,7 @@ class _HomeState extends State<Home> {
         (localPath ?? Main.pathFromKey(dir.key)) == Main.pathFromKey(dir.key)) {
       ConfigManager.setBackupMode(
         dir.key,
-        Main.backupModeFromKey(p.s3(p.dirname(dir.key))) == BackupMode.sync
+        Main.backupModeFromKey(p.s3.dirname(dir.key)) == BackupMode.sync
             ? null
             : BackupMode.sync,
       );
@@ -323,13 +328,13 @@ class _HomeState extends State<Home> {
     for (final file in files) {
       progressCount += 1;
       progress.value = progressCount / totalFiles;
-      final relativePath = p.s3(p.relative(file.key, from: dir.key));
-      final localFilePath = p.join(
-        localPath ?? Main.pathFromKey(dir.key) ?? dir.key,
-        relativePath,
-      );
+      final relativePath = p.s3.relative(file.key, from: dir.key);
+      final localFilePath = p.context.joinAll([
+        localPath ?? Main.pathFromKey(dir.key),
+        ...p.s3.split(relativePath),
+      ]);
 
-      final localFileDir = Directory(p.dirname(localFilePath));
+      final localFileDir = Directory(p.context.dirname(localFilePath));
       if (!localFileDir.existsSync()) {
         localFileDir.createSync(recursive: true);
       }
@@ -346,7 +351,7 @@ class _HomeState extends State<Home> {
   }
 
   void _saveFile(RemoteFile file, String savePath) {
-    final mFile = File(Main.pathFromKey(file.key) ?? file.key);
+    final mFile = File(Main.pathFromKey(file.key));
     final cacheFile = File(Main.cachePathFromKey(file.key));
     final saveFile = File(savePath);
 
@@ -380,8 +385,11 @@ class _HomeState extends State<Home> {
       progressCount += 1;
       progress.value = progressCount / totalFiles;
 
-      final relativePath = p.s3(p.relative(file.key, from: dir.key));
-      final saveFilePath = p.join(savePath, relativePath);
+      final relativePath = p.s3.relative(file.key, from: dir.key);
+      final saveFilePath = p.context.joinAll([
+        savePath,
+        ...p.s3.split(relativePath),
+      ]);
       _saveFile(file, saveFilePath);
     }
   }
@@ -394,12 +402,11 @@ class _HomeState extends State<Home> {
       progressCount += 1;
       progress.value = progressCount / totalFiles;
       if (entity is File) {
-        final relativePath = p.s3(
-          p.relative(entity.path, from: directory.path),
+        final relativePath = p.context.relative(
+          entity.path,
+          from: directory.path,
         );
-        final remoteKey = p
-            .join(key, relativePath)
-            .replaceAll('\\', p.separator);
+        final remoteKey = p.s3.joinAll([key, ...p.context.split(relativePath)]);
         Main.uploadFile(remoteKey, entity);
       }
     }
@@ -508,7 +515,7 @@ class _HomeState extends State<Home> {
                       title: Text('Select Upload Location'),
                       subtitle: SingleChildScrollView(
                         child: Text(
-                          '${paths.length} file${paths.length > 1 ? 's' : ''}: ${paths.map((e) => p.basename(e)).join(', ')}',
+                          '${paths.length} file${paths.length > 1 ? 's' : ''}: ${paths.map((e) => p.context.basename(e)).join(', ')}',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
@@ -534,10 +541,8 @@ class _HomeState extends State<Home> {
                       onPick: (path) async {
                         loading.value = true;
                         for (final sharedFile in paths) {
-                          final fileName = p.basename(sharedFile);
-                          final remoteKey = p
-                              .join(path.key, fileName)
-                              .replaceAll('\\', '/');
+                          final fileName = p.context.basename(sharedFile);
+                          final remoteKey = p.s3.join(path.key, fileName);
                           await Main.uploadFile(remoteKey, File(sharedFile));
                         }
                         loading.value = false;

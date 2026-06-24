@@ -132,7 +132,7 @@ Future<_SyncAnalysisResult> _analysisCallback(
 
   final remoteOnly = remoteFilesMap.values
       .where(
-        (r) => localFilesMap[r.key] == null && p.basename(r.key).isNotEmpty,
+        (r) => localFilesMap[r.key] == null && p.s3.basename(r.key).isNotEmpty,
       )
       .map((r) => r.key)
       .toList();
@@ -169,7 +169,7 @@ Future<_SyncAnalysisResult> _syncAnalyze(
     remoteFiles.values.map((f) {
       final value = (
         key: f.key,
-        localPath: p.absolute(Main.pathFromKey(f.key) ?? f.key),
+        localPath: p.absolute(Main.pathFromKey(f.key)),
         etag: f.etag,
         lastModified: f.lastModified,
       );
@@ -189,19 +189,51 @@ Future<_SyncAnalysisResult> _syncAnalyze(
   );
 }
 
-class Node {
-  int? value;
-  final Map<String, Node> children;
+class Node<T> {
+  T? value;
+  final Map<String, Node<T>> children;
 
-  Node({this.value, Map<String, Node>? children}) : children = children ?? {};
+  Node({this.value, Map<String, Node<T>>? children})
+    : children = children ?? {};
 
-  Node operator [](String key) => children.putIfAbsent(key, Node.new);
+  Node<T> operator [](String key) {
+    return children.putIfAbsent(key, () => Node<T>());
+  }
 
-  void operator []=(String key, Node value) {
+  void operator []=(String key, Node<T> value) {
     children[key] = value;
   }
 
   void clear() => children.clear();
+
+  Map<String, Node<T>> getDecendents({bool recursive = false}) {
+    if (!recursive) {
+      return children;
+    } else {
+      final Map<String, Node<T>> decendents = {};
+      for (final entry in children.entries) {
+        decendents[entry.key] = entry.value;
+        decendents.addAll(entry.value.getDecendents(recursive: true));
+      }
+      return decendents;
+    }
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'value': value,
+      'children': children.map((key, child) => MapEntry(key, child.toJson())),
+    };
+  }
+
+  factory Node.fromJson(Map<String, dynamic> json) {
+    return Node(
+      value: json['value'],
+      children: (json['children'] as Map<String, dynamic>).map(
+        (key, childJson) => MapEntry(key, Node.fromJson(childJson)),
+      ),
+    );
+  }
 }
 
 abstract class Main {
@@ -303,7 +335,7 @@ abstract class Main {
 
   static void remoteFilesAdd(RemoteFile file, {bool notify = true}) {
     Node current = _directoryTree;
-    for (String part in p.split(p.s3(file.key))) {
+    for (String part in p.s3.split(file.key)) {
       current = current[part];
     }
     if (current.value == null) {
@@ -355,7 +387,7 @@ abstract class Main {
 
   static int? remoteFileIndexByKey(String key) {
     Node current = _directoryTree;
-    for (String part in p.split(p.s3(key))) {
+    for (String part in p.s3.split(key)) {
       if (!current.children.containsKey(part)) {
         return null;
       }
@@ -373,7 +405,7 @@ abstract class Main {
     }
 
     var node = _directoryTree;
-    for (String part in p.split(p.s3(dir))) {
+    for (String part in p.s3.split(dir)) {
       if (!node.children.containsKey(part)) {
         return [];
       }
@@ -412,35 +444,33 @@ abstract class Main {
 
   static Profile? profileFromKey(String key) {
     try {
-      return _profiles[p.split(key).firstOrNull];
+      return _profiles[p.s3.split(key).firstOrNull];
     } catch (e) {
       return null;
     }
   }
 
-  static String? pathFromKey(String key) {
-    final localDir = IniManager.config.value
-        ?.get('directories', p.s3(p.asDir(p.split(key).firstOrNull ?? '')))
-        ?.replaceAll('\\', p.separator);
+  static String pathFromKey(String key) {
+    final localDir = IniManager.config.value?.get(
+      'directories',
+      p.asDir(p.s3.split(key).firstOrNull ?? '', context: p.s3),
+    );
     if (localDir != null) {
-      final path = p.joinAll([localDir, ...p.split(key).sublist(1)]);
-      return p.normalize(p.isDir(key) ? p.asDir(path) : path);
+      final path = p.context.joinAll([localDir, ...p.s3.split(key).sublist(1)]);
+      return p.isDir(key) ? p.asDir(path, context: p.context) : path;
     } else {
-      return null;
+      return key;
     }
   }
 
   static String? keyFromPath(String path) {
     for (String dir in IniManager.config.value!.options('directories')!) {
-      final localDir = IniManager.config.value!
-          .get('directories', dir)
-          ?.replaceAll('\\', p.separator);
+      final localDir = IniManager.config.value!.get('directories', dir);
       if (localDir != null) {
-        if (p.isWithin(localDir, path) || localDir == path) {
-          final relativePath = p
-              .s3(p.relative(path, from: localDir))
-              .replaceAll('\\', p.separator);
-          return p.s3(p.join(dir, relativePath).replaceAll('\\', p.separator));
+        if (p.context.isWithin(localDir, path) ||
+            p.context.equals(localDir, path)) {
+          final relativePath = p.context.relative(path, from: localDir);
+          return p.s3.joinAll([dir, ...p.context.split(relativePath)]);
         }
       }
     }
@@ -448,22 +478,22 @@ abstract class Main {
   }
 
   static Watcher? watcherFromKey(String key) {
-    final dirKey = p.s3(p.asDir(p.split(key).firstOrNull ?? ''));
+    final dirKey = p.asDir(p.s3.split(key).firstOrNull ?? '', context: p.s3);
     return _watcherMap[dirKey];
   }
 
   static String thumbPathFromKey(String key) {
-    return p.joinAll([
+    return p.context.joinAll([
       _thumbCacheDir,
-      for (String part in p.split(p.s3(key)))
+      for (String part in p.s3.split(key))
         sha1.convert(utf8.encode(part)).toString(),
     ]);
   }
 
   static String cachePathFromKey(String key) {
-    return p.joinAll([
+    return p.context.joinAll([
       _downloadCacheDir,
-      for (String part in p.split(p.s3(key)))
+      for (String part in p.s3.split(key))
         sha1.convert(utf8.encode(part)).toString(),
     ]);
   }
@@ -474,8 +504,8 @@ abstract class Main {
 
   static BackupMode backupModeFromKey(String key) {
     String? value = IniManager.config.value?.get('modes', key);
-    if (value == null && p.split(key).length > 1) {
-      return backupModeFromKey(p.s3(p.dirname(key)));
+    if (value == null && p.s3.split(key).length > 1) {
+      return backupModeFromKey(p.s3.dirname(key));
     } else {
       return BackupMode.fromValue(int.parse(value ?? '1'));
     }
@@ -501,7 +531,7 @@ abstract class Main {
   static Future<void> addWatcher(String dir, {bool background = false}) async {
     final localDir = Main.pathFromKey(dir);
 
-    if (localDir != null &&
+    if (p.isAbsolute(localDir) &&
         localDir.isNotEmpty &&
         Directory(localDir).existsSync()) {
       Watcher watcher = Watcher(remoteDir: dir);
@@ -522,17 +552,17 @@ abstract class Main {
   }
 
   static void _ensureDirectory(String key) {
-    final parent = p.s3(p.dirname(p.normalize(key)));
+    final parent = p.s3.dirname(key);
     if (parent.isEmpty || remoteFileByKey(parent) != null) return;
 
-    final parts = p.split(parent);
+    final parts = p.s3.split(parent);
 
     String current = '';
     for (final part in parts) {
       if (part.isEmpty) continue;
 
-      current = p.join(current, part);
-      final dirPath = p.asDir(current);
+      current = p.s3.join(current, part);
+      final dirPath = p.asDir(current, context: p.s3);
 
       if (remoteFileByKey(dirPath) == null) {
         remoteFilesAdd(RemoteFile(key: dirPath, etag: ''), notify: false);
@@ -589,7 +619,7 @@ abstract class Main {
 
   static void downloadFile(RemoteFile file, {String? localPath}) {
     DownloadJob(
-      localFile: File(localPath ?? pathFromKey(file.key) ?? file.key),
+      localFile: File(localPath ?? pathFromKey(file.key)),
       remoteKey: file.key,
       bytes: file.size,
       md5: () {
@@ -616,7 +646,7 @@ abstract class Main {
       return;
     }
 
-    if (p.normalize(pathFromKey(key) ?? key) == p.normalize(file.path)) {
+    if (p.context.equals(pathFromKey(key), file.path)) {
       final deleteionLog = await profileFromKey(
         key,
       )!.deletionRegistrar.pullDeletions();
@@ -638,29 +668,29 @@ abstract class Main {
           profile: profileFromKey(key),
         ).add();
       }
-    } else if (p.isAbsolute(pathFromKey(key) ?? key)) {
+    } else if (p.context.isAbsolute(pathFromKey(key))) {
       final newKey = () {
-        String base = p.basenameWithoutExtension(key);
-        String ext = p.extension(key);
+        String base = p.s3.basenameWithoutExtension(key);
+        String ext = p.s3.extension(key);
         int count = 1;
         String candidateKey = key;
         while (remoteFileByKey(candidateKey) != null) {
-          candidateKey = p.join(p.s3(p.dirname(key)), '$base${'($count)'}$ext');
+          candidateKey = p.s3.join(p.s3.dirname(key), '$base${'($count)'}$ext');
           count++;
         }
         return candidateKey;
       }();
-      if (!File(pathFromKey(newKey) ?? newKey).parent.existsSync()) {
-        File(pathFromKey(newKey) ?? newKey).parent.createSync(recursive: true);
+      if (!File(pathFromKey(newKey)).parent.existsSync()) {
+        File(pathFromKey(newKey)).parent.createSync(recursive: true);
       }
-      file.copySync(pathFromKey(newKey) ?? newKey);
+      file.copySync(pathFromKey(newKey));
       if (kDebugMode) {
         debugPrint(
-          "File copied to monitored directory: ${pathFromKey(newKey) ?? newKey}",
+          "File copied to monitored directory: ${pathFromKey(newKey)}",
         );
       }
       UploadJob(
-        localFile: File(pathFromKey(newKey) ?? newKey),
+        localFile: File(pathFromKey(newKey)),
         remoteKey: key,
         bytes: file.lengthSync(),
         onStatus: onJobStatus,
@@ -669,12 +699,12 @@ abstract class Main {
       ).add();
     } else {
       final newKey = () {
-        String base = p.basenameWithoutExtension(key);
-        String ext = p.extension(key);
+        String base = p.s3.basenameWithoutExtension(key);
+        String ext = p.s3.extension(key);
         int count = 1;
         String candidateKey = key;
         while (remoteFileByKey(candidateKey) != null) {
-          candidateKey = p.join(p.s3(p.dirname(key)), '$base${'($count)'}$ext');
+          candidateKey = p.s3.join(p.s3.dirname(key), '$base${'($count)'}$ext');
           count++;
         }
         return candidateKey;
@@ -713,8 +743,8 @@ abstract class Main {
     final Profile? newProfile = profileFromKey(newKey);
 
     if (profile != newProfile) {
-      String downloadTo = pathFromKey(key) ?? key;
-      downloadTo = p.isAbsolute(downloadTo)
+      String downloadTo = pathFromKey(key);
+      downloadTo = p.context.isAbsolute(downloadTo)
           ? downloadTo
           : cachePathFromKey(key);
       File file = File(downloadTo);
@@ -729,21 +759,21 @@ abstract class Main {
 
     await profileFromKey(key)!.fileManager!.copyFile(key, newKey);
 
-    final file = File(pathFromKey(key) ?? key);
+    final file = File(pathFromKey(key));
     final cacheFile = File(cachePathFromKey(key));
 
-    if (file.existsSync() && pathFromKey(newKey) != null) {
+    if (file.existsSync() && p.isAbsolute(pathFromKey(newKey))) {
       if (!file.parent.existsSync()) {
         file.parent.createSync(recursive: true);
       }
-      file.copySync(pathFromKey(newKey) ?? newKey);
+      file.copySync(pathFromKey(newKey));
     }
 
-    if (cacheFile.existsSync() && pathFromKey(newKey) != null) {
+    if (cacheFile.existsSync() && p.isAbsolute(pathFromKey(newKey))) {
       if (!cacheFile.parent.existsSync()) {
         cacheFile.parent.createSync(recursive: true);
       }
-      cacheFile.copySync(pathFromKey(newKey) ?? newKey);
+      cacheFile.copySync(pathFromKey(newKey));
     }
 
     remoteFilesAdd(newFile);
@@ -770,7 +800,7 @@ abstract class Main {
       (preprogress ?? progress).value = progressCount / totalFiles;
       await copyFile(
         file,
-        p.s3(p.join(newDir, p.relative(file, from: dir))),
+        p.s3.join(newDir, p.s3.relative(file, from: dir)),
         refresh: false,
       );
     }
@@ -809,7 +839,7 @@ abstract class Main {
         (preprogress ?? progress).value =
             progressCount / profileKeys.values.expand((e) => e).length;
         await profile.fileManager?.deleteFile(key);
-        File file = File(pathFromKey(key) ?? key);
+        File file = File(pathFromKey(key));
         File cacheFile = File(cachePathFromKey(key));
         if (file.existsSync()) {
           file.deleteSync();
@@ -819,7 +849,7 @@ abstract class Main {
         }
       }
 
-      remoteFilesRemoveByKeys(keysForProfile, notify: false);
+      remoteFilesRemoveByKeys(keysForProfile, notify: true);
     }
 
     if (refresh) {
@@ -872,7 +902,7 @@ abstract class Main {
 
       remoteFilesRemoveByKeys(
         filesForProfile.where((key) => !p.isDir(key)),
-        notify: false,
+        notify: true,
       );
 
       final dirsForProfile = remoteFilesByDir(profile.name)
@@ -888,7 +918,7 @@ abstract class Main {
         await profile.fileManager?.deleteFile(dir);
       }
 
-      remoteFilesRemoveByKeys(dirsForProfile, notify: false);
+      remoteFilesRemoveByKeys(dirsForProfile, notify: true);
 
       await profile.refreshRemote(dir: profile.name);
     }
@@ -909,7 +939,7 @@ abstract class Main {
     await deleteS3(dirs, refresh: false, preprogress: preprogress ?? progress);
 
     for (final dirS in dirs) {
-      final dir = Directory(pathFromKey(dirS) ?? dirS);
+      final dir = Directory(pathFromKey(dirS));
       final cacheDir = Directory(cachePathFromKey(dirS));
       if (dir.existsSync()) {
         dir.deleteSync(recursive: true);
@@ -939,13 +969,13 @@ abstract class Main {
       final newKey = inewKeys.current;
       progress.value = i * 0.5 / keys.length;
       await copyFile(key, newKey, refresh: false);
-      File file = File(pathFromKey(key) ?? key);
+      File file = File(pathFromKey(key));
       if (file.existsSync()) {
-        renameOrCopyAndDelete(file, pathFromKey(newKey) ?? newKey);
+        renameOrCopyAndDelete(file, pathFromKey(newKey));
       }
       File cacheFile = File(cachePathFromKey(key));
       if (cacheFile.existsSync()) {
-        renameOrCopyAndDelete(cacheFile, pathFromKey(newKey) ?? newKey);
+        renameOrCopyAndDelete(cacheFile, pathFromKey(newKey));
       }
       i++;
     }
@@ -1001,15 +1031,15 @@ abstract class Main {
   static Future<void> init({bool background = false}) async {
     if (_cacheDir.isEmpty) {
       final directory = await getApplicationCacheDirectory();
-      _cacheDir = p.join(directory.path, 'tmp');
+      _cacheDir = p.context.join(directory.path, 'tmp');
     }
     if (_thumbCacheDir.isEmpty) {
       final directory = await getApplicationCacheDirectory();
-      _thumbCacheDir = p.join(directory.path, 'thumbnails');
+      _thumbCacheDir = p.context.join(directory.path, 'thumbnails');
     }
     if (_downloadCacheDir.isEmpty) {
       final directory = await getApplicationCacheDirectory();
-      _downloadCacheDir = p.join(directory.path, 'downloads');
+      _downloadCacheDir = p.context.join(directory.path, 'downloads');
     }
     if (_documentsDir.isEmpty) {
       final directory = await getApplicationDocumentsDirectory();
@@ -1146,7 +1176,7 @@ abstract class Job {
         // final ifModifiedSince = await localFile.exists()
         //     ? localFile.lastModifiedSync()
         //     : null;
-        final dir = Directory(p.s3(p.dirname(localFile.path)));
+        final dir = Directory(p.context.dirname(localFile.path));
         if (!dir.existsSync()) {
           dir.createSync(recursive: true);
         }
@@ -1365,9 +1395,7 @@ class Watcher {
   Watcher({required this.remoteDir});
 
   Future<void> scan({String? dirKey, bool recursive = true}) async {
-    final localDir = Directory(
-      Main.pathFromKey(dirKey ?? remoteDir) ?? dirKey ?? remoteDir,
-    );
+    final localDir = Directory(Main.pathFromKey(dirKey ?? remoteDir));
 
     if (scanning) {
       if (_rescanQueued) {
@@ -1477,7 +1505,7 @@ class Watcher {
   }
 
   Future<void> start() async {
-    final localDir = Directory(Main.pathFromKey(remoteDir) ?? remoteDir);
+    final localDir = Directory(Main.pathFromKey(remoteDir));
 
     if (watching) {
       if (kDebugMode) {
