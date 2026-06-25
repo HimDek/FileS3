@@ -34,6 +34,7 @@ class _ExternalFilesState extends State<ExternalFiles> {
     String? key = await Navigator.of(context).push(
       MaterialPageRoute<String>(
         builder: (context) => Gallery(
+          initialIndex: index,
           files: _files,
           buildContextMenu: (context, index) {
             return ListenableBuilder(
