@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:files3/media_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
@@ -10,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:receive_intent/receive_intent.dart' as receive_intent;
 import 'package:files3/utils/path_utils.dart' as p;
+import 'package:files3/utils/context_menu.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
@@ -403,6 +405,50 @@ class _HomeState extends State<Home> {
     }
   }
 
+  void _upload(List<String> paths) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PathPicker(
+          title: Text('Select Upload Location'),
+          subtitle: SingleChildScrollView(
+            child: Text(
+              '${paths.length} file${paths.length > 1 ? 's' : ''}: ${paths.map((e) => p.context.basename(e)).join(', ')}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          onInit: RegExp(r'^[a-zA-Z]+://').hasMatch(paths.first)
+              ? () async {
+                  loading.value = true;
+                  int totalCount = paths.length;
+                  int progressCount = 0;
+                  paths = await Future.wait(
+                    paths.map((e) async {
+                      String f = (await uriToFile(
+                        e,
+                        onProgress: (d, t) => progress.value =
+                            (progressCount + d / t) / totalCount,
+                      )).path;
+                      progressCount += 1;
+                      return f;
+                    }),
+                  );
+                  loading.value = false;
+                }
+              : null,
+          onPick: (path) async {
+            loading.value = true;
+            for (final sharedFile in paths) {
+              final fileName = p.context.basename(sharedFile);
+              final remoteKey = p.s3.join(path, fileName);
+              await Main.uploadFile(remoteKey, File(sharedFile));
+            }
+            loading.value = false;
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _init() async {
     Permission? permission;
     if (Platform.isAndroid) {
@@ -469,11 +515,7 @@ class _HomeState extends State<Home> {
         final uris = intent.extra?['android.intent.extra.STREAM'];
 
         if (uris is List) {
-          _sharedFiles.value = await Future.wait(
-            uris.map((e) async {
-              return (await uriToFile(e)).path;
-            }),
-          );
+          _sharedFiles.value = uris.map((uri) => uri.toString()).toList();
         }
         break;
 
@@ -494,55 +536,47 @@ class _HomeState extends State<Home> {
 
     _sharedFiles.addListener(() async {
       List<String> sharedFiles = _sharedFiles.value;
-      if (sharedFiles.isNotEmpty) {
+      if (sharedFiles.length == 1) {
+        final urlPattern = RegExp(r'^[a-zA-Z]+://');
+        final rebuildContextNotifier = ManualNotifier();
+        final props = [
+          GalleryProps(
+            key: _sharedFiles.value[0],
+            path: urlPattern.hasMatch(_sharedFiles.value[0])
+                ? null
+                : _sharedFiles.value[0],
+            url: urlPattern.hasMatch(_sharedFiles.value[0])
+                ? _sharedFiles.value[0]
+                : null,
+          ),
+        ];
         await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => ExternalFiles(
-              path: sharedFiles,
-              upload: (paths) async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => PathPicker(
-                      title: Text('Select Upload Location'),
-                      subtitle: SingleChildScrollView(
-                        child: Text(
-                          '${paths.length} file${paths.length > 1 ? 's' : ''}: ${paths.map((e) => p.context.basename(e)).join(', ')}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      onInit: RegExp(r'^[a-zA-Z]+://').hasMatch(paths.first)
-                          ? () async {
-                              loading.value = true;
-                              int totalCount = paths.length;
-                              int progressCount = 0;
-                              paths = await Future.wait(
-                                paths.map((e) async {
-                                  String f = (await uriToFile(
-                                    e,
-                                    onProgress: (d, t) => progress.value =
-                                        (progressCount + d / t) / totalCount,
-                                  )).path;
-                                  progressCount += 1;
-                                  return f;
-                                }),
-                              );
-                              loading.value = false;
-                            }
-                          : null,
-                      onPick: (path) async {
-                        loading.value = true;
-                        for (final sharedFile in paths) {
-                          final fileName = p.context.basename(sharedFile);
-                          final remoteKey = p.s3.join(path, fileName);
-                          await Main.uploadFile(remoteKey, File(sharedFile));
-                        }
-                        loading.value = false;
-                      },
-                    ),
+          MaterialPageRoute<String>(
+            builder: (context) => Gallery(
+              files: props,
+              buildContextMenu: (context, index) {
+                return ListenableBuilder(
+                  listenable: rebuildContextNotifier,
+                  builder: (context, _) => buildExternalFilesContextMenu(
+                    context,
+                    props[index].path,
+                    props[index].url,
+                    props[index].key,
+                    _upload,
                   ),
                 );
               },
+              rebuildContext: () {
+                rebuildContextNotifier.notifyListeners();
+              },
             ),
+          ),
+        );
+      } else if (sharedFiles.isNotEmpty) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) =>
+                ExternalFiles(path: sharedFiles, upload: _upload),
           ),
         );
         _sharedFiles.value = [];
@@ -566,15 +600,8 @@ class _HomeState extends State<Home> {
           _handleIntent(intent);
         }
       });
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Error setting up intent listener: $e');
-      }
-    }
-
-    if (kDebugMode) {
-      debugPrint('App initialized');
-    }
+      // ignore: empty_catches
+    } catch (e) {}
   }
 
   @override

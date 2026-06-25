@@ -162,6 +162,7 @@ class AudioVideoInteractiveMedia extends StatefulWidget {
   final String mediaType;
   final String? heroTag;
   final bool staypaused;
+  final bool showControls;
   const AudioVideoInteractiveMedia({
     super.key,
     required this.path,
@@ -170,6 +171,7 @@ class AudioVideoInteractiveMedia extends StatefulWidget {
     required this.mediaType,
     this.heroTag,
     this.staypaused = false,
+    this.showControls = true,
   }) : assert(
          path != null || url != null,
          'At least path or url must be provided',
@@ -185,8 +187,8 @@ class AudioVideoInteractiveMediaState
   bool _pathExists = false;
   bool _cacheExists = false;
 
-  late ChewieAudioController _chewieAudioController;
-  late ChewieController _chewieController;
+  ChewieAudioController? _chewieAudioController;
+  ChewieController? _chewieController;
   late VideoPlayerController _videoController;
   late Future<bool> _loader;
 
@@ -200,8 +202,8 @@ class AudioVideoInteractiveMediaState
 
   @override
   void dispose() {
-    _chewieAudioController.dispose();
-    _chewieController.dispose();
+    _chewieAudioController?.dispose();
+    _chewieController?.dispose();
     _videoController.dispose();
     super.dispose();
   }
@@ -224,6 +226,7 @@ class AudioVideoInteractiveMediaState
     await _videoController.initialize();
     _chewieAudioController = ChewieAudioController(
       videoPlayerController: _videoController,
+      showControls: widget.showControls,
       autoPlay: true,
       looping: false,
     );
@@ -232,9 +235,9 @@ class AudioVideoInteractiveMediaState
         _videoController.pause();
       }
     });
-    _chewieAudioController.addListener(() {
+    _chewieAudioController?.addListener(() {
       if (widget.staypaused && _videoController.value.isPlaying) {
-        _chewieAudioController.pause();
+        _chewieAudioController?.pause();
       }
     });
     return true;
@@ -258,6 +261,7 @@ class AudioVideoInteractiveMediaState
     await _videoController.initialize();
     _chewieController = ChewieController(
       videoPlayerController: _videoController,
+      showControls: widget.showControls,
       autoPlay: true,
       looping: false,
       // Try playing around with some of these other options:
@@ -280,9 +284,9 @@ class AudioVideoInteractiveMediaState
         _videoController.pause();
       }
     });
-    _chewieController.addListener(() {
+    _chewieController?.addListener(() {
       if (widget.staypaused && _videoController.value.isPlaying) {
-        _chewieController.pause();
+        _chewieController?.pause();
       }
     });
     return true;
@@ -335,7 +339,7 @@ class AudioVideoInteractiveMediaState
       child: Center(
         child: Hero(
           tag: widget.heroTag ?? widget.key.hashCode,
-          child: ChewieAudio(controller: _chewieAudioController),
+          child: ChewieAudio(controller: _chewieAudioController!),
         ),
       ),
     );
@@ -347,7 +351,7 @@ class AudioVideoInteractiveMediaState
       child: Center(
         child: Hero(
           tag: widget.heroTag ?? widget.key.hashCode,
-          child: Chewie(controller: _chewieController),
+          child: Chewie(controller: _chewieController!),
         ),
       ),
     );
@@ -390,7 +394,7 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
   int _pageCount = 0;
   double _initialZoom = 1.0;
   double _currentZoom = 1.0;
-  Size _thumbSize = Size(40, 72);
+  Size _thumbSize = Size(40, 34);
 
   String? _pdfPath;
   String? _pdfUrl;
@@ -423,7 +427,7 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
 
       _pdfReady = true;
       _pageCount = controller.pageCount;
-      _thumbSize = Size('$_pageCount/$_pageCount'.length * 8.0, 72);
+      _thumbSize = Size('$_pageCount/$_pageCount'.length * 8.0, 34);
 
       _pdfTextSearcher ??= PdfTextSearcher(controller)..addListener(_update);
 
@@ -587,33 +591,45 @@ class PdfInteractiveMediaState extends State<PdfInteractiveMedia> {
         orientation: ScrollbarOrientation.right,
         thumbSize: _thumbSize,
         thumbBuilder: (context, thumbSize, pageNumber, controller) =>
-            AnimatedOpacity(
+            AnimatedSlide(
               duration: const Duration(milliseconds: 300),
-              opacity:
-                  widget.showControls &&
-                      _pdfReady &&
-                      _currentZoom <= _initialZoom &&
-                      pageNumber != null
-                  ? 1.0
-                  : 0.0,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 2.0, bottom: 40),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      bottomLeft: Radius.circular(16),
+              offset: Offset(
+                widget.showControls &&
+                        _pdfReady &&
+                        _currentZoom <= _initialZoom &&
+                        pageNumber != null
+                    ? 0
+                    : 1,
+                0,
+              ),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity:
+                    widget.showControls &&
+                        _pdfReady &&
+                        _currentZoom <= _initialZoom &&
+                        pageNumber != null
+                    ? 1.0
+                    : 0.0,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2.0, bottom: 2.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        bottomLeft: Radius.circular(16),
+                      ),
+                      color: Theme.of(context).colorScheme.surface,
                     ),
-                    color: Theme.of(context).colorScheme.surface,
-                  ),
-                  child: Center(
-                    child: Text(
-                      _pdfReady && pageNumber != null
-                          ? '$pageNumber/$_pageCount'
-                          : '',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 12,
+                    child: Center(
+                      child: Text(
+                        _pdfReady && pageNumber != null
+                            ? '$pageNumber/$_pageCount'
+                            : '',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
@@ -892,6 +908,15 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
     } catch (e) {
       mediaType = 'application/octet-stream';
     } finally {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mediaType.startsWith('image/')) {
+          widget.setDragging?.call(true);
+        } else if (mediaType.toLowerCase() == 'application/pdf') {
+          widget.setDragging?.call(false);
+        } else {
+          widget.setDragging?.call(true);
+        }
+      });
       if (mounted) {
         setState(() {
           _loading = false;
@@ -905,15 +930,6 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
     _path = widget.path;
     super.initState();
     updateMediaType();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mediaType.startsWith('image/')) {
-        widget.setDragging?.call(true);
-      } else if (mediaType.toLowerCase() == 'application/pdf') {
-        widget.setDragging?.call(false);
-      } else {
-        widget.setDragging?.call(true);
-      }
-    });
   }
 
   @override
@@ -990,6 +1006,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             mediaType: mediaType,
             heroTag: widget.heroTag ?? widget.remoteKey ?? _path ?? widget.url,
             staypaused: !widget.isActive,
+            showControls: widget.showControls,
           )
         : mediaType.startsWith('video/')
         ? AudioVideoInteractiveMedia(
@@ -999,6 +1016,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
             mediaType: mediaType,
             heroTag: widget.heroTag ?? widget.remoteKey ?? _path ?? widget.url,
             staypaused: !widget.isActive,
+            showControls: widget.showControls,
           )
         : mediaType.startsWith('text/')
         ? TextInteractiveMedia(
@@ -1187,9 +1205,7 @@ class GalleryState extends State<Gallery> {
                     ? EdgeInsets.only(
                         top:
                             kToolbarHeight + MediaQuery.of(context).padding.top,
-                        bottom:
-                            kToolbarHeight +
-                            MediaQuery.of(context).padding.bottom,
+                        bottom: 0.13 * MediaQuery.of(context).size.height,
                       )
                     : EdgeInsets.zero,
                 duration: const Duration(milliseconds: 300),

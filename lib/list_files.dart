@@ -853,8 +853,7 @@ class ListFilesState extends State<ListFiles> {
 
   @override
   Widget build(BuildContext context) {
-    return MyListenableBuilder(
-      name: 'list_files',
+    return ListenableBuilder(
       listenable: Listenable.merge([_groups, _group]),
       builder: (context, child) => !_group.value
           ? _groupContent(

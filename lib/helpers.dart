@@ -48,9 +48,6 @@ Future<File> uriToFile(
 
     bytes = bytesBuilder.takeBytes();
   } catch (e) {
-    if (kDebugMode) {
-      debugPrint("Error reading content URI bytes: $e");
-    }
     showSnackBar(SnackBar(content: Text('Failed to read file bytes: $e')));
     bytes = null;
   } finally {
@@ -1035,9 +1032,6 @@ class DeletionRegistrar {
     await profile.refreshRemote(dir: _key);
 
     if (Main.remoteFileByKey(_key) == null) {
-      if (kDebugMode) {
-        debugPrint("Remote deletion register does not exist.");
-      }
       return {};
     }
 
@@ -1048,9 +1042,6 @@ class DeletionRegistrar {
               DateTime.fromMillisecondsSinceEpoch(0).toUtc(),
         ) &&
         _file.existsSync()) {
-      if (kDebugMode) {
-        debugPrint("Local deletion register is up to date.");
-      }
       return {
         for (var entry in _config!.options('register')!)
           entry: DateTime.parse(_config!.get('register', entry)!).toUtc(),
@@ -1144,46 +1135,6 @@ class MyPersistentHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant MyPersistentHeaderDelegate oldDelegate) {
     return oldDelegate.child != child || oldDelegate.height != height;
-  }
-}
-
-class MyListenableBuilder<T> extends ListenableBuilder {
-  final String? name;
-  final bool Function(T?)? shouldRebuild;
-  final ManualNotifier _manualNotifier = ManualNotifier();
-  final FutureOr<T?> Function()? valueToStore;
-  final ValueNotifier<T?> _old = ValueNotifier(null);
-
-  MyListenableBuilder({
-    super.key,
-    this.name,
-    required super.listenable,
-    required super.builder,
-    super.child,
-    this.shouldRebuild,
-    this.valueToStore,
-  });
-
-  void checkAndNotify() async {
-    if (shouldRebuild == null || shouldRebuild!(_old.value)) {
-      _manualNotifier.notifyListeners();
-    }
-    _old.value = await valueToStore?.call();
-  }
-
-  @override
-  Listenable get listenable {
-    super.listenable.removeListener(checkAndNotify);
-    super.listenable.addListener(checkAndNotify);
-    return _manualNotifier;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (kDebugMode && name != null) {
-      debugPrint('Building MyListenableBuilder $name');
-    }
-    return super.build(context);
   }
 }
 

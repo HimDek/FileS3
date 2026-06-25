@@ -1,8 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:open_file/open_file.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:files3/utils/path_utils.dart' as p;
+import 'package:files3/utils/context_menu.dart';
 import 'package:files3/models.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/media_view.dart';
@@ -39,81 +38,12 @@ class _ExternalFilesState extends State<ExternalFiles> {
           buildContextMenu: (context, index) {
             return ListenableBuilder(
               listenable: _rebuildContextNotifier,
-              builder: (context, _) => Column(
-                children:
-                    _files[index].path != null &&
-                        File(_files[index].path!).existsSync()
-                    ? [
-                        ListTile(
-                          visualDensity: VisualDensity.comfortable,
-                          leading: Icon(
-                            mediaTypeIcon(getMediaType(_files[index].path!)),
-                          ),
-                          title: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Text(_files[index].path!),
-                          ),
-                          subtitle: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                Text(
-                                  bytesToReadable(
-                                    File(_files[index].path!).lengthSync(),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(p.context.extension(_files[index].path!)),
-                              ],
-                            ),
-                          ),
-                        ),
-                        ListTile(
-                          visualDensity: VisualDensity.comfortable,
-                          leading: const Icon(Icons.open_in_new),
-                          title: const Text('Open with...'),
-                          subtitle: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Text(_files[index].path!),
-                          ),
-                          onTap: () {
-                            OpenFile.open(_files[index].path!);
-                          },
-                        ),
-                        ListTile(
-                          visualDensity: VisualDensity.comfortable,
-                          leading: const Icon(Icons.share),
-                          title: const Text('Share'),
-                          onTap: () {
-                            SharePlus.instance.share(
-                              ShareParams(
-                                files: <XFile>[XFile(_files[index].path!)],
-                              ),
-                            );
-                          },
-                        ),
-                        ListTile(
-                          visualDensity: VisualDensity.comfortable,
-                          leading: const Icon(Icons.upload),
-                          title: const Text('Upload'),
-                          onTap: () => widget.upload([_files[index].path!]),
-                        ),
-                      ]
-                    : [
-                        ListTile(
-                          visualDensity: VisualDensity.comfortable,
-                          leading: const Icon(Icons.info_outline),
-                          title: const Text('Loading...'),
-                          subtitle: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Text(
-                              _files[index].path ??
-                                  _files[index].url ??
-                                  _files[index].key!,
-                            ),
-                          ),
-                        ),
-                      ],
+              builder: (context, _) => buildExternalFilesContextMenu(
+                context,
+                _files[index].path,
+                _files[index].url,
+                _files[index].key,
+                widget.upload,
               ),
             );
           },
@@ -148,6 +78,7 @@ class _ExternalFilesState extends State<ExternalFiles> {
       _files.add(GalleryProps(key: path, path: normalizedPath));
       _listKey.currentState?.insertItem(_files.length - 1);
       _gridKey.currentState?.insertItem(_files.length - 1);
+      setState(() {});
     }
     setState(() {
       _loading = false;
@@ -201,8 +132,9 @@ class _ExternalFilesState extends State<ExternalFiles> {
                 preferredSize: Size.fromHeight(4),
                 child: ValueListenableBuilder<double>(
                   valueListenable: _progress,
-                  builder: (context, value, child) =>
-                      LinearProgressIndicator(value: value),
+                  builder: (context, value, child) => LinearProgressIndicator(
+                    value: value > 0 && value < 1 ? value : null,
+                  ),
                 ),
               )
             : null,

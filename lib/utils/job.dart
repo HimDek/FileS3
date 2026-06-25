@@ -566,9 +566,6 @@ abstract class Main {
     for (final profile in _profiles.values) {
       await profile.listDirectories(background: background);
     }
-    if (kDebugMode) {
-      debugPrint("Directory listing completed for all profiles");
-    }
     loading.value = false;
   }
 
@@ -613,9 +610,6 @@ abstract class Main {
           file.lastModifiedSync().toUtc().isBefore(
             deleteionLog[key]!.toUtc(),
           )) {
-        if (kDebugMode) {
-          debugPrint("File deleted remotely, deleting locally: ${file.path}");
-        }
         file.deleteSync();
       } else {
         UploadJob(
@@ -643,11 +637,6 @@ abstract class Main {
         File(pathFromKey(newKey)).parent.createSync(recursive: true);
       }
       file.copySync(pathFromKey(newKey));
-      if (kDebugMode) {
-        debugPrint(
-          "File copied to monitored directory: ${pathFromKey(newKey)}",
-        );
-      }
       UploadJob(
         localFile: File(pathFromKey(newKey)),
         remoteKey: key,
@@ -1070,11 +1059,6 @@ abstract class Job {
     )) {
       return;
     }
-    if (kDebugMode) {
-      debugPrint(
-        "Adding job: ${runtimeType == UploadJob ? 'Upload' : 'Download'} - $remoteKey",
-      );
-    }
     jobs.add(this);
     status.addListener(() {
       if (status.value == JobStatus.completed) {
@@ -1230,21 +1214,11 @@ abstract class Job {
 
   static void startall() {
     if (scheduled) {
-      if (kDebugMode) {
-        debugPrint("Job scheduling is already in progress. Skipping...");
-      }
       return;
     }
 
     try {
       scheduled = true;
-
-      if (kDebugMode) {
-        debugPrint(
-          "Starting jobs: Running ${runningJobs.length}, Max Run $maxrun, Pending ${initializedJobs.length}",
-        );
-      }
-
       while (runningJobs.length < maxrun) {
         Job? job = jobs.firstWhereOrNull(
           (job) => job.status.value == JobStatus.initialized,
@@ -1253,12 +1227,6 @@ abstract class Job {
           break;
         }
         job.start();
-      }
-
-      if (kDebugMode) {
-        debugPrint(
-          "Job scheduling completed: Running ${runningJobs.length}, Max Run $maxrun, Pending ${initializedJobs.length}",
-        );
       }
     } finally {
       scheduled = false;

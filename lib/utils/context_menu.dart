@@ -3388,3 +3388,78 @@ Widget buildBulkContextMenu(
     ),
   );
 }
+
+Widget buildExternalFilesContextMenu(
+  BuildContext context,
+  String? path,
+  String? url,
+  String? key,
+  void Function(List<String>) upload,
+) {
+  assert(
+    path != null || url != null || key != null,
+    'At least one of path, url, or key must be provided',
+  );
+  return Column(
+    children: path != null && File(path).existsSync()
+        ? [
+            ListTile(
+              visualDensity: VisualDensity.comfortable,
+              leading: Icon(mediaTypeIcon(getMediaType(path))),
+              title: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Text(path),
+              ),
+              subtitle: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    Text(bytesToReadable(File(path).lengthSync())),
+                    const SizedBox(width: 8),
+                    Text(p.context.extension(path)),
+                  ],
+                ),
+              ),
+            ),
+            ListTile(
+              visualDensity: VisualDensity.comfortable,
+              leading: const Icon(Icons.open_in_new),
+              title: const Text('Open with...'),
+              subtitle: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Text(path),
+              ),
+              onTap: () {
+                OpenFile.open(path);
+              },
+            ),
+            ListTile(
+              visualDensity: VisualDensity.comfortable,
+              leading: const Icon(Icons.share),
+              title: const Text('Share'),
+              onTap: () {
+                SharePlus.instance.share(
+                  ShareParams(files: <XFile>[XFile(path)]),
+                );
+              },
+            ),
+            ListTile(
+              visualDensity: VisualDensity.comfortable,
+              leading: const Icon(Icons.upload),
+              title: const Text('Upload'),
+              onTap: () => upload([path]),
+            ),
+          ]
+        : [
+            ListTile(
+              visualDensity: VisualDensity.comfortable,
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Loading...'),
+              subtitle: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Text(path ?? url ?? key!),
+              ),
+            ),
+          ],
+  );
+}
