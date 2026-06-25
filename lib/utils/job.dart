@@ -711,17 +711,19 @@ abstract class Main {
     final cacheFile = File(cachePathFromKey(key));
 
     if (file.existsSync() && p.isAbsolute(pathFromKey(newKey))) {
-      if (!file.parent.existsSync()) {
-        file.parent.createSync(recursive: true);
+      final newFile = File(pathFromKey(newKey));
+      if (!newFile.parent.existsSync()) {
+        newFile.parent.createSync(recursive: true);
       }
-      file.copySync(pathFromKey(newKey));
+      file.copySync(newFile.path);
     }
 
     if (cacheFile.existsSync() && p.isAbsolute(pathFromKey(newKey))) {
-      if (!cacheFile.parent.existsSync()) {
-        cacheFile.parent.createSync(recursive: true);
+      final newFile = File(pathFromKey(newKey));
+      if (!newFile.parent.existsSync()) {
+        newFile.parent.createSync(recursive: true);
       }
-      cacheFile.copySync(pathFromKey(newKey));
+      cacheFile.copySync(newFile.path);
     }
 
     remoteFilesAdd(newFile);
@@ -815,12 +817,9 @@ abstract class Main {
     List<String> files = [];
 
     for (final key in keys) {
-      if (!p.isDir(key)) {
-        files.add(key);
-      } else {
-        files.addAll(
-          remoteFilesByDir(key).map((f) => f.key).where((key) => !p.isDir(key)),
-        );
+      files.add(key);
+      if (p.isDir(key)) {
+        files.addAll(remoteFilesByDir(key).map((f) => f.key));
       }
     }
 
@@ -833,9 +832,15 @@ abstract class Main {
     }
 
     int progressCount = 0;
+    int total = profileFiles.values
+        .expand((e) => e)
+        .where((file) => !p.isDir(file))
+        .length;
     for (final entry in profileFiles.entries) {
       final profile = entry.key;
-      final filesForProfile = entry.value;
+      final filesForProfile = entry.value
+          .where((file) => !p.isDir(file))
+          .toList();
 
       await profile.deletionRegistrar.pullDeletions();
       profile.deletionRegistrar.logDeletions(filesForProfile);
@@ -843,8 +848,7 @@ abstract class Main {
 
       for (final file in filesForProfile.where((file) => !p.isDir(file))) {
         progressCount += 1;
-        (preprogress ?? progress).value =
-            progressCount / profileFiles.values.expand((e) => e).length;
+        (preprogress ?? progress).value = progressCount / total;
         await profile.fileManager?.deleteFile(file);
       }
 
@@ -853,16 +857,14 @@ abstract class Main {
         notify: true,
       );
 
-      final dirsForProfile = remoteFilesByDir(profile.name)
-          .map((f) => f.key)
-          .where((key) => filesForProfile.contains(key) && p.isDir(key))
+      final dirsForProfile = entry.value
+          .where((file) => p.isDir(file))
           .toList();
       dirsForProfile.sort((a, b) => b.length.compareTo(a.length));
 
       for (final dir in dirsForProfile) {
         progressCount += 1;
-        (preprogress ?? progress).value =
-            progressCount / profileFiles.values.expand((e) => e).length;
+        (preprogress ?? progress).value = progressCount / total;
         await profile.fileManager?.deleteFile(dir);
       }
 
