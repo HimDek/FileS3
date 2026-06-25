@@ -63,7 +63,7 @@ class S3FileManager {
   }
 
   Future<dynamic> createDirectory(String dir) async {
-    String key = p.asDir(dir, context: p.s3);
+    String key = p.s3.asDir(dir);
 
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();

@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:percent_indicator/percent_indicator.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
-import 'package:files3/helpers.dart';
 import 'package:files3/models.dart';
 
 class JobView extends StatefulWidget {
   final Job job;
-  final RemoteFile? relativeTo;
+  final String? relativeTo;
   final bool grid;
 
   const JobView({
@@ -24,8 +22,7 @@ class JobView extends StatefulWidget {
 class JobViewState extends State<JobView> {
   @override
   Widget build(BuildContext context) {
-    return MyListenableBuilder(
-      name: 'job_view',
+    return ListenableBuilder(
       listenable: Listenable.merge([
         widget.job.status,
         widget.job.bytesCompleted,
@@ -53,24 +50,20 @@ class JobViewState extends State<JobView> {
                   ),
                 ),
                 if (widget.job.status.value != JobStatus.completed)
-                  LinearPercentIndicator(
-                    percent: widget.job.bytesCompleted.value / widget.job.bytes,
-                    lineHeight: 2,
+                  LinearProgressIndicator(
+                    value: widget.job.bytesCompleted.value / widget.job.bytes,
                     backgroundColor: Theme.of(context).colorScheme.surface,
-                    progressColor: Theme.of(context).colorScheme.primary,
+                    color: Theme.of(context).colorScheme.primary,
                   )
                 else
                   SizedBox(height: 2),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Text(
-                    p.s3.isWithin(
-                          widget.relativeTo?.key ?? '',
-                          widget.job.remoteKey,
-                        )
+                    p.s3.isWithin(widget.relativeTo ?? '', widget.job.remoteKey)
                         ? p.s3.relative(
                             widget.job.remoteKey,
-                            from: widget.relativeTo?.key ?? '',
+                            from: widget.relativeTo ?? '',
                           )
                         : widget.job.remoteKey,
                   ),
@@ -111,12 +104,12 @@ class JobViewState extends State<JobView> {
                     scrollDirection: Axis.horizontal,
                     child: Text(
                       p.s3.isWithin(
-                            widget.relativeTo?.key ?? '',
+                            widget.relativeTo ?? '',
                             widget.job.remoteKey,
                           )
                           ? p.s3.relative(
                               widget.job.remoteKey,
-                              from: widget.relativeTo?.key ?? '',
+                              from: widget.relativeTo ?? '',
                             )
                           : widget.job.remoteKey,
                     ),
@@ -151,11 +144,10 @@ class JobViewState extends State<JobView> {
                       : null,
                 ),
                 if (widget.job.status.value != JobStatus.completed)
-                  LinearPercentIndicator(
-                    percent: widget.job.bytesCompleted.value / widget.job.bytes,
-                    lineHeight: 2,
+                  LinearProgressIndicator(
+                    value: widget.job.bytesCompleted.value / widget.job.bytes,
                     backgroundColor: Theme.of(context).colorScheme.surface,
-                    progressColor: Theme.of(context).colorScheme.primary,
+                    color: Theme.of(context).colorScheme.primary,
                   )
                 else
                   SizedBox(height: 2),

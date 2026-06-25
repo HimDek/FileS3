@@ -2,10 +2,10 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:files3/utils/job.dart';
-import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/hash_util.dart';
+import 'package:files3/utils/profile.dart';
+import 'package:files3/utils/job.dart';
 import 'package:files3/helpers.dart';
 
 enum TransferTask { upload, download }
@@ -49,6 +49,11 @@ class S3TransferTask {
 
   /// Starts upload or download
   Future<dynamic> start() async {
+    onStatus?.call(
+      task == TransferTask.upload
+          ? 'Starting upload...'
+          : 'Starting download...',
+    );
     _isCancelled = false;
     final HttpClient httpClient = HttpClient();
 
@@ -97,6 +102,7 @@ class S3TransferTask {
   // ---------------------------------------------------------------------------
 
   Future<dynamic> _upload(HttpClient httpClient) async {
+    onStatus?.call('Starting upload...');
     final totalBytes = await localFile.length();
     int uploaded = 0;
 
@@ -162,6 +168,7 @@ class S3TransferTask {
     }
 
     final res = await req.close();
+    watchdog?.cancel();
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
       onStatus?.call('Upload complete');
@@ -186,6 +193,7 @@ class S3TransferTask {
   // ---------------------------------------------------------------------------
 
   Future<dynamic> _download(HttpClient httpClient) async {
+    onStatus?.call('Starting download...');
     final now = DateTime.now().toUtc();
 
     final head = await profile!.fileManager!.headObject(key);
@@ -307,6 +315,7 @@ class S3TransferTask {
     } finally {
       await sink.flush();
       await sink.close();
+      watchdog?.cancel();
     }
 
     if (_isCancelled) {
@@ -366,7 +375,7 @@ class S3TransferTask {
         await Future.delayed(Duration(seconds: 1 << i));
       }
     }
-    throw StateError('unreachable');
+    throw StateError('Unreachable');
   }
 
   // Future<String> _sha256OfFile(File file) async {

@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'package:files3/models.dart';
 import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:files3/utils/path_utils.dart' as p;
+import 'package:files3/models.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/media_view.dart';
 

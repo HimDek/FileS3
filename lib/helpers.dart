@@ -1,5 +1,5 @@
-import 'dart:async';
 import 'dart:io';
+import 'dart:async';
 import 'dart:convert';
 import 'package:ini/ini.dart';
 import 'package:crypto/crypto.dart';
@@ -7,9 +7,9 @@ import 'package:uri_content/uri_content.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:file_magic_number/file_magic_number.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
@@ -458,8 +458,6 @@ List<FileProps> sort(
   sortedItems.sort((a, b) {
     final aIsDir = p.isDir(a.key);
     final bIsDir = p.isDir(b.key);
-    final aFile = Main.remoteFileByKey(a.key);
-    final bFile = Main.remoteFileByKey(b.key);
 
     if (foldersFirst) {
       if (aIsDir && !bIsDir) return -1;
@@ -472,20 +470,16 @@ List<FileProps> sort(
       case SortMode.nameDesc:
         return b.key.toLowerCase().compareTo(a.key.toLowerCase());
       case SortMode.dateAsc:
-        DateTime aDate = aFile != null
-            ? aFile.lastModified!
-            : DateTime.fromMillisecondsSinceEpoch(0);
-        DateTime bDate = bFile != null
-            ? bFile.lastModified!
-            : DateTime.fromMillisecondsSinceEpoch(0);
+        DateTime aDate =
+            a.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0);
+        DateTime bDate =
+            b.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0);
         return aDate.compareTo(bDate);
       case SortMode.dateDesc:
-        DateTime aDate = aFile != null
-            ? aFile.lastModified!
-            : DateTime.fromMillisecondsSinceEpoch(0);
-        DateTime bDate = bFile != null
-            ? bFile.lastModified!
-            : DateTime.fromMillisecondsSinceEpoch(0);
+        DateTime aDate =
+            a.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0);
+        DateTime bDate =
+            b.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0);
         return bDate.compareTo(aDate);
       case SortMode.sizeAsc:
         return a.size.compareTo(b.size);

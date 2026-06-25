@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'package:files3/external_files.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
@@ -16,6 +15,7 @@ import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/browser.dart';
+import 'package:files3/external_files.dart';
 
 /// ===============================
 /// SHARED ASYNC JOB
@@ -35,7 +35,7 @@ Future<void> runJob({
     }
     onProgress(totalProgress / Job.runningJobs.length);
   });
-  if (Job.pendingJobs.isNotEmpty) {
+  if (Job.initializedJobs.isNotEmpty) {
     await Future.delayed(const Duration(seconds: 2), () {
       // TODO: Run Jobs?
     });
@@ -221,12 +221,7 @@ class _HomeState extends State<Home> {
     loading.value = true;
     try {
       await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
-      Main.remoteFilesAdd(
-        RemoteFile(
-          key: p.asDir(dir, context: p.s3),
-          etag: '',
-        ),
-      );
+      Main.remoteFilesAdd(RemoteFile(key: p.s3.asDir(dir), etag: ''));
       if (p.s3.split(dir).length == 1) {
         await Main.addWatcher(dir);
       }
@@ -283,54 +278,50 @@ class _HomeState extends State<Home> {
     }
   }
 
-  void _downloadFile(RemoteFile file, {String? localPath}) {
-    final mfile = File(Main.pathFromKey(file.key));
-    final cacheFile = File(Main.cachePathFromKey(file.key));
+  void _downloadFile(String key, {String? localPath}) {
+    final mfile = File(Main.pathFromKey(key));
+    final cacheFile = File(Main.cachePathFromKey(key));
 
     if (!mfile.existsSync()) {
-      if (Main.backupModeFromKey(file.key) != BackupMode.sync &&
-          (localPath ?? Main.pathFromKey(file.key)) ==
-              Main.pathFromKey(file.key)) {
+      if (Main.backupModeFromKey(key) != BackupMode.sync &&
+          (localPath ?? Main.pathFromKey(key)) == Main.pathFromKey(key)) {
         ConfigManager.setBackupMode(
-          file.key,
-          Main.backupModeFromKey(p.s3.dirname(file.key)) == BackupMode.sync
+          key,
+          Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.sync
               ? null
               : BackupMode.sync,
         );
       }
       if (cacheFile.existsSync()) {
-        renameOrCopyAndDelete(
-          cacheFile,
-          localPath ?? Main.pathFromKey(file.key),
-        );
+        renameOrCopyAndDelete(cacheFile, localPath ?? Main.pathFromKey(key));
       } else {
-        Main.downloadFile(file, localPath: localPath);
+        Main.downloadFile(key, localPath: localPath);
       }
     }
   }
 
-  void _downloadDirectory(RemoteFile dir, {String? localPath}) {
-    if (Main.backupModeFromKey(dir.key) != BackupMode.sync &&
-        (localPath ?? Main.pathFromKey(dir.key)) == Main.pathFromKey(dir.key)) {
+  void _downloadDirectory(String key, {String? localPath}) {
+    if (Main.backupModeFromKey(key) != BackupMode.sync &&
+        (localPath ?? Main.pathFromKey(key)) == Main.pathFromKey(key)) {
       ConfigManager.setBackupMode(
-        dir.key,
-        Main.backupModeFromKey(p.s3.dirname(dir.key)) == BackupMode.sync
+        key,
+        Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.sync
             ? null
             : BackupMode.sync,
       );
     }
-    final files = Main.remoteFilesByDir(
-      dir.key,
+    final keys = Main.remoteFilesByDir(
+      key,
       recursive: true,
-    ).where((file) => !p.isDir(file.key));
+    ).where((file) => !p.isDir(file.key)).map((file) => file.key).toList();
     int progressCount = 0;
-    final totalFiles = files.length;
-    for (final file in files) {
+    final totalFiles = keys.length;
+    for (final key in keys) {
       progressCount += 1;
       progress.value = progressCount / totalFiles;
-      final relativePath = p.s3.relative(file.key, from: dir.key);
+      final relativePath = p.s3.relative(key, from: key);
       final localFilePath = p.context.joinAll([
-        localPath ?? Main.pathFromKey(dir.key),
+        localPath ?? Main.pathFromKey(key),
         ...p.s3.split(relativePath),
       ]);
 
@@ -340,19 +331,19 @@ class _HomeState extends State<Home> {
       }
 
       if (!File(localFilePath).existsSync()) {
-        final cacheFile = File(Main.cachePathFromKey(file.key));
+        final cacheFile = File(Main.cachePathFromKey(key));
         if (cacheFile.existsSync()) {
           renameOrCopyAndDelete(cacheFile, localFilePath);
         } else {
-          Main.downloadFile(file, localPath: localFilePath);
+          Main.downloadFile(key, localPath: localFilePath);
         }
       }
     }
   }
 
-  void _saveFile(RemoteFile file, String savePath) {
-    final mFile = File(Main.pathFromKey(file.key));
-    final cacheFile = File(Main.cachePathFromKey(file.key));
+  void _saveFile(String key, String savePath) {
+    final mFile = File(Main.pathFromKey(key));
+    final cacheFile = File(Main.cachePathFromKey(key));
     final saveFile = File(savePath);
 
     if (saveFile.existsSync()) {
@@ -367,25 +358,25 @@ class _HomeState extends State<Home> {
     } else if (cacheFile.existsSync()) {
       cacheFile.copySync(savePath);
     } else {
-      Main.downloadFile(file, localPath: savePath);
+      Main.downloadFile(key, localPath: savePath);
     }
   }
 
   // uses _saveFile
-  void _saveDirectory(RemoteFile dir, String savePath) {
-    final files = Main.remoteFilesByDir(
-      dir.key,
+  void _saveDirectory(String key, String savePath) {
+    final keys = Main.remoteFilesByDir(
+      key,
       recursive: true,
-    ).where((file) => !p.isDir(file.key));
+    ).where((file) => !p.isDir(file.key)).map((file) => file.key).toList();
 
     int progressCount = 0;
-    final totalFiles = files.length;
+    final totalFiles = keys.length;
 
-    for (final file in files) {
+    for (final file in keys) {
       progressCount += 1;
       progress.value = progressCount / totalFiles;
 
-      final relativePath = p.s3.relative(file.key, from: dir.key);
+      final relativePath = p.s3.relative(file, from: key);
       final saveFilePath = p.context.joinAll([
         savePath,
         ...p.s3.split(relativePath),
@@ -542,7 +533,7 @@ class _HomeState extends State<Home> {
                         loading.value = true;
                         for (final sharedFile in paths) {
                           final fileName = p.context.basename(sharedFile);
-                          final remoteKey = p.s3.join(path.key, fileName);
+                          final remoteKey = p.s3.join(path, fileName);
                           await Main.uploadFile(remoteKey, File(sharedFile));
                         }
                         loading.value = false;

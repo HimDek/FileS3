@@ -2208,7 +2208,7 @@ class PinnedFoldersPageState extends State<PinnedFoldersPage> {
               builder: (context) => PathPicker(
                 onPick: (path) async {
                   setState(() {
-                    _pinnedFolders.add(MapEntry(path.key, path.key));
+                    _pinnedFolders.add(MapEntry(path, path));
                   });
                   await _saveConfig();
                 },

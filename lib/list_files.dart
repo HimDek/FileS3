@@ -154,7 +154,7 @@ class MyGridTile extends StatelessWidget {
 class ListFiles extends StatefulWidget {
   final ValueNotifier<Iterable<FileProps>> files;
   final ValueNotifier<ListOptions> listOptions;
-  final ValueNotifier<RemoteFile> relativeto;
+  final ValueNotifier<String> relativeto;
   final ValueNotifier<Set<String>> selection;
   final ValueNotifier<SelectionAction> selectionAction;
   final Map<String, double> keysOffsetMap;
@@ -208,10 +208,9 @@ class ListFilesState extends State<ListFiles> {
       String key;
       switch (groupBy) {
         case SortMode.nameAsc || SortMode.nameDesc:
-          String fileKey = p.s3.isWithin(widget.relativeto.value.key, file.key)
-              ? p.asDir(
-                  p.s3.relative(file.key, from: widget.relativeto.value.key),
-                  context: p.s3,
+          String fileKey = p.s3.isWithin(widget.relativeto.value, file.key)
+              ? p.s3.asDir(
+                  p.s3.relative(file.key, from: widget.relativeto.value),
                 )
               : file.key;
           key = fileKey.isNotEmpty ? fileKey[0].toUpperCase() : '#';
@@ -415,13 +414,9 @@ class ListFilesState extends State<ListFiles> {
                 ),
               ),
               title: Text(
-                p.s3.isWithin(widget.relativeto.value.key, item.key)
-                    ? p.asDir(
-                        p.s3.relative(
-                          item.key,
-                          from: widget.relativeto.value.key,
-                        ),
-                        context: p.s3,
+                p.s3.isWithin(widget.relativeto.value, item.key)
+                    ? p.s3.asDir(
+                        p.s3.relative(item.key, from: widget.relativeto.value),
                       )
                     : item.key,
               ),
@@ -529,11 +524,8 @@ class ListFilesState extends State<ListFiles> {
               title: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Text(
-                  p.s3.isWithin(widget.relativeto.value.key, item.key)
-                      ? p.s3.relative(
-                          item.key,
-                          from: widget.relativeto.value.key,
-                        )
+                  p.s3.isWithin(widget.relativeto.value, item.key)
+                      ? p.s3.relative(item.key, from: widget.relativeto.value)
                       : item.key,
                 ),
               ),
@@ -627,13 +619,12 @@ class ListFilesState extends State<ListFiles> {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Text(
-                      p.s3.isWithin(widget.relativeto.value.key, item.key)
-                          ? p.asDir(
+                      p.s3.isWithin(widget.relativeto.value, item.key)
+                          ? p.s3.asDir(
                               p.s3.relative(
                                 item.key,
-                                from: widget.relativeto.value.key,
+                                from: widget.relativeto.value,
                               ),
-                              context: p.s3,
                             )
                           : item.key,
                     ),
@@ -714,10 +705,10 @@ class ListFilesState extends State<ListFiles> {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Text(
-                      p.s3.isWithin(widget.relativeto.value.key, item.key)
+                      p.s3.isWithin(widget.relativeto.value, item.key)
                           ? p.s3.relative(
                               item.key,
-                              from: widget.relativeto.value.key,
+                              from: widget.relativeto.value,
                             )
                           : item.key,
                     ),
@@ -783,7 +774,7 @@ class ListFilesState extends State<ListFiles> {
       listenable: _viewMode,
       builder: (context, child) => _viewMode.value == ViewMode.grid
           ? SliverGrid.builder(
-              key: ValueKey(widget.relativeto.value.key + group.key),
+              key: ValueKey(widget.relativeto.value + group.key),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: MediaQuery.of(context).size.width < 600 ? 4 : 6,
                 childAspectRatio: 3 / 4,
@@ -793,7 +784,7 @@ class ListFilesState extends State<ListFiles> {
                   gridItemBuilder(context, group.value[index]),
             )
           : SliverM3ECardList(
-              key: ValueKey(widget.relativeto.value.key + group.key),
+              key: ValueKey(widget.relativeto.value + group.key),
               itemCount: group.value.length,
               outerRadius: 14,
               innerRadius: 4,

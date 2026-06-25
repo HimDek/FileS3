@@ -34,7 +34,6 @@ dependencies:
   dio:
   http:
   path:
-  yaml:
   pool:
   image:
   pdfrx:
@@ -56,19 +55,17 @@ dependencies:
   app_settings:
   m3e_card_list:
   dynamic_color:
-  path_provider:  
+  path_provider:
   file_selector:
   receive_intent:
   cupertino_icons:
   device_info_plus:
-  flex_color_picker: 
+  flex_color_picker:
   package_info_plus:
   file_magic_number:
-  percent_indicator:
   shared_preferences:
   permission_handler:
-  cached_network_image:
-  flutter_launcher_icons: 
+  flutter_launcher_icons:
   flutter_secure_storage:
   flutter_foreground_task:
 

@@ -4,8 +4,8 @@ import 'dart:convert';
 import 'package:pool/pool.dart';
 import 'package:crypto/crypto.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:files3/utils/s3_transfer_task.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
@@ -189,50 +189,83 @@ Future<_SyncAnalysisResult> _syncAnalyze(
   );
 }
 
-class Node<T> {
-  T? value;
-  final Map<String, Node<T>> children;
+sealed class Node<T, N extends Node<T, N>> {
+  T value;
+  final Map<String, N> children;
+  Node<T, N>? parent;
 
-  Node({this.value, Map<String, Node<T>>? children})
+  N createNode({required T value, Node<T, N>? parent});
+
+  Node({required this.value, Map<String, N>? children, this.parent})
     : children = children ?? {};
 
-  Node<T> operator [](String key) {
-    return children.putIfAbsent(key, () => Node<T>());
+  N? operator [](String key) {
+    return children[key];
   }
 
-  void operator []=(String key, Node<T> value) {
-    children[key] = value;
+  void operator []=(String key, T value) {
+    children[key] = createNode(value: value, parent: this);
   }
 
-  void clear() => children.clear();
+  bool get isEmpty => children.isEmpty;
 
-  Map<String, Node<T>> getDecendents({bool recursive = false}) {
-    if (!recursive) {
-      return children;
-    } else {
-      final Map<String, Node<T>> decendents = {};
-      for (final entry in children.entries) {
-        decendents[entry.key] = entry.value;
-        decendents.addAll(entry.value.getDecendents(recursive: true));
+  void clear() {
+    children.clear();
+    parent?.children.removeWhere((key, child) => identical(child, this));
+    parent = null;
+  }
+
+  Iterable<N> getDecendants({bool recursive = false}) sync* {
+    for (final child in children.values) {
+      yield child;
+
+      if (recursive) {
+        yield* child.getDecendants(recursive: true);
       }
-      return decendents;
     }
   }
+}
 
-  Map<String, dynamic> toJson() {
-    return {
-      'value': value,
-      'children': children.map((key, child) => MapEntry(key, child.toJson())),
-    };
+class DirectoryTree extends Node<RemoteFile, DirectoryTree> {
+  @override
+  DirectoryTree createNode({
+    required RemoteFile value,
+    Node<RemoteFile, DirectoryTree>? parent,
+  }) {
+    return DirectoryTree(value: value, parent: parent);
   }
 
-  factory Node.fromJson(Map<String, dynamic> json) {
-    return Node(
-      value: json['value'],
-      children: (json['children'] as Map<String, dynamic>).map(
-        (key, childJson) => MapEntry(key, Node.fromJson(childJson)),
-      ),
-    );
+  DirectoryTree({required super.value, super.children, super.parent});
+
+  @override
+  DirectoryTree? operator [](String key) {
+    DirectoryTree? current = this;
+    for (final part in p.s3.split(key)) {
+      if (part.isEmpty) continue;
+      if (!(current?.children.containsKey(part) ?? false)) {
+        return null;
+      }
+      current = current?.children[part];
+    }
+    return current;
+  }
+
+  @override
+  void operator []=(String key, RemoteFile value) {
+    DirectoryTree current = this;
+    String path = '';
+    for (final part in p.s3.split(key)) {
+      if (part.isEmpty) continue;
+      path = p.asDir(p.s3.join(path, part));
+      current = current.children.putIfAbsent(
+        part,
+        () => DirectoryTree(
+          value: RemoteFile(key: path, etag: ''),
+          parent: current,
+        ),
+      );
+    }
+    current.value = value;
   }
 }
 
@@ -241,8 +274,7 @@ abstract class Main {
   static String _cacheDir = '';
   static String _thumbCacheDir = '';
   static String _downloadCacheDir = '';
-  static final Node _directoryTree = Node();
-  static final List<RemoteFile?> _remoteFiles = <RemoteFile?>[];
+  static final DirectoryTree _directoryTree = DirectoryTree(value: root);
   static final Map<String, Profile> _profiles = <String, Profile>{};
   static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
   static final ManualNotifier onRemoteFilesChanged = ManualNotifier();
@@ -250,6 +282,8 @@ abstract class Main {
   static final List<RegExp> _ignoreKeyRegexps = <RegExp>[
     RegExp(r'^.*[/\\]deletion-register\.ini$'),
   ];
+
+  static RemoteFile root = RemoteFile(key: '', etag: '');
 
   static String get cacheDir => _cacheDir;
 
@@ -263,9 +297,7 @@ abstract class Main {
       UnmodifiableListView(_ignoreKeyRegexps);
 
   static Iterable<RemoteFile> get remoteFiles =>
-      _remoteFiles.whereType<RemoteFile>().where(
-        (file) => !_ignoreKeyRegexps.any((regexp) => regexp.hasMatch(file.key)),
-      );
+      remoteFilesByDir('', recursive: true);
   static Map<String, Profile> get profiles => _profiles;
 
   static void clearCache() {
@@ -334,17 +366,7 @@ abstract class Main {
   }
 
   static void remoteFilesAdd(RemoteFile file, {bool notify = true}) {
-    Node current = _directoryTree;
-    for (String part in p.s3.split(file.key)) {
-      current = current[part];
-    }
-    if (current.value == null) {
-      _remoteFiles.add(file);
-      current.value = _remoteFiles.length - 1;
-    } else {
-      _remoteFiles[current.value!] = file;
-    }
-    _ensureDirectory(file.key);
+    _directoryTree[file.key] = file;
     if (notify) {
       onRemoteFilesChanged.notifyListeners();
     }
@@ -352,7 +374,6 @@ abstract class Main {
 
   static void remoteFilesClear({bool notify = true}) {
     _directoryTree.clear();
-    _remoteFiles.clear();
     if (notify) {
       onRemoteFilesChanged.notifyListeners();
     }
@@ -371,75 +392,28 @@ abstract class Main {
   }
 
   static void remoteFileRemoveByKey(String key, {bool notify = true}) {
-    final index = remoteFileIndexByKey(key);
-    if (index != null) {
-      _remoteFiles[index] = null;
-    }
+    _directoryTree[key]?.clear();
     if (notify) {
       onRemoteFilesChanged.notifyListeners();
     }
   }
 
   static RemoteFile? remoteFileByKey(String key) {
-    final index = remoteFileIndexByKey(key);
-    return index != null ? _remoteFiles[index] : null;
-  }
-
-  static int? remoteFileIndexByKey(String key) {
-    Node current = _directoryTree;
-    for (String part in p.s3.split(key)) {
-      if (!current.children.containsKey(part)) {
-        return null;
-      }
-      current = current[part];
-    }
-    return current.value;
+    return _directoryTree[key]?.value;
   }
 
   static Iterable<RemoteFile> remoteFilesByDir(
     String dir, {
     bool recursive = true,
   }) {
-    if (_remoteFiles.isEmpty) {
-      return [];
-    }
-
-    var node = _directoryTree;
-    for (String part in p.s3.split(dir)) {
-      if (!node.children.containsKey(part)) {
-        return [];
-      }
-      node = node[part];
-    }
-
-    if (!recursive) {
-      final files = node.children.values
-          .where((child) => child.value != null)
-          .map((child) => _remoteFiles[child.value!])
-          .whereType<RemoteFile>()
-          .where(
-            (f) => _ignoreKeyRegexps.any((regexp) => !regexp.hasMatch(f.key)),
-          );
-
-      return files;
-    }
-
-    Iterable<RemoteFile> recurse(Node node) sync* {
-      for (final child in node.children.values) {
-        if (child.value != null) {
-          final file = _remoteFiles[child.value!];
-          if (file != null) yield file;
-        }
-
-        yield* recurse(child);
-      }
-    }
-
-    final files = recurse(node);
-
-    return files.where(
-      (f) => _ignoreKeyRegexps.any((regexp) => !regexp.hasMatch(f.key)),
-    );
+    return _directoryTree[dir]
+            ?.getDecendants(recursive: recursive)
+            .map((node) => node.value)
+            .whereType<RemoteFile>()
+            .where(
+              (f) => _ignoreKeyRegexps.any((regexp) => !regexp.hasMatch(f.key)),
+            ) ??
+        [];
   }
 
   static Profile? profileFromKey(String key) {
@@ -453,7 +427,7 @@ abstract class Main {
   static String pathFromKey(String key) {
     final localDir = IniManager.config.value?.get(
       'directories',
-      p.asDir(p.s3.split(key).firstOrNull ?? '', context: p.s3),
+      p.s3.asDir(p.s3.split(key).firstOrNull ?? ''),
     );
     if (localDir != null) {
       final path = p.context.joinAll([localDir, ...p.s3.split(key).sublist(1)]);
@@ -478,7 +452,7 @@ abstract class Main {
   }
 
   static Watcher? watcherFromKey(String key) {
-    final dirKey = p.asDir(p.s3.split(key).firstOrNull ?? '', context: p.s3);
+    final dirKey = p.s3.asDir(p.s3.split(key).firstOrNull ?? '');
     return _watcherMap[dirKey];
   }
 
@@ -551,25 +525,6 @@ abstract class Main {
     }
   }
 
-  static void _ensureDirectory(String key) {
-    final parent = p.s3.dirname(key);
-    if (parent.isEmpty || remoteFileByKey(parent) != null) return;
-
-    final parts = p.s3.split(parent);
-
-    String current = '';
-    for (final part in parts) {
-      if (part.isEmpty) continue;
-
-      current = p.s3.join(current, part);
-      final dirPath = p.asDir(current, context: p.s3);
-
-      if (remoteFileByKey(dirPath) == null) {
-        remoteFilesAdd(RemoteFile(key: dirPath, etag: ''), notify: false);
-      }
-    }
-  }
-
   static Future<void> refreshWatchers({bool background = false}) async {
     loading.value = true;
     await stopWatchers();
@@ -589,7 +544,7 @@ abstract class Main {
         profile.dispose();
         _profiles.remove(profile.name);
         remoteFileRemoveByKey(profile.name, notify: false);
-        await ConfigManager.saveRemoteFiles(Main.remoteFiles);
+        await ConfigManager.saveRemoteFiles(remoteFiles);
       }
     }
     for (final entry in entries) {
@@ -604,7 +559,7 @@ abstract class Main {
 
   static Future<void> listDirectories({bool background = false}) async {
     loading.value = true;
-    if (!background && _remoteFiles.isEmpty) {
+    if (!background && _directoryTree.isEmpty) {
       remoteFilesSet(await ConfigManager.loadRemoteFiles());
     }
 
@@ -617,10 +572,14 @@ abstract class Main {
     loading.value = false;
   }
 
-  static void downloadFile(RemoteFile file, {String? localPath}) {
+  static void downloadFile(String key, {String? localPath}) {
+    final file = remoteFileByKey(key);
+    if (file == null) {
+      return;
+    }
     DownloadJob(
-      localFile: File(localPath ?? pathFromKey(file.key)),
-      remoteKey: file.key,
+      localFile: File(localPath ?? pathFromKey(key)),
+      remoteKey: key,
       bytes: file.size,
       md5: () {
         final hex = file.etag.replaceAll('"', '');
@@ -637,7 +596,7 @@ abstract class Main {
         return Digest(bytes);
       }(),
       onStatus: onJobStatus,
-      profile: profileFromKey(file.key),
+      profile: profileFromKey(key),
     ).add();
   }
 
@@ -1072,20 +1031,17 @@ abstract class Job {
   static bool scheduled = false;
 
   static final List<Job> jobs = <Job>[];
+  static final List<Job> completedJobs = <Job>[];
   static final ManualNotifier onJobsChanged = ManualNotifier();
   static Iterable<Job> get runningJobs =>
       jobs.where((job) => job.status.value == JobStatus.running);
-  static Iterable<Job> get pendingJobs =>
+  static Iterable<Job> get initializedJobs =>
       jobs.where((job) => job.status.value == JobStatus.initialized);
-  static Iterable<Job> get activeJobs =>
-      jobs.where((job) => job.status.value != JobStatus.completed);
   static Iterable<Job> get unInitializedJobs => jobs.where(
     (job) =>
         job.status.value == JobStatus.failed ||
         job.status.value == JobStatus.stopped,
   );
-  static Iterable<Job> get completedJobs =>
-      jobs.where((job) => job.status.value == JobStatus.completed);
   static final ManualNotifier onProgressUpdate = ManualNotifier();
 
   final ValueNotifier<JobStatus> status = ValueNotifier<JobStatus>(
@@ -1119,11 +1075,15 @@ abstract class Job {
         "Adding job: ${runtimeType == UploadJob ? 'Upload' : 'Download'} - $remoteKey",
       );
     }
-    if (!jobs.contains(this)) jobs.add(this);
+    jobs.add(this);
+    status.addListener(() {
+      if (status.value == JobStatus.completed) {
+        completedJobs.add(this);
+        jobs.remove(this);
+      }
+    });
     onJobsChanged.notifyListeners();
-    if (jobs.any((job) => job.status.value == JobStatus.initialized)) {
-      startall();
-    }
+    startall();
   }
 
   bool startable() {
@@ -1137,6 +1097,7 @@ abstract class Job {
     try {
       if (runtimeType == UploadJob) {
         status.value = JobStatus.running;
+        statusMsg.value = "Starting upload...";
         task = S3TransferTask(
           key: remoteKey,
           localFile: localFile,
@@ -1173,6 +1134,7 @@ abstract class Job {
       }
       if (runtimeType == DownloadJob) {
         status.value = JobStatus.running;
+        statusMsg.value = "Starting download...";
         // final ifModifiedSince = await localFile.exists()
         //     ? localFile.lastModifiedSync()
         //     : null;
@@ -1228,14 +1190,15 @@ abstract class Job {
   }
 
   bool removable() {
-    return status.value != JobStatus.running && jobs.contains(this);
+    return status.value != JobStatus.running;
   }
 
   void remove() {
     if (removable()) {
+      if (jobs.remove(this)) {
+        onJobsChanged.notifyListeners();
+      }
       dispose();
-      jobs.remove(this);
-      onJobsChanged.notifyListeners();
     }
   }
 
@@ -1245,9 +1208,10 @@ abstract class Job {
 
   void dismiss() {
     if (dismissible()) {
+      if (completedJobs.remove(this)) {
+        onJobsChanged.notifyListeners();
+      }
       dispose();
-      jobs.remove(this);
-      onJobsChanged.notifyListeners();
     }
   }
 
@@ -1277,11 +1241,11 @@ abstract class Job {
 
       if (kDebugMode) {
         debugPrint(
-          "Starting jobs: Running ${runningJobs.length}, Max Run $maxrun, Pending ${pendingJobs.length}",
+          "Starting jobs: Running ${runningJobs.length}, Max Run $maxrun, Pending ${initializedJobs.length}",
         );
       }
 
-      while (runningJobs.length < maxrun && pendingJobs.isNotEmpty) {
+      while (runningJobs.length < maxrun) {
         Job? job = jobs.firstWhereOrNull(
           (job) => job.status.value == JobStatus.initialized,
         );
@@ -1293,7 +1257,7 @@ abstract class Job {
 
       if (kDebugMode) {
         debugPrint(
-          "Job scheduling completed: Running ${runningJobs.length}, Max Run $maxrun, Pending ${pendingJobs.length}",
+          "Job scheduling completed: Running ${runningJobs.length}, Max Run $maxrun, Pending ${initializedJobs.length}",
         );
       }
     } finally {
@@ -1310,18 +1274,20 @@ abstract class Job {
   }
 
   static void clearCompleted() {
-    jobs.toList().map((job) {
-      if (job.status.value == JobStatus.completed) job.dispose();
-      jobs.remove(job);
-    });
-    onJobsChanged.notifyListeners();
+    for (final job in completedJobs.toList()) {
+      job.dismiss();
+    }
   }
 
   static void disposeAll() {
-    jobs.toList().map((job) {
-      job.dispose();
+    for (final job in jobs.toList()) {
       jobs.remove(job);
-    });
+      job.dispose();
+    }
+    for (final job in completedJobs.toList()) {
+      completedJobs.remove(job);
+      job.dispose();
+    }
     onJobsChanged.notifyListeners();
   }
 }
@@ -1453,7 +1419,7 @@ class Watcher {
 
       for (String path in [...result.newFile, ...result.modifiedLocally]) {
         final key = Main.keyFromPath(path) ?? '';
-        if (Job.pendingJobs.any(
+        if (Job.jobs.any(
           (job) => job.localFile.path == path && job.remoteKey == key,
         )) {
           continue;
@@ -1465,27 +1431,29 @@ class Watcher {
       }
 
       for (String key in result.modifiedRemotely) {
-        if (Job.pendingJobs.any((job) => job.remoteKey == key)) {
+        if (Job.jobs.any(
+          (job) =>
+              job.localFile.path == Main.pathFromKey(key) &&
+              job.remoteKey == key,
+        )) {
           continue;
         }
         BackupMode mode = Main.backupModeFromKey(key);
         if (mode == BackupMode.sync || mode == BackupMode.upload) {
-          final file = Main.remoteFileByKey(key);
-          if (file != null) {
-            Main.downloadFile(file);
-          }
+          Main.downloadFile(key);
         }
       }
 
       for (String key in result.remoteOnly) {
-        if (Job.pendingJobs.any((job) => job.remoteKey == key)) {
+        if (Job.jobs.any(
+          (job) =>
+              job.localFile.path == Main.pathFromKey(key) &&
+              job.remoteKey == key,
+        )) {
           continue;
         }
         if (Main.backupModeFromKey(key) == BackupMode.sync) {
-          final file = Main.remoteFileByKey(key);
-          if (file != null) {
-            Main.downloadFile(file);
-          }
+          Main.downloadFile(key);
         }
       }
 
