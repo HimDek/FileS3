@@ -1738,7 +1738,10 @@ class BrowserState extends State<Browser> {
                             )
                           : SizedBox.shrink(),
                       // More Options
-                      _selection.value.isEmpty && !_searching.value
+                      (_selection.value.isEmpty ||
+                                  _selectionAction.value !=
+                                      SelectionAction.none) &&
+                              !_searching.value
                           ? IconButton(
                               icon: const Icon(Icons.more_vert),
                               onPressed: () {
