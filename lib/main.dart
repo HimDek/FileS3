@@ -682,7 +682,8 @@ class _HomeState extends State<Home> {
   Widget build(BuildContext context) {
     return _waitingForIntent
         ? CircularProgressIndicator()
-        : _receivedIntent?.action == 'android.intent.action.GET_CONTENT'
+        : _receivedIntent?.action == 'android.intent.action.GET_CONTENT' ||
+              _receivedIntent?.action == 'android.intent.action.OPEN_DOCUMENT'
         ? _getContentBuilder(context)
         : MyBrowser(
             title: Text('FileS3'),
