@@ -681,7 +681,7 @@ class _HomeState extends State<Home> {
   @override
   Widget build(BuildContext context) {
     return _waitingForIntent
-        ? CircularProgressIndicator()
+        ? Scaffold(body: Center(child: CircularProgressIndicator()))
         : _receivedIntent?.action == 'android.intent.action.GET_CONTENT' ||
               _receivedIntent?.action == 'android.intent.action.OPEN_DOCUMENT'
         ? _getContentBuilder(context)
