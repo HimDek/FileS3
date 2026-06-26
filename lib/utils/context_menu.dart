@@ -2826,42 +2826,55 @@ Widget buildFileContextMenu(
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: M3ECard(
-            index: 0,
-            position: M3ECardPosition.single,
+          child: M3ECardColumn(
             outerRadius: 18,
             innerRadius: 4,
             gap: 3,
             padding: EdgeInsets.zero,
             color: Colors.transparent,
-            child: ListTile(
-              visualDensity: VisualDensity.comfortable,
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-              leading: Icon(mediaTypeIcon(mediaType)),
-              title: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Text(item),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: InfoRow(
-                      remoteKey: item,
-                      uiConfig: UiConfig(
-                        showTime: true,
-                        showSize: true,
-                        showDownloadStatus: false,
-                        showType: true,
-                      ),
-                      refresh: true,
+            children: [
+              ListTile(
+                visualDensity: VisualDensity.comfortable,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 0,
+                ),
+                leading: Icon(mediaTypeIcon(mediaType)),
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(p.s3.basename(item)),
+                ),
+                subtitle: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: InfoRow(
+                    remoteKey: item,
+                    uiConfig: UiConfig(
+                      showTime: true,
+                      showSize: true,
+                      showDownloadStatus: false,
+                      showType: true,
                     ),
+                    refresh: true,
                   ),
-                  Text('MD5: ${Main.remoteFileByKey(item)?.etag}'),
-                ],
+                ),
               ),
-            ),
+              ListTile(
+                visualDensity: VisualDensity.comfortable,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 0,
+                ),
+                leading: Icon(Icons.info_outline_rounded),
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(item),
+                ),
+                subtitle: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text('MD5: ${Main.remoteFileByKey(item)?.etag}'),
+                ),
+              ),
+            ],
           ),
         ),
         if (snapshot.connectionState == ConnectionState.waiting &&
@@ -3074,20 +3087,28 @@ Widget buildDirectoryContextMenu(
               leading: Icon(Icons.cloud_circle_rounded),
               title: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: Text(file),
+                child: Text(p.s3.basename(file)),
               ),
-              subtitle: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: InfoRow(
-                  remoteKey: file,
-                  uiConfig: UiConfig(
-                    showTime: true,
-                    showSize: true,
-                    showDownloadStatus: false,
-                    showContent: true,
+              subtitle: Column(
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: InfoRow(
+                      remoteKey: file,
+                      uiConfig: UiConfig(
+                        showTime: true,
+                        showSize: true,
+                        showDownloadStatus: false,
+                        showContent: true,
+                      ),
+                      refresh: true,
+                    ),
                   ),
-                  refresh: true,
-                ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Text(file),
+                  ),
+                ],
               ),
               onTap:
                   Main.profileFromKey(file) == null ||
