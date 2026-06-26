@@ -897,6 +897,8 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
           widget.setDragging?.call(true);
         } else if (mediaType.toLowerCase() == 'application/pdf') {
           widget.setDragging?.call(false);
+        } else if (mediaType.startsWith('text/')) {
+          widget.setDragging?.call(false);
         } else {
           widget.setDragging?.call(true);
         }
