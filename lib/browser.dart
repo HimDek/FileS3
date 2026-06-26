@@ -470,7 +470,9 @@ class BrowserState extends State<Browser> {
               (key) =>
                   p.isDir(key) ||
                   _mimeTypes.any(
-                    (mime) => mime.hasMatch(lookupMimeType(key) ?? ''),
+                    (mime) => mime.hasMatch(
+                      lookupMimeType(key) ?? 'application/octet-stream',
+                    ),
                   ),
             )
       : const [];
@@ -512,7 +514,9 @@ class BrowserState extends State<Browser> {
           _selectionAction.value != SelectionAction.none ||
           (!p.isDir(key) &&
               _mimeTypes.every(
-                (mime) => !mime.hasMatch(lookupMimeType(key) ?? ''),
+                (mime) => !mime.hasMatch(
+                  lookupMimeType(key) ?? 'application/octet-stream',
+                ),
               ))
       ? null
       : () {

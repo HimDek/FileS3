@@ -344,7 +344,9 @@ class ListFilesState extends State<ListFiles> {
         (file) =>
             p.isDir(file.key) ||
             _mimeTypes.any(
-              (mime) => mime.hasMatch(lookupMimeType(file.key) ?? ''),
+              (mime) => mime.hasMatch(
+                lookupMimeType(file.key) ?? 'application/octet-stream',
+              ),
             ),
       )) {
         bool explicitlySelected = false,
@@ -605,7 +607,9 @@ class ListFilesState extends State<ListFiles> {
                   : null,
               onLongPress: widget.getSelectAction(item.key),
               enabled: _mimeTypes.any(
-                (mime) => mime.hasMatch(lookupMimeType(item.key) ?? ''),
+                (mime) => mime.hasMatch(
+                  lookupMimeType(item.key) ?? 'application/octet-stream',
+                ),
               ),
             ),
             child: Hero(
@@ -732,7 +736,9 @@ class ListFilesState extends State<ListFiles> {
             ]),
             builder: (context, child) {
               bool enabled = _mimeTypes.any(
-                (mime) => mime.hasMatch(lookupMimeType(item.key) ?? ''),
+                (mime) => mime.hasMatch(
+                  lookupMimeType(item.key) ?? 'application/octet-stream',
+                ),
               );
               return MyGridTile(
                 selected:
@@ -1035,7 +1041,7 @@ class ListFilesState extends State<ListFiles> {
                                                               lookupMimeType(
                                                                     file.key,
                                                                   ) ??
-                                                                  '',
+                                                                  'application/octet-stream',
                                                             ),
                                                           ),
                                                     )
