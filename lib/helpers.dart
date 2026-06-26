@@ -394,36 +394,6 @@ String mimeTypeFromMagic(FileMagicNumberType type) {
   }
 }
 
-String? getMediaType(String name) {
-  Map<String, List<String>> types = {
-    'image/': [
-      '.jpg',
-      '.jpeg',
-      '.png',
-      '.gif',
-      '.bmp',
-      '.webp',
-      '.tiff',
-      '.svg',
-    ],
-    'video/': ['.mp4', '.mkv', '.mov', '.avi', '.wmv', '.flv', '.webm'],
-    'audio/': ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a'],
-    'text/': ['.txt', '.md', '.csv', '.log', '.json', '.xml', '.yaml', '.ini'],
-    'application/pdf': ['.pdf'],
-    'application/zip': ['.zip', '.rar', '.7z', '.tar', '.gz'],
-  };
-
-  if (name.contains('.')) {
-    final ext = name.split('.').last.toLowerCase();
-    for (var entry in types.entries) {
-      if (entry.value.contains(".$ext")) {
-        return entry.key;
-      }
-    }
-  }
-  return null;
-}
-
 IconData mediaTypeIcon(String? name) {
   return (name ?? '').startsWith('image/')
       ? Icons.image
@@ -531,21 +501,20 @@ class UiConfigNotifier extends ChangeNotifier {
   final ValueNotifier<bool> showType = ValueNotifier(true);
   final ValueNotifier<bool> showContent = ValueNotifier(true);
 
-  late Listenable listenable;
+  late final Listenable listenable = Listenable.merge([
+    colorMode,
+    accentColor,
+    ultraDark,
+    showDirectorySummary,
+    showDirectoryBackupConfig,
+    showTime,
+    showSize,
+    showDownloadStatus,
+    showType,
+    showContent,
+  ]);
 
   UiConfigNotifier({UiConfig? config}) {
-    listenable = Listenable.merge([
-      colorMode,
-      accentColor,
-      ultraDark,
-      showDirectorySummary,
-      showDirectoryBackupConfig,
-      showTime,
-      showSize,
-      showDownloadStatus,
-      showType,
-      showContent,
-    ]);
     setValues(config);
   }
 
@@ -578,7 +547,7 @@ class UiConfigNotifier extends ChangeNotifier {
 }
 
 abstract class IniManager {
-  static late File _file;
+  static late final File _file;
   static ValueNotifier<Config?> config = ValueNotifier<Config?>(null);
 
   static void init(String dir) {
@@ -989,21 +958,18 @@ abstract class ConfigManager {
 
 class DeletionRegistrar {
   final Profile profile;
-  late File _file;
-  late String _key;
+  late final File _file = File(
+    p.context.joinAll([
+      Main.documentsDir,
+      'deletion-registers',
+      ...p.s3.split(_key),
+    ]),
+  );
+  late final String _key = p.s3.join(profile.name, 'deletion-register.ini');
   Config? _config;
   DateTime _lastPulled = DateTime.fromMillisecondsSinceEpoch(0).toUtc();
 
   DeletionRegistrar({required this.profile}) {
-    _key = p.s3.join(profile.name, 'deletion-register.ini');
-    _file = File(
-      p.context.joinAll([
-        Main.documentsDir,
-        'deletion-registers',
-        ...p.s3.split(_key),
-      ]),
-    );
-
     if (!_file.existsSync()) {
       _file.createSync(recursive: true);
       _file.writeAsStringSync('[register]');

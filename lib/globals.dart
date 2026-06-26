@@ -17,6 +17,11 @@ ValueNotifier<double> progress = ValueNotifier<double>(0.0);
 
 Map<String, ImageProvider> thumbnailCache = <String, ImageProvider>{};
 
+RegExp allMimePattern = RegExp(
+  '^${RegExp.escape("*/*").replaceAll(r'\*', '[^/]+')}\$',
+  caseSensitive: false,
+);
+
 ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showSnackBar(
   SnackBar snackBar,
 ) {

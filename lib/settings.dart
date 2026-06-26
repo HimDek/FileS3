@@ -51,16 +51,9 @@ class ProfileBackupConfig extends StatefulWidget {
 
 class ProfileBackupConfigState extends State<ProfileBackupConfig> {
   final GlobalKey<PopupMenuButtonState> _popupKey = GlobalKey();
-  late BackupMode _backupMode;
-  String? _localDir;
+  late BackupMode _backupMode = widget.initialBackupMode;
+  late String? _localDir = widget.initialLocalDir;
   bool _popupVisible = false;
-
-  @override
-  void initState() {
-    _backupMode = widget.initialBackupMode;
-    _localDir = widget.initialLocalDir;
-    super.initState();
-  }
 
   @override
   void didUpdateWidget(covariant ProfileBackupConfig oldWidget) {
@@ -1222,15 +1215,15 @@ class SettingsPage extends StatefulWidget {
 }
 
 class SettingsPageState extends State<SettingsPage> {
-  late UiConfig _uiConfig;
-  late TransferConfig _downloadConfig;
-  late int _cacheSize;
-  late int _thumbCacheSize;
-  late int _downloadCacheSize;
+  UiConfig _uiConfig = ConfigManager.loadUiConfig();
+  TransferConfig _downloadConfig = ConfigManager.loadTransferConfig();
+  int _cacheSize = Main.thumbCacheSize();
+  int _thumbCacheSize = Main.thumbCacheSize();
+  int _downloadCacheSize = Main.downloadCacheSize();
 
   bool _colorModePopupVisible = false;
   bool _maxTransfersPopupVisible = false;
-  PackageInfo? packageInfo;
+  late final PackageInfo packageInfo;
 
   final GlobalKey<PopupMenuButtonState<ThemeMode>> _colorModepopupKey =
       GlobalKey();
@@ -1345,11 +1338,6 @@ class SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _uiConfig = ConfigManager.loadUiConfig();
-    _downloadConfig = ConfigManager.loadTransferConfig();
-    _cacheSize = Main.cacheSize();
-    _thumbCacheSize = Main.thumbCacheSize();
-    _downloadCacheSize = Main.downloadCacheSize();
     _getPackageInfo();
   }
 
@@ -1985,11 +1973,9 @@ class SettingsPageState extends State<SettingsPage> {
                     case 0:
                       return ListTile(
                         leading: Icon(Icons.info_rounded),
-                        title: Text(
-                          '${packageInfo?.appName ?? 'Files3'} Details',
-                        ),
+                        title: Text('${packageInfo.appName} Details'),
                         subtitle: Text(
-                          '${packageInfo?.packageName ?? ''} ${packageInfo?.version ?? ''} ${packageInfo?.buildNumber ?? ''}',
+                          '${packageInfo.packageName} ${packageInfo.version} ${packageInfo.buildNumber}',
                         ),
                         onTap: () => AppSettings.openAppSettings(
                           type: AppSettingsType.settings,
@@ -2050,12 +2036,12 @@ class PinnedFoldersPage extends StatefulWidget {
 }
 
 class PinnedFoldersPageState extends State<PinnedFoldersPage> {
-  late List<MapEntry<String, String>> _pinnedFolders;
+  late final List<MapEntry<String, String>> _pinnedFolders =
+      ConfigManager.loadPinnedFolders().toList();
 
   @override
   void initState() {
     super.initState();
-    _pinnedFolders = ConfigManager.loadPinnedFolders().toList();
   }
 
   Future<void> _saveConfig() async {

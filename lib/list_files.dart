@@ -163,6 +163,7 @@ class ListFiles extends StatefulWidget {
   final Function(String) changeDirectory;
   final void Function()? Function(String) getSelectAction;
   final Function(String)? showContextMenu;
+  final List<RegExp>? mimeTypes;
 
   static void Function()? setSelectActionDefault(String key) => () {};
 
@@ -179,6 +180,7 @@ class ListFiles extends StatefulWidget {
     required this.changeDirectory,
     this.getSelectAction = setSelectActionDefault,
     this.showContextMenu,
+    this.mimeTypes,
   });
 
   @override
@@ -200,6 +202,8 @@ class ListFilesState extends State<ListFiles> {
     {},
   );
   final SelectionNotifiers _selectionNotifiers = SelectionNotifiers();
+
+  late List<RegExp> _mimeTypes = widget.mimeTypes ?? [allMimePattern];
 
   Future<void> makeGroups() async {
     final Map<String, List<FileProps>> groups = {};
@@ -428,7 +432,10 @@ class ListFilesState extends State<ListFiles> {
                         if (uiConfigNotifier.dirListInfo)
                           SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
-                            child: InfoRow(remoteKey: item.key),
+                            child: InfoRow(
+                              remoteKey: item.key,
+                              mimeTypes: _mimeTypes,
+                            ),
                           ),
                         if (p.s3.dirname(item.key).isEmpty)
                           Row(
@@ -849,6 +856,18 @@ class ListFilesState extends State<ListFiles> {
     super.dispose();
     _groups.dispose();
     _selectionNotifiers.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant ListFiles oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mimeTypes != widget.mimeTypes) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _mimeTypes = widget.mimeTypes ?? [allMimePattern];
+        });
+      });
+    }
   }
 
   @override

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:async';
 import 'dart:convert';
+import 'package:mime/mime.dart';
 import 'package:file_magic_number/file_magic_number.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -189,22 +190,21 @@ class AudioVideoInteractiveMediaState
 
   ChewieAudioController? _chewieAudioController;
   ChewieController? _chewieController;
-  late VideoPlayerController _videoController;
-  late Future<bool> _loader;
-
-  @override
-  void initState() {
-    super.initState();
-    _loader = widget.mediaType.toLowerCase().startsWith('audio/')
-        ? _loadAudio()
-        : _loadVideo();
-  }
+  late final VideoPlayerController? _videoController = _pathExists
+      ? VideoPlayerController.file(File(widget.path!))
+      : _cacheExists
+      ? VideoPlayerController.file(File(widget.cachePath!))
+      : widget.url != null
+      ? VideoPlayerController.networkUrl(Uri.parse(widget.url!))
+      : null;
 
   @override
   void dispose() {
     _chewieAudioController?.dispose();
     _chewieController?.dispose();
-    _videoController.dispose();
+    if (_videoController != null) {
+      _videoController.dispose();
+    }
     super.dispose();
   }
 
@@ -212,15 +212,7 @@ class AudioVideoInteractiveMediaState
     _pathExists = widget.path != null && await File(widget.path!).exists();
     _cacheExists =
         widget.cachePath != null && await File(widget.cachePath!).exists();
-    if (_pathExists) {
-      _videoController = VideoPlayerController.file(File(widget.path!));
-    } else if (_cacheExists) {
-      _videoController = VideoPlayerController.file(File(widget.cachePath!));
-    } else if (widget.url != null) {
-      _videoController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.url!),
-      );
-    } else {
+    if (_videoController == null) {
       return false;
     }
     await _videoController.initialize();
@@ -247,15 +239,7 @@ class AudioVideoInteractiveMediaState
     _pathExists = widget.path != null && await File(widget.path!).exists();
     _cacheExists =
         widget.cachePath != null && await File(widget.cachePath!).exists();
-    if (_pathExists) {
-      _videoController = VideoPlayerController.file(File(widget.path!));
-    } else if (_cacheExists) {
-      _videoController = VideoPlayerController.file(File(widget.cachePath!));
-    } else if (widget.url != null) {
-      _videoController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.url!),
-      );
-    } else {
+    if (_videoController == null) {
       return false;
     }
     await _videoController.initialize();
@@ -297,7 +281,9 @@ class AudioVideoInteractiveMediaState
     super.didUpdateWidget(oldWidget);
     if (!widget.staypaused && oldWidget.staypaused) return;
 
-    if (widget.staypaused) {
+    if (widget.staypaused &&
+        _videoController != null &&
+        _videoController.value.isPlaying) {
       _videoController.pause();
     }
   }
@@ -305,7 +291,9 @@ class AudioVideoInteractiveMediaState
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
-      future: _loader,
+      future: widget.mediaType.toLowerCase().startsWith('audio/')
+          ? _loadAudio()
+          : _loadVideo(),
       builder: (context, snapshot) {
         switch (snapshot.connectionState) {
           case ConnectionState.none:
@@ -775,12 +763,10 @@ class TextInteractiveMedia extends StatefulWidget {
 class TextInteractiveMediaState extends State<TextInteractiveMedia> {
   bool _pathExists = false;
   bool _cacheExists = false;
-  late Future<String?> _loader;
 
   @override
   void initState() {
     super.initState();
-    _loader = _loadText();
   }
 
   Future<String?> _loadText() async {
@@ -804,7 +790,7 @@ class TextInteractiveMediaState extends State<TextInteractiveMedia> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<String?>(
-      future: _loader,
+      future: _loadText(),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return Center(child: CircularProgressIndicator());
@@ -873,8 +859,6 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
   final ValueNotifier<double> _progress = ValueNotifier<double>(0.0);
   final PhotoViewController _photoViewController = PhotoViewController();
 
-  Widget fallback(_, String mediaType) => Icon(mediaTypeIcon(mediaType));
-
   Future<void> updateMediaType() async {
     if (mounted) {
       setState(() {
@@ -884,7 +868,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
     try {
       if (widget.path != null || widget.cachePath != null) {
         mediaType =
-            getMediaType(widget.path ?? widget.cachePath!) ??
+            lookupMimeType(widget.path ?? widget.cachePath!) ??
             await FileMagicNumber.detectFileTypeFromPathOrBlob(
               widget.path ?? widget.cachePath!,
             ).then(
@@ -1038,7 +1022,11 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
                       },
                     ),
                   )
-                : fallback(context, mediaType),
+                : Icon(
+                    mediaTypeIcon(
+                      lookupMimeType(widget.path ?? widget.cachePath!),
+                    ),
+                  ),
           );
   }
 }
@@ -1071,7 +1059,10 @@ class GalleryState extends State<Gallery> {
   static const double _defaultBottomSheetSize = 0.13;
   static const double _maxBottomSheetSize = 0.7;
 
-  late PageController _pageController;
+  late final PageController _pageController = PageController(
+    initialPage: widget.initialIndex,
+    viewportFraction: 1,
+  );
   final DraggableScrollableController _contextMenuSheetController =
       DraggableScrollableController();
   final ValueNotifier<int> _currentIndex = ValueNotifier<int>(0);
@@ -1123,11 +1114,6 @@ class GalleryState extends State<Gallery> {
   @override
   void initState() {
     _currentIndex.value = widget.initialIndex;
-
-    _pageController = PageController(
-      initialPage: widget.initialIndex,
-      viewportFraction: 1,
-    );
 
     super.initState();
 
@@ -1381,11 +1367,9 @@ class MediaPreview extends StatefulWidget {
 }
 
 class MediaPreviewState extends State<MediaPreview> {
-  Widget fallback(String mediaType) => Icon(mediaTypeIcon(mediaType));
-
   Future<void> setImageProvider() async {
     final String? key = widget.item?.key;
-    if (getMediaType(key ?? widget.path!)?.startsWith('image/') ?? false) {
+    if (lookupMimeType(key ?? widget.path!)?.startsWith('image/') ?? false) {
       thumbnailCache[key ?? widget.path!] ??= HybridImageProvider(
         url: widget.item?.url,
         path: key != null ? Main.pathFromKey(key) : widget.path!,
@@ -1418,10 +1402,7 @@ class MediaPreviewState extends State<MediaPreview> {
   @override
   Widget build(BuildContext context) {
     return thumbnailCache[widget.item?.key ?? widget.path!] == null
-        ? fallback(
-            getMediaType(widget.item?.key ?? widget.path!) ??
-                'application/octet-stream',
-          )
+        ? Icon(mediaTypeIcon(lookupMimeType(widget.item?.key ?? widget.path!)))
         : Image(
             image: thumbnailCache[widget.item?.key ?? widget.path!]!,
             width: widget.width ?? 256,
@@ -1448,9 +1429,8 @@ class MediaPreviewState extends State<MediaPreview> {
                 ],
               );
             },
-            errorBuilder: (context, error, stackTrace) => fallback(
-              getMediaType(widget.item?.key ?? widget.path!) ??
-                  'application/octet-stream',
+            errorBuilder: (context, error, stackTrace) => Icon(
+              mediaTypeIcon(lookupMimeType(widget.item?.key ?? widget.path!)),
             ),
           );
   }

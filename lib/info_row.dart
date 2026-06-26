@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
+import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 
 class InfoRow extends StatefulWidget {
@@ -17,6 +18,7 @@ class InfoRow extends StatefulWidget {
   final double iconSize;
   final TextStyle? textStyle;
   final bool refresh;
+  final List<RegExp>? mimeTypes;
 
   const InfoRow({
     super.key,
@@ -32,6 +34,7 @@ class InfoRow extends StatefulWidget {
     this.iconSize = 16.0,
     this.textStyle,
     this.refresh = false,
+    this.mimeTypes,
   });
 
   @override
@@ -39,16 +42,26 @@ class InfoRow extends StatefulWidget {
 }
 
 class _InfoRowState extends State<InfoRow> {
-  late UiConfig _uiConfig;
-  late RemoteFile _file;
+  late UiConfig _uiConfig = widget.uiConfig ?? UiConfig();
+  late RemoteFile _file =
+      Main.remoteFileByKey(widget.remoteKey) ??
+      RemoteFile(key: widget.remoteKey, etag: '');
+  late List<RegExp> _mimeTypes = widget.mimeTypes ?? [allMimePattern];
 
   @override
-  void initState() {
-    _uiConfig = widget.uiConfig ?? UiConfig();
-    _file =
-        Main.remoteFileByKey(widget.remoteKey) ??
-        RemoteFile(key: widget.remoteKey, etag: '');
-    super.initState();
+  void didUpdateWidget(covariant InfoRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.remoteKey != widget.remoteKey) {
+      _file =
+          Main.remoteFileByKey(widget.remoteKey) ??
+          RemoteFile(key: widget.remoteKey, etag: '');
+    }
+    if (oldWidget.uiConfig != widget.uiConfig) {
+      _uiConfig = widget.uiConfig ?? UiConfig();
+    }
+    if (oldWidget.mimeTypes != widget.mimeTypes) {
+      _mimeTypes = widget.mimeTypes ?? [allMimePattern];
+    }
   }
 
   @override
@@ -116,7 +129,7 @@ class _InfoRowState extends State<InfoRow> {
         if (p.isDir(widget.remoteKey)) ...[
           if (_uiConfig.showContent)
             FutureBuilder<(int, int)>(
-              future: _file.getCount(recursive: true),
+              future: _file.getCount(recursive: true, mimeTypes: _mimeTypes),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     _file.count == (0, 0)) {
@@ -167,9 +180,7 @@ class DownloadStatusIcon extends StatelessWidget {
     RemoteFile? file;
     return FutureBuilder<void>(
       future: () async {
-        file =
-            Main.remoteFileByKey(remoteKey) ??
-            RemoteFile(key: remoteKey, etag: '');
+        file = Main.remoteFileByKey(remoteKey);
         if (!refresh && file?.downloaded != null) {
           return file!.downloaded;
         }

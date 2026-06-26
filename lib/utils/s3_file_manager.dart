@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
@@ -431,23 +430,6 @@ class S3FileManager {
 
   static String formatDate(DateTime time) =>
       time.toIso8601String().split('T').first.replaceAll('-', '');
-
-  static String guessMime(File f) {
-    final ext = f.path.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'png':
-        return 'image/png';
-      case 'pdf':
-        return 'application/pdf';
-      case 'txt':
-        return 'text/plain';
-      default:
-        return 'application/octet-stream';
-    }
-  }
 
   Uri getUri(String key) {
     return Uri(

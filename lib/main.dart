@@ -526,6 +526,55 @@ class _HomeState extends State<Home> {
           _sharedFiles.value = [uri];
         }
         break;
+
+      case 'android.intent.action.GET_CONTENT':
+        List<String> files = [];
+        List<RegExp> mimeTypes = [];
+        for (final mime
+            in intent.extra?['android.intent.extra.MIME_TYPES'] ?? []) {
+          mimeTypes.add(
+            RegExp(
+              '^${RegExp.escape(mime).replaceAll(r'\*', '[^/]+')}\$',
+              caseSensitive: false,
+            ),
+          );
+        }
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => FilesPicker(
+              title: Text('Select File'),
+              onFilesPick: (keys) {
+                for (final key in keys) {
+                  if (p.isDir(key)) {
+                    for (final file in Main.remoteFilesByDir(
+                      key,
+                      recursive: true,
+                    ).where((file) => !p.isDir(file.key))) {
+                      files.add(Main.pathFromKey(file.key));
+                    }
+                  } else {
+                    files.add(Main.pathFromKey(key));
+                  }
+                }
+              },
+              mimeTypes: mimeTypes.isNotEmpty ? mimeTypes : null,
+              allowMultiple:
+                  intent.extra?['android.intent.extra.ALLOW_MULTIPLE'] ?? false,
+            ),
+          ),
+        );
+        final resultIntent = receive_intent.Intent(
+          data: files.isNotEmpty ? files.first : null,
+          clipData: files.length > 1 ? files : null,
+        );
+        receive_intent.ReceiveIntent.setResult(
+          files.isNotEmpty
+              ? receive_intent.kActivityResultOk
+              : receive_intent.kActivityResultCanceled,
+          intent: resultIntent,
+          shouldFinish: true,
+        );
+        break;
     }
   }
 
@@ -580,7 +629,9 @@ class _HomeState extends State<Home> {
           ),
         );
         _sharedFiles.value = [];
-        receive_intent.ReceiveIntent.setResult(200);
+        receive_intent.ReceiveIntent.setResult(
+          receive_intent.kActivityResultOk,
+        );
       }
     });
 
@@ -591,7 +642,9 @@ class _HomeState extends State<Home> {
         },
         onError: (err) {
           showSnackBar(SnackBar(content: Text('Error receiving intent: $err')));
-          receive_intent.ReceiveIntent.setResult(500);
+          receive_intent.ReceiveIntent.setResult(
+            receive_intent.kActivityResultCanceled,
+          );
         },
       );
 

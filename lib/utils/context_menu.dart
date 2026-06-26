@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:mime/mime.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
@@ -2437,8 +2438,7 @@ class BulkContextOption {
       final directory = await getDirectoryPath(canCreateDirectories: true);
       bool saved = false;
       for (final handler in [directoriesHandler, filesHandler]) {
-        late String Function()? handle;
-        handle = handler.saveAs(directory);
+        final String Function()? handle = handler.saveAs(directory);
         if (handle != null) {
           handle();
           saved = true;
@@ -2798,7 +2798,7 @@ Widget buildFileContextMenu(
   Future<void> Function(List<String>)? deleteFiles,
   void Function()? onInvoked,
 ) {
-  String? mediaType = getMediaType(item);
+  String? mediaType = lookupMimeType(item);
   return FutureBuilder(
     future: () async {
       FileContextActionHandler handler = FileContextActionHandler(
@@ -3405,7 +3405,7 @@ Widget buildExternalFilesContextMenu(
         ? [
             ListTile(
               visualDensity: VisualDensity.comfortable,
-              leading: Icon(mediaTypeIcon(getMediaType(path))),
+              leading: Icon(mediaTypeIcon(lookupMimeType(path))),
               title: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Text(path),

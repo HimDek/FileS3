@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'package:mime/mime.dart';
 import 'package:crypto/crypto.dart';
 import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/hash_util.dart';
@@ -122,7 +123,7 @@ class S3TransferTask {
       shortDate: S3FileManager.formatDate(now),
       contentHash: contentHash,
       contentMD5: contentMD5,
-      contentType: S3FileManager.guessMime(localFile),
+      contentType: lookupMimeType(localFile.path),
     );
 
     final uri = profile!.fileManager!.getUri(key);

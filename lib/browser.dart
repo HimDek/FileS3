@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:async';
 import 'package:fuzzywuzzy/fuzzywuzzy.dart';
+import 'package:mime/mime.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -21,6 +22,70 @@ import 'package:files3/settings.dart';
 import 'package:files3/media_view.dart';
 import 'package:files3/list_files.dart';
 import 'package:files3/pointer_pill.dart';
+
+class FilesPicker extends Browser {
+  const FilesPicker({
+    super.key,
+    super.title,
+    super.subtitle,
+    super.initialDir,
+    super.onInit,
+    required super.onFilesPick,
+    super.mimeTypes,
+    super.allowMultiple,
+  });
+
+  @override
+  FilesPickerState createState() => FilesPickerState();
+}
+
+class FilesPickerState extends BrowserState {
+  @override
+  Widget floatingActionButton(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        loading,
+        _controlsVisible,
+        _driveDir,
+        _profile,
+        super._selection,
+      ]),
+      builder: (context, _) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedSlide(
+            duration: const Duration(milliseconds: 300),
+            offset:
+                !loading.value &&
+                    _controlsVisible.value &&
+                    _profile.value != null &&
+                    _selection.value.isNotEmpty
+                ? Offset.zero
+                : const Offset(2, 0),
+            child: AnimatedScale(
+              duration: const Duration(milliseconds: 300),
+              scale:
+                  !loading.value &&
+                      _controlsVisible.value &&
+                      _profile.value != null
+                  ? 1
+                  : 0,
+              child: FloatingActionButton(
+                heroTag: 'done',
+                child: const Icon(Icons.done),
+                onPressed: () {
+                  Navigator.of(
+                    context,
+                  ).pop(widget.onFilesPick?.call(_selection.value.toList()));
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class PathPicker extends Browser {
   const PathPicker({
@@ -45,7 +110,6 @@ class PathPickerState extends BrowserState {
         _controlsVisible,
         _driveDir,
         _profile,
-        _profile.value?.accessible,
       ]),
       builder: (context, _) => Column(
         mainAxisSize: MainAxisSize.min,
@@ -55,8 +119,7 @@ class PathPickerState extends BrowserState {
             offset:
                 !loading.value &&
                     _controlsVisible.value &&
-                    _profile.value != null &&
-                    _profile.value!.accessible.value
+                    _profile.value != null
                 ? Offset.zero
                 : const Offset(2, 0),
             child: AnimatedScale(
@@ -64,8 +127,7 @@ class PathPickerState extends BrowserState {
               scale:
                   !loading.value &&
                       _controlsVisible.value &&
-                      _profile.value != null &&
-                      _profile.value!.accessible.value
+                      _profile.value != null
                   ? 1
                   : 0,
               child: FloatingActionButton(
@@ -495,6 +557,9 @@ class Browser extends StatefulWidget {
   final Future<void> Function(String)? createDirectory;
   final void Function(String, Directory)? uploadDirectory;
   final Function(String)? onPick;
+  final Function(List<String>)? onFilesPick;
+  final List<RegExp>? mimeTypes;
+  final bool allowMultiple;
 
   const Browser({
     super.key,
@@ -514,6 +579,9 @@ class Browser extends StatefulWidget {
     this.createDirectory,
     this.uploadDirectory,
     this.onPick,
+    this.onFilesPick,
+    this.mimeTypes,
+    this.allowMultiple = true,
   });
 
   @override
@@ -559,10 +627,20 @@ class BrowserState extends State<Browser> {
       ValueNotifier<Iterable<FileProps>>([]);
   final ManualNotifier _rebuildContext = ManualNotifier();
 
-  Iterable<String> get _allSelectableItems =>
-      _currentItems.value.whereType<RemoteFile>().map((file) => file.key);
+  Iterable<String> get _allSelectableItems => widget.allowMultiple
+      ? _currentItems.value.whereType<RemoteFile>().map((file) => file.key)
+      : const [];
 
-  late Listenable _currentItemsNotifiers;
+  late final Listenable _currentItemsNotifiers = Listenable.merge([
+    _navIndex,
+    _driveDir,
+    _searching,
+    _searchResults,
+    Main.onRemoteFilesChanged,
+    Job.onJobsChanged,
+    Job.onProgressUpdate,
+  ]);
+  late final List<RegExp> _mimeTypes = widget.mimeTypes ?? [allMimePattern];
 
   Timer? _scrollbarTimer;
   Timer? _inaccessibleTimer;
@@ -576,7 +654,7 @@ class BrowserState extends State<Browser> {
     final counts =
         await Main.remoteFileByKey(
           _driveDir.value,
-        )?.getCount(recursive: false) ??
+        )?.getCount(recursive: false, mimeTypes: _mimeTypes) ??
         (0, 0);
     _dirCount.value = counts.$1;
     _fileCount.value = counts.$2;
@@ -605,7 +683,11 @@ class BrowserState extends State<Browser> {
                 .where((selected) => selected != key)
                 .toSet();
           } else {
-            _selection.value = {..._selection.value, key};
+            if (widget.allowMultiple) {
+              _selection.value = {..._selection.value, key};
+            } else {
+              _selection.value = {key};
+            }
           }
         };
 
@@ -772,7 +854,13 @@ class BrowserState extends State<Browser> {
         : _driveDir.value != '' && _navIndex.value == 0
         ? Main.remoteFilesByDir(_driveDir.value, recursive: false)
               .where(
-                (file) => !Job.jobs.any((job) => job.remoteKey == file.key),
+                (file) =>
+                    !Job.jobs.any((job) => job.remoteKey == file.key) &&
+                    (p.isDir(file.key) ||
+                        _mimeTypes.any(
+                          (mime) =>
+                              mime.hasMatch(lookupMimeType(file.key) ?? ''),
+                        )),
               )
               .cast<dynamic>()
               .followedBy(
@@ -1051,13 +1139,12 @@ class BrowserState extends State<Browser> {
 
     if (loading.value) {
       final completer = Completer<void>();
-      late VoidCallback listener;
-      listener = () {
+      void listener() {
         if (!completer.isCompleted) {
           loading.removeListener(listener);
           completer.complete();
         }
-      };
+      }
 
       loading.addListener(listener);
       await completer.future;
@@ -1297,16 +1384,6 @@ class BrowserState extends State<Browser> {
         _controlsVisible.value = true;
       }
     });
-
-    _currentItemsNotifiers = Listenable.merge([
-      _navIndex,
-      _driveDir,
-      _searching,
-      _searchResults,
-      Main.onRemoteFilesChanged,
-      Job.onJobsChanged,
-      Job.onProgressUpdate,
-    ]);
 
     _currentItemsNotifiers.addListener(_setCurrentItems);
 
@@ -2051,18 +2128,21 @@ class BrowserState extends State<Browser> {
                           _driveDir,
                           Main.onRemoteFilesChanged,
                         ]),
-                        builder: (context, child) => InfoRow(
-                          remoteKey: _driveDir.value,
-                          uiConfig: UiConfig(
-                            showTime: true,
-                            showSize: true,
-                            showDownloadStatus: true,
-                            showContent: true,
-                          ),
-                          spacing: 6,
-                          iconSize: 14,
-                          textStyle: Theme.of(context).textTheme.labelSmall,
-                        ),
+                        builder: (context, child) {
+                          return InfoRow(
+                            remoteKey: _driveDir.value,
+                            uiConfig: UiConfig(
+                              showTime: true,
+                              showSize: true,
+                              showDownloadStatus: true,
+                              showContent: true,
+                            ),
+                            spacing: 6,
+                            iconSize: 14,
+                            textStyle: Theme.of(context).textTheme.labelSmall,
+                            mimeTypes: _mimeTypes,
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -2077,15 +2157,18 @@ class BrowserState extends State<Browser> {
                   selectionAction: _selectionAction,
                   showGallery: _pushGallery,
                   changeDirectory: _changeDirectory,
-                  getSelectAction: widget.onPick == null
+                  getSelectAction:
+                      widget.onPick == null || widget.onFilesPick == null
                       ? _getSelectAction
                       : (String key) => () {},
-                  showContextMenu: widget.onPick == null
+                  showContextMenu:
+                      widget.onPick == null && widget.onFilesPick == null
                       ? (key) async {
                           await Main.stopWatchers();
                           await _showContextMenu(key);
                         }
                       : null,
+                  mimeTypes: _mimeTypes,
                 ),
                 ListenableBuilder(
                   listenable: _driveDir,
@@ -2093,7 +2176,9 @@ class BrowserState extends State<Browser> {
                     child: GestureDetector(
                       behavior: HitTestBehavior.translucent,
                       onLongPress:
-                          widget.onPick == null && _driveDir.value.isNotEmpty
+                          (widget.onPick == null ||
+                                  widget.onFilesPick == null) &&
+                              _driveDir.value.isNotEmpty
                           ? () async {
                               await Main.stopWatchers();
                               await _showContextMenu(_driveDir.value);

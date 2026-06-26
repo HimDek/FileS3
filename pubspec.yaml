@@ -34,6 +34,7 @@ dependencies:
   dio:
   http:
   path:
+  mime:
   pool:
   image:
   pdfrx:
@@ -58,6 +59,7 @@ dependencies:
   path_provider:
   file_selector:
   receive_intent:
+    git: https://github.com/himdek/receive_intent
   cupertino_icons:
   device_info_plus:
   flex_color_picker:
