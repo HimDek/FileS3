@@ -3090,6 +3090,7 @@ Widget buildDirectoryContextMenu(
                 child: Text(p.s3.basename(file)),
               ),
               subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
