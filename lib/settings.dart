@@ -1746,7 +1746,7 @@ class SettingsPageState extends State<SettingsPage> {
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      "Behavious",
+                      "Behaviour",
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: Theme.of(context).colorScheme.primary,
                       ),

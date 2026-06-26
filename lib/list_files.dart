@@ -164,6 +164,7 @@ class ListFiles extends StatefulWidget {
   final void Function()? Function(String) getSelectAction;
   final Function(String)? showContextMenu;
   final List<RegExp>? mimeTypes;
+  final bool forceSelectionMode;
 
   static void Function()? setSelectActionDefault(String key) => () {};
 
@@ -181,6 +182,7 @@ class ListFiles extends StatefulWidget {
     this.getSelectAction = setSelectActionDefault,
     this.showContextMenu,
     this.mimeTypes,
+    this.forceSelectionMode = false,
   });
 
   @override
@@ -452,14 +454,18 @@ class ListFilesState extends State<ListFiles> {
                     )
                   : null,
               onTap:
-                  _selectionNotifiers.anySelected.value &&
-                      widget.selectionAction.value == SelectionAction.none
+                  (_selectionNotifiers.anySelected.value &&
+                          widget.selectionAction.value ==
+                              SelectionAction.none) ||
+                      widget.forceSelectionMode
                   ? widget.getSelectAction(item.key)
                   : widget.showGallery != null
                   ? () => widget.changeDirectory(item.key)
                   : null,
               onLongPress: widget.getSelectAction(item.key),
-              trailing: _selectionNotifiers.anySelected.value
+              trailing:
+                  _selectionNotifiers.anySelected.value ||
+                      widget.forceSelectionMode
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -542,7 +548,9 @@ class ListFilesState extends State<ListFiles> {
                       child: InfoRow(remoteKey: item.key),
                     )
                   : null,
-              trailing: _selectionNotifiers.anySelected.value
+              trailing:
+                  _selectionNotifiers.anySelected.value ||
+                      widget.forceSelectionMode
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -580,8 +588,10 @@ class ListFilesState extends State<ListFiles> {
                     )
                   : null,
               onTap:
-                  _selectionNotifiers.anySelected.value &&
-                      widget.selectionAction.value == SelectionAction.none
+                  (_selectionNotifiers.anySelected.value &&
+                          widget.selectionAction.value ==
+                              SelectionAction.none) ||
+                      widget.forceSelectionMode
                   ? widget.getSelectAction(item.key)
                   : widget.showGallery != null
                   ? () => widget.showGallery!(item.key)
@@ -639,8 +649,10 @@ class ListFilesState extends State<ListFiles> {
                 ],
               ),
               onTap:
-                  _selectionNotifiers.anySelected.value &&
-                      widget.selectionAction.value == SelectionAction.none
+                  (_selectionNotifiers.anySelected.value &&
+                          widget.selectionAction.value ==
+                              SelectionAction.none) ||
+                      widget.forceSelectionMode
                   ? widget.getSelectAction(item.key)
                   : widget.showGallery != null
                   ? () => widget.changeDirectory(item.key)
@@ -649,7 +661,9 @@ class ListFilesState extends State<ListFiles> {
               topLeftBadge: uiConfigNotifier.showDownloadStatus.value
                   ? DownloadStatusIcon(remoteKey: item.key)
                   : null,
-              topRightBadge: _selectionNotifiers.anySelected.value
+              topRightBadge:
+                  _selectionNotifiers.anySelected.value ||
+                      widget.forceSelectionMode
                   ? IconButton(
                       icon: Icon(
                         _selectionNotifiers[item.key].explicitlySelected.value
@@ -723,8 +737,10 @@ class ListFilesState extends State<ListFiles> {
                 ],
               ),
               onTap:
-                  _selectionNotifiers.anySelected.value &&
-                      widget.selectionAction.value == SelectionAction.none
+                  (_selectionNotifiers.anySelected.value &&
+                          widget.selectionAction.value ==
+                              SelectionAction.none) ||
+                      widget.forceSelectionMode
                   ? widget.getSelectAction(item.key)
                   : widget.showGallery != null
                   ? () => widget.showGallery!(item.key)
@@ -736,7 +752,9 @@ class ListFilesState extends State<ListFiles> {
                       child: DownloadStatusIcon(remoteKey: item.key),
                     )
                   : null,
-              topRightBadge: _selectionNotifiers.anySelected.value
+              topRightBadge:
+                  _selectionNotifiers.anySelected.value ||
+                      widget.forceSelectionMode
                   ? IconButton(
                       icon: Icon(
                         _selectionNotifiers[item.key].explicitlySelected.value
@@ -915,7 +933,8 @@ class ListFilesState extends State<ListFiles> {
                                     widget.selectionAction,
                                   ]),
                                   builder: (context, _) =>
-                                      _selectionNotifiers.anySelected.value
+                                      _selectionNotifiers.anySelected.value ||
+                                          widget.forceSelectionMode
                                       ? GestureDetector(
                                           onTap: () {
                                             if (!_selectionNotifiers[group.key]

@@ -214,6 +214,8 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
+  bool _waitingForIntent = true;
+  receive_intent.Intent? _receivedIntent;
   late StreamSubscription _intentSub;
   final ValueNotifier<List<String>> _sharedFiles = ValueNotifier<List<String>>(
     [],
@@ -449,6 +451,52 @@ class _HomeState extends State<Home> {
     );
   }
 
+  Widget _getContentBuilder(BuildContext context) {
+    List<RegExp> mimeTypes = [];
+    bool allowMultiple =
+        _receivedIntent?.extra?['android.intent.extra.ALLOW_MULTIPLE'] ?? false;
+    for (final mime
+        in _receivedIntent!.extra?['android.intent.extra.MIME_TYPES'] ?? []) {
+      mimeTypes.add(
+        RegExp(
+          '^${RegExp.escape(mime).replaceAll(r'\*', '[^/]+')}\$',
+          caseSensitive: false,
+        ),
+      );
+    }
+    return FilesPicker(
+      title: Text('Select File${allowMultiple ? 's' : ''}'),
+      onFilesPick: (keys) {
+        List<String> files = [];
+        for (final key in keys) {
+          if (p.isDir(key)) {
+            for (final file in Main.remoteFilesByDir(
+              key,
+              recursive: true,
+            ).where((file) => !p.isDir(file.key))) {
+              files.add(Main.pathFromKey(file.key));
+            }
+          } else {
+            files.add(Main.pathFromKey(key));
+          }
+        }
+        final resultIntent = receive_intent.Intent(
+          data: files.isNotEmpty ? files.first : null,
+          clipData: files.length > 1 ? files : null,
+        );
+        receive_intent.ReceiveIntent.setResult(
+          files.isNotEmpty
+              ? receive_intent.kActivityResultOk
+              : receive_intent.kActivityResultCanceled,
+          intent: resultIntent,
+          shouldFinish: true,
+        );
+      },
+      mimeTypes: mimeTypes.isNotEmpty ? mimeTypes : null,
+      allowMultiple: allowMultiple,
+    );
+  }
+
   Future<void> _init() async {
     Permission? permission;
     if (Platform.isAndroid) {
@@ -498,12 +546,12 @@ class _HomeState extends State<Home> {
     loading.value = false;
   }
 
-  Future<void> _handleIntent(receive_intent.Intent? intent) async {
-    if (intent == null) return;
+  Future<void> _handleIntent() async {
+    if (_receivedIntent == null) return;
 
-    switch (intent.action) {
+    switch (_receivedIntent!.action) {
       case 'android.intent.action.SEND':
-        final uri = intent.extra?['android.intent.extra.STREAM'];
+        final uri = _receivedIntent!.extra?['android.intent.extra.STREAM'];
 
         if (uri != null) {
           final File file = await uriToFile(uri);
@@ -512,7 +560,7 @@ class _HomeState extends State<Home> {
         break;
 
       case 'android.intent.action.SEND_MULTIPLE':
-        final uris = intent.extra?['android.intent.extra.STREAM'];
+        final uris = _receivedIntent!.extra?['android.intent.extra.STREAM'];
 
         if (uris is List) {
           _sharedFiles.value = uris.map((uri) => uri.toString()).toList();
@@ -520,61 +568,46 @@ class _HomeState extends State<Home> {
         break;
 
       case 'android.intent.action.VIEW':
-        final uri = intent.data;
+        final uri = _receivedIntent!.data;
 
         if (uri != null) {
           _sharedFiles.value = [uri];
         }
         break;
 
-      case 'android.intent.action.GET_CONTENT':
-        List<String> files = [];
-        List<RegExp> mimeTypes = [];
-        for (final mime
-            in intent.extra?['android.intent.extra.MIME_TYPES'] ?? []) {
-          mimeTypes.add(
-            RegExp(
-              '^${RegExp.escape(mime).replaceAll(r'\*', '[^/]+')}\$',
-              caseSensitive: false,
-            ),
-          );
-        }
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => FilesPicker(
-              title: Text('Select File'),
-              onFilesPick: (keys) {
-                for (final key in keys) {
-                  if (p.isDir(key)) {
-                    for (final file in Main.remoteFilesByDir(
-                      key,
-                      recursive: true,
-                    ).where((file) => !p.isDir(file.key))) {
-                      files.add(Main.pathFromKey(file.key));
-                    }
-                  } else {
-                    files.add(Main.pathFromKey(key));
-                  }
-                }
-              },
-              mimeTypes: mimeTypes.isNotEmpty ? mimeTypes : null,
-              allowMultiple:
-                  intent.extra?['android.intent.extra.ALLOW_MULTIPLE'] ?? false,
-            ),
-          ),
-        );
-        final resultIntent = receive_intent.Intent(
-          data: files.isNotEmpty ? files.first : null,
-          clipData: files.length > 1 ? files : null,
-        );
-        receive_intent.ReceiveIntent.setResult(
-          files.isNotEmpty
-              ? receive_intent.kActivityResultOk
-              : receive_intent.kActivityResultCanceled,
-          intent: resultIntent,
-          shouldFinish: true,
-        );
+      default:
         break;
+    }
+  }
+
+  Future<void> _initializeIntent() async {
+    try {
+      _intentSub = receive_intent.ReceiveIntent.receivedIntentStream.listen(
+        (intent) {
+          _receivedIntent = intent;
+          _handleIntent();
+        },
+        onError: (err) {
+          showSnackBar(SnackBar(content: Text('Error receiving intent: $err')));
+          receive_intent.ReceiveIntent.setResult(
+            receive_intent.kActivityResultCanceled,
+          );
+        },
+      );
+
+      final initialIntent =
+          await receive_intent.ReceiveIntent.getInitialIntent();
+      if (initialIntent != null) {
+        _receivedIntent = initialIntent;
+        _handleIntent();
+      }
+
+      // ignore: empty_catches
+    } catch (e) {
+    } finally {
+      setState(() {
+        _waitingForIntent = false;
+      });
     }
   }
 
@@ -635,26 +668,7 @@ class _HomeState extends State<Home> {
       }
     });
 
-    try {
-      _intentSub = receive_intent.ReceiveIntent.receivedIntentStream.listen(
-        (intent) {
-          _handleIntent(intent);
-        },
-        onError: (err) {
-          showSnackBar(SnackBar(content: Text('Error receiving intent: $err')));
-          receive_intent.ReceiveIntent.setResult(
-            receive_intent.kActivityResultCanceled,
-          );
-        },
-      );
-
-      receive_intent.ReceiveIntent.getInitialIntent().then((intent) {
-        if (intent != null) {
-          _handleIntent(intent);
-        }
-      });
-      // ignore: empty_catches
-    } catch (e) {}
+    _initializeIntent();
   }
 
   @override
@@ -666,16 +680,20 @@ class _HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
-    return MyBrowser(
-      title: Text('FileS3'),
-      downloadFile: _downloadFile,
-      downloadDirectory: _downloadDirectory,
-      saveFile: _saveFile,
-      saveDirectory: _saveDirectory,
-      deleteLocal: _deleteLocal,
-      deleteCache: _deleteCache,
-      createDirectory: _createDirectory,
-      uploadDirectory: _uploadDirectory,
-    );
+    return _waitingForIntent
+        ? CircularProgressIndicator()
+        : _receivedIntent?.action == 'android.intent.action.GET_CONTENT'
+        ? _getContentBuilder(context)
+        : MyBrowser(
+            title: Text('FileS3'),
+            downloadFile: _downloadFile,
+            downloadDirectory: _downloadDirectory,
+            saveFile: _saveFile,
+            saveDirectory: _saveDirectory,
+            deleteLocal: _deleteLocal,
+            deleteCache: _deleteCache,
+            createDirectory: _createDirectory,
+            uploadDirectory: _uploadDirectory,
+          );
   }
 }

@@ -373,171 +373,6 @@ class MyBrowserState extends BrowserState {
       ),
     );
   }
-
-  @override
-  Widget drawer(BuildContext context) {
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        _navIndex,
-        Job.onJobsChanged,
-        Job.onProgressUpdate,
-      ]),
-      builder: (context, _) => NavigationDrawer(
-        children: [
-          ListTile(
-            contentPadding: EdgeInsets.symmetric(horizontal: 32),
-            title: Text(
-              'Files3',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            onTap: () {
-              Navigator.of(context).pop();
-              _navIndex.value = 0;
-              _controlsVisible.value = true;
-            },
-          ),
-          Divider(),
-          Container(
-            decoration: BoxDecoration(
-              color: _navIndex.value == 2
-                  ? Theme.of(context).colorScheme.secondaryContainer
-                  : null,
-              borderRadius: BorderRadius.circular(32),
-            ),
-            margin: EdgeInsets.symmetric(horizontal: 12),
-            child: ListTile(
-              title: Text('Active'),
-              leading: Icon(
-                _navIndex.value == 2
-                    ? Icons.swap_vert_circle
-                    : Icons.swap_vert_circle_outlined,
-              ),
-              trailing: Job.jobs.isNotEmpty
-                  ? Text(Job.jobs.length.toString())
-                  : null,
-              selected: _navIndex.value == 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(32),
-              ),
-              onTap: () {
-                Navigator.of(context).pop();
-                _navIndex.value = 2;
-                _controlsVisible.value = true;
-              },
-            ),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: _navIndex.value == 1
-                  ? Theme.of(context).colorScheme.secondaryContainer
-                  : null,
-              borderRadius: BorderRadius.circular(32),
-            ),
-            margin: EdgeInsets.symmetric(horizontal: 12),
-            child: ListTile(
-              title: Text('Completed'),
-              leading: Icon(
-                _navIndex.value == 1
-                    ? Icons.check_circle
-                    : Icons.check_circle_outline,
-              ),
-              trailing: Job.completedJobs.isNotEmpty
-                  ? Text(Job.completedJobs.length.toString())
-                  : null,
-              selected: _navIndex.value == 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(32),
-              ),
-              onTap: () {
-                Navigator.of(context).pop();
-                _navIndex.value = 1;
-                _controlsVisible.value = true;
-              },
-            ),
-          ),
-          Divider(),
-          Container(
-            decoration: BoxDecoration(
-              color: _navIndex.value == 0 && _driveDir.value == ''
-                  ? Theme.of(context).colorScheme.secondaryContainer
-                  : null,
-              borderRadius: BorderRadius.circular(32),
-            ),
-            margin: EdgeInsets.symmetric(horizontal: 12),
-            child: ListTile(
-              title: Text('Home'),
-              leading: Icon(
-                _navIndex.value == 0 && _driveDir.value == ''
-                    ? Icons.home
-                    : Icons.home_outlined,
-              ),
-              selected: _navIndex.value == 0 && _driveDir.value == '',
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(32),
-              ),
-              onTap: () {
-                Navigator.of(context).pop();
-                _navIndex.value = 0;
-                _controlsVisible.value = true;
-                _driveDir.value = Main.root.key;
-              },
-            ),
-          ),
-          for (final pinned in ConfigManager.loadPinnedFolders())
-            Container(
-              decoration: BoxDecoration(
-                color: _navIndex.value == 0 && _driveDir.value == pinned.value
-                    ? Theme.of(context).colorScheme.secondaryContainer
-                    : null,
-                borderRadius: BorderRadius.circular(32),
-              ),
-              clipBehavior: Clip.antiAlias,
-              margin: EdgeInsets.symmetric(horizontal: 12),
-              child: ListTile(
-                title: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Text(pinned.key),
-                ),
-                leading: Icon(
-                  _navIndex.value == 0 && _driveDir.value == pinned.value
-                      ? Icons.folder
-                      : Icons.folder_outlined,
-                ),
-                selected:
-                    _navIndex.value == 0 && _driveDir.value == pinned.value,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(32),
-                ),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _navIndex.value = 0;
-                  _controlsVisible.value = true;
-                  _driveDir.value = pinned.value;
-                },
-              ),
-            ),
-          Divider(),
-          Container(
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(32)),
-            margin: EdgeInsets.symmetric(horizontal: 12),
-            child: ListTile(
-              title: Text('Settings'),
-              leading: Icon(Icons.settings),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(32),
-              ),
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class Browser extends StatefulWidget {
@@ -1047,19 +882,31 @@ class BrowserState extends State<Browser> {
                 context,
                 _selection.value,
                 _getLink,
-                loading.value ? null : widget.downloadFile,
-                loading.value ? null : widget.downloadDirectory,
-                loading.value ? null : widget.saveFile,
-                loading.value ? null : widget.saveDirectory,
-                loading.value ? null : _cut,
-                loading.value ? null : _copy,
-                loading.value ? null : widget.deleteLocal,
-                loading.value ? null : widget.deleteCache,
-                loading.value
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.downloadFile,
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.downloadDirectory,
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.saveFile,
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.saveDirectory,
+                loading.value || widget.onFilesPick != null ? null : _cut,
+                loading.value || widget.onFilesPick != null ? null : _copy,
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.deleteLocal,
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.deleteCache,
+                loading.value || widget.onFilesPick != null
                     ? null
                     : (keys) async =>
                           await Main.deleteFiles(keys, refresh: true),
-                loading.value
+                loading.value || widget.onFilesPick != null
                     ? null
                     : (dirs) async =>
                           await Main.deleteDirectories(dirs, refresh: true),
@@ -1075,11 +922,15 @@ class BrowserState extends State<Browser> {
                 context,
                 file.key,
                 _selection.value.isEmpty,
-                loading.value ? null : widget.downloadDirectory,
-                loading.value ? null : widget.saveDirectory,
-                loading.value ? null : _cut,
-                loading.value ? null : _copy,
-                loading.value
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.downloadDirectory,
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.saveDirectory,
+                loading.value || widget.onFilesPick != null ? null : _cut,
+                loading.value || widget.onFilesPick != null ? null : _copy,
+                loading.value || widget.onFilesPick != null
                     ? null
                     : (List<String> dirs, List<String> newDirs) async =>
                           await Main.moveDirectories(
@@ -1087,9 +938,13 @@ class BrowserState extends State<Browser> {
                             newDirs,
                             refresh: true,
                           ),
-                loading.value ? null : widget.deleteLocal,
-                loading.value ? null : widget.deleteCache,
-                loading.value
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.deleteLocal,
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.deleteCache,
+                loading.value || widget.onFilesPick != null
                     ? null
                     : (List<String> dirs) async =>
                           await Main.deleteDirectories(dirs, refresh: true),
@@ -1102,17 +957,25 @@ class BrowserState extends State<Browser> {
                 file.key,
                 _selection.value.isEmpty,
                 _getLink,
-                loading.value ? null : widget.downloadFile,
-                loading.value ? null : widget.saveFile,
-                loading.value ? null : _cut,
-                loading.value ? null : _copy,
-                loading.value
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.downloadFile,
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.saveFile,
+                loading.value || widget.onFilesPick != null ? null : _cut,
+                loading.value || widget.onFilesPick != null ? null : _copy,
+                loading.value || widget.onFilesPick != null
                     ? null
                     : (List<String> keys, List<String> newKeys) async =>
                           await Main.moveFiles(keys, newKeys, refresh: true),
-                loading.value ? null : widget.deleteLocal,
-                loading.value ? null : widget.deleteCache,
-                loading.value
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.deleteLocal,
+                loading.value || widget.onFilesPick != null
+                    ? null
+                    : widget.deleteCache,
+                loading.value || widget.onFilesPick != null
                     ? null
                     : (List<String> keys) async =>
                           await Main.deleteFiles(keys, refresh: true),
@@ -1461,7 +1324,167 @@ class BrowserState extends State<Browser> {
   }
 
   Widget? drawer(BuildContext context) {
-    return widget.drawer;
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        _navIndex,
+        Job.onJobsChanged,
+        Job.onProgressUpdate,
+      ]),
+      builder: (context, _) => NavigationDrawer(
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.symmetric(horizontal: 32),
+            title: Text(
+              'Files3',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            onTap: () {
+              Navigator.of(context).pop();
+              _navIndex.value = 0;
+              _controlsVisible.value = true;
+            },
+          ),
+          Divider(),
+          Container(
+            decoration: BoxDecoration(
+              color: _navIndex.value == 2
+                  ? Theme.of(context).colorScheme.secondaryContainer
+                  : null,
+              borderRadius: BorderRadius.circular(32),
+            ),
+            margin: EdgeInsets.symmetric(horizontal: 12),
+            child: ListTile(
+              title: Text('Active'),
+              leading: Icon(
+                _navIndex.value == 2
+                    ? Icons.swap_vert_circle
+                    : Icons.swap_vert_circle_outlined,
+              ),
+              trailing: Job.jobs.isNotEmpty
+                  ? Text(Job.jobs.length.toString())
+                  : null,
+              selected: _navIndex.value == 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+              onTap: () {
+                Navigator.of(context).pop();
+                _navIndex.value = 2;
+                _controlsVisible.value = true;
+              },
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: _navIndex.value == 1
+                  ? Theme.of(context).colorScheme.secondaryContainer
+                  : null,
+              borderRadius: BorderRadius.circular(32),
+            ),
+            margin: EdgeInsets.symmetric(horizontal: 12),
+            child: ListTile(
+              title: Text('Completed'),
+              leading: Icon(
+                _navIndex.value == 1
+                    ? Icons.check_circle
+                    : Icons.check_circle_outline,
+              ),
+              trailing: Job.completedJobs.isNotEmpty
+                  ? Text(Job.completedJobs.length.toString())
+                  : null,
+              selected: _navIndex.value == 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+              onTap: () {
+                Navigator.of(context).pop();
+                _navIndex.value = 1;
+                _controlsVisible.value = true;
+              },
+            ),
+          ),
+          Divider(),
+          Container(
+            decoration: BoxDecoration(
+              color: _navIndex.value == 0 && _driveDir.value == ''
+                  ? Theme.of(context).colorScheme.secondaryContainer
+                  : null,
+              borderRadius: BorderRadius.circular(32),
+            ),
+            margin: EdgeInsets.symmetric(horizontal: 12),
+            child: ListTile(
+              title: Text('Home'),
+              leading: Icon(
+                _navIndex.value == 0 && _driveDir.value == ''
+                    ? Icons.home
+                    : Icons.home_outlined,
+              ),
+              selected: _navIndex.value == 0 && _driveDir.value == '',
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+              onTap: () {
+                Navigator.of(context).pop();
+                _navIndex.value = 0;
+                _controlsVisible.value = true;
+                _driveDir.value = Main.root.key;
+              },
+            ),
+          ),
+          for (final pinned in ConfigManager.loadPinnedFolders())
+            Container(
+              decoration: BoxDecoration(
+                color: _navIndex.value == 0 && _driveDir.value == pinned.value
+                    ? Theme.of(context).colorScheme.secondaryContainer
+                    : null,
+                borderRadius: BorderRadius.circular(32),
+              ),
+              clipBehavior: Clip.antiAlias,
+              margin: EdgeInsets.symmetric(horizontal: 12),
+              child: ListTile(
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(pinned.key),
+                ),
+                leading: Icon(
+                  _navIndex.value == 0 && _driveDir.value == pinned.value
+                      ? Icons.folder
+                      : Icons.folder_outlined,
+                ),
+                selected:
+                    _navIndex.value == 0 && _driveDir.value == pinned.value,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(32),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _navIndex.value = 0;
+                  _controlsVisible.value = true;
+                  _driveDir.value = pinned.value;
+                },
+              ),
+            ),
+          Divider(),
+          Container(
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(32)),
+            margin: EdgeInsets.symmetric(horizontal: 12),
+            child: ListTile(
+              title: Text('Settings'),
+              leading: Icon(Icons.settings),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (context) => SettingsPage()));
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget? floatingActionButton(BuildContext context) {
@@ -1746,6 +1769,7 @@ class BrowserState extends State<Browser> {
                       _navIndex.value == 0 &&
                               _selection.value.isNotEmpty &&
                               _selectionAction.value == SelectionAction.none &&
+                              widget.onFilesPick == null &&
                               !loading.value
                           ? IconButton(
                               onPressed: () async {
@@ -2169,6 +2193,7 @@ class BrowserState extends State<Browser> {
                         }
                       : null,
                   mimeTypes: _mimeTypes,
+                  forceSelectionMode: widget.onFilesPick != null,
                 ),
                 ListenableBuilder(
                   listenable: _driveDir,
