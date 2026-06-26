@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
-import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 
 class InfoRow extends StatefulWidget {
@@ -18,7 +17,6 @@ class InfoRow extends StatefulWidget {
   final double iconSize;
   final TextStyle? textStyle;
   final bool refresh;
-  final List<RegExp>? mimeTypes;
 
   const InfoRow({
     super.key,
@@ -34,7 +32,6 @@ class InfoRow extends StatefulWidget {
     this.iconSize = 16.0,
     this.textStyle,
     this.refresh = false,
-    this.mimeTypes,
   });
 
   @override
@@ -46,7 +43,6 @@ class _InfoRowState extends State<InfoRow> {
   late RemoteFile _file =
       Main.remoteFileByKey(widget.remoteKey) ??
       RemoteFile(key: widget.remoteKey, etag: '');
-  late List<RegExp> _mimeTypes = widget.mimeTypes ?? [allMimePattern];
 
   @override
   void didUpdateWidget(covariant InfoRow oldWidget) {
@@ -58,9 +54,6 @@ class _InfoRowState extends State<InfoRow> {
     }
     if (oldWidget.uiConfig != widget.uiConfig) {
       _uiConfig = widget.uiConfig ?? UiConfig();
-    }
-    if (oldWidget.mimeTypes != widget.mimeTypes) {
-      _mimeTypes = widget.mimeTypes ?? [allMimePattern];
     }
   }
 
@@ -129,7 +122,7 @@ class _InfoRowState extends State<InfoRow> {
         if (p.isDir(widget.remoteKey)) ...[
           if (_uiConfig.showContent)
             FutureBuilder<(int, int)>(
-              future: _file.getCount(recursive: true, mimeTypes: _mimeTypes),
+              future: _file.getCount(recursive: true),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     _file.count == (0, 0)) {

@@ -1,10 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:mime/mime.dart';
 import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
-import 'package:files3/globals.dart';
 
 class FileProps {
   final String key;
@@ -208,10 +206,7 @@ class RemoteFile implements RemoteFileFields {
     return _lastModified;
   }
 
-  Future<(int, int)> getCount({
-    bool recursive = false,
-    List<RegExp>? mimeTypes,
-  }) async {
+  Future<(int, int)> getCount({bool recursive = false}) async {
     if (!p.isDir(key)) {
       return (0, 1);
     }
@@ -221,11 +216,7 @@ class RemoteFile implements RemoteFileFields {
       if (p.isDir(file.key)) {
         dirCount += 1;
       } else {
-        if ((mimeTypes ?? [allMimePattern]).any(
-          (mime) => mime.hasMatch(lookupMimeType(file.key) ?? ''),
-        )) {
-          fileCount += 1;
-        }
+        fileCount += 1;
       }
     }
     _count = (dirCount, fileCount);

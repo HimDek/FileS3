@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:mime/mime.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
@@ -59,6 +60,7 @@ class MyGridTile extends StatelessWidget {
   final Widget? bottomRightBadge;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final bool enabled;
 
   const MyGridTile({
     super.key,
@@ -71,13 +73,14 @@ class MyGridTile extends StatelessWidget {
     this.bottomRightBadge,
     this.onTap,
     this.onLongPress,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      onLongPress: onLongPress,
+      onTap: enabled ? onTap : null,
+      onLongPress: enabled ? onLongPress : null,
       child: AnimatedContainer(
         duration: Duration(milliseconds: 250),
         decoration: BoxDecoration(
@@ -337,7 +340,13 @@ class ListFilesState extends State<ListFiles> {
     bool anySelected = false;
     for (final group in _groups.value.entries) {
       bool groupAllSelected = group.value.isNotEmpty;
-      for (final file in group.value) {
+      for (final file in group.value.where(
+        (file) =>
+            p.isDir(file.key) ||
+            _mimeTypes.any(
+              (mime) => mime.hasMatch(lookupMimeType(file.key) ?? ''),
+            ),
+      )) {
         bool explicitlySelected = false,
             inherentlySelected = false,
             partiallySelected = false;
@@ -434,10 +443,7 @@ class ListFilesState extends State<ListFiles> {
                         if (uiConfigNotifier.dirListInfo)
                           SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
-                            child: InfoRow(
-                              remoteKey: item.key,
-                              mimeTypes: _mimeTypes,
-                            ),
+                            child: InfoRow(remoteKey: item.key),
                           ),
                         if (p.s3.dirname(item.key).isEmpty)
                           Row(
@@ -495,7 +501,7 @@ class ListFilesState extends State<ListFiles> {
                               ? null
                               : Theme.of(
                                   context,
-                                ).colorScheme.onSurfaceVariant.withAlpha(100),
+                                ).colorScheme.onSurface.withAlpha(100),
                         ),
                       ],
                     )
@@ -560,6 +566,7 @@ class ListFilesState extends State<ListFiles> {
                           IconButton(
                             icon: Icon(Icons.zoom_out_map),
                             onPressed: () => widget.showGallery!(item.key),
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         Icon(
                           _selectionNotifiers[item.key].explicitlySelected.value
@@ -575,7 +582,7 @@ class ListFilesState extends State<ListFiles> {
                               ? null
                               : Theme.of(
                                   context,
-                                ).colorScheme.onSurfaceVariant.withAlpha(100),
+                                ).colorScheme.onSurface.withAlpha(100),
                         ),
                       ],
                     )
@@ -597,6 +604,9 @@ class ListFilesState extends State<ListFiles> {
                   ? () => widget.showGallery!(item.key)
                   : null,
               onLongPress: widget.getSelectAction(item.key),
+              enabled: _mimeTypes.any(
+                (mime) => mime.hasMatch(lookupMimeType(item.key) ?? ''),
+              ),
             ),
             child: Hero(
               tag: item.key,
@@ -659,94 +669,6 @@ class ListFilesState extends State<ListFiles> {
                   : null,
               onLongPress: widget.getSelectAction(item.key),
               topLeftBadge: uiConfigNotifier.showDownloadStatus.value
-                  ? DownloadStatusIcon(remoteKey: item.key)
-                  : null,
-              topRightBadge:
-                  _selectionNotifiers.anySelected.value ||
-                      widget.forceSelectionMode
-                  ? IconButton(
-                      icon: Icon(
-                        _selectionNotifiers[item.key].explicitlySelected.value
-                            ? Icons.check_circle
-                            : _selectionNotifiers[item.key]
-                                  .inherentlySelected
-                                  .value
-                            ? Icons.check_circle_outline
-                            : Icons.circle_outlined,
-                      ),
-                      disabledColor:
-                          widget.selectionAction.value == SelectionAction.none
-                          ? Theme.of(context).colorScheme.primary
-                          : null,
-                      onPressed: null,
-                    )
-                  : widget.showContextMenu != null
-                  ? IconButton(
-                      onPressed: () async {
-                        widget.showContextMenu!(item.key);
-                      },
-                      icon: Icon(Icons.more_vert),
-                    )
-                  : null,
-              bottomLeftBadge:
-                  _selectionNotifiers.anySelected.value &&
-                      widget.selectionAction.value == SelectionAction.none &&
-                      !_selectionNotifiers[item.key].explicitlySelected.value &&
-                      !_selectionNotifiers[item.key].inherentlySelected.value
-                  ? IconButton(
-                      icon: Icon(Icons.zoom_out_map),
-                      onPressed: () => widget.changeDirectory(item.key),
-                    )
-                  : null,
-              child: child!,
-            ),
-            child: Icon(
-              p.s3.split(item.key).length > 1
-                  ? Icons.folder
-                  : Icons.cloud_circle_rounded,
-            ),
-          )
-        : ListenableBuilder(
-            listenable: Listenable.merge([
-              _selectionNotifiers.anySelected,
-              _selectionNotifiers[item.key].explicitlySelected,
-              _selectionNotifiers[item.key].inherentlySelected,
-              _selectionNotifiers[item.key].partiallySelected,
-              widget.selectionAction,
-              widget.relativeto,
-              uiConfigNotifier.showDownloadStatus,
-            ]),
-            builder: (context, child) => MyGridTile(
-              selected:
-                  _selectionNotifiers[item.key].explicitlySelected.value ||
-                  _selectionNotifiers[item.key].inherentlySelected.value ||
-                  _selectionNotifiers[item.key].partiallySelected.value,
-              footer: Column(
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Text(
-                      p.s3.isWithin(widget.relativeto.value, item.key)
-                          ? p.s3.relative(
-                              item.key,
-                              from: widget.relativeto.value,
-                            )
-                          : item.key,
-                    ),
-                  ),
-                ],
-              ),
-              onTap:
-                  (_selectionNotifiers.anySelected.value &&
-                          widget.selectionAction.value ==
-                              SelectionAction.none) ||
-                      widget.forceSelectionMode
-                  ? widget.getSelectAction(item.key)
-                  : widget.showGallery != null
-                  ? () => widget.showGallery!(item.key)
-                  : null,
-              onLongPress: widget.getSelectAction(item.key),
-              topLeftBadge: uiConfigNotifier.showDownloadStatus.value
                   ? Padding(
                       padding: EdgeInsets.all(16),
                       child: DownloadStatusIcon(remoteKey: item.key),
@@ -780,16 +702,144 @@ class ListFilesState extends State<ListFiles> {
                     )
                   : null,
               bottomLeftBadge:
-                  _selectionNotifiers.anySelected.value &&
+                  (_selectionNotifiers.anySelected.value ||
+                          widget.forceSelectionMode) &&
                       widget.selectionAction.value == SelectionAction.none &&
-                      widget.showGallery != null
+                      !_selectionNotifiers[item.key].explicitlySelected.value &&
+                      !_selectionNotifiers[item.key].inherentlySelected.value
                   ? IconButton(
                       icon: Icon(Icons.zoom_out_map),
-                      onPressed: () => widget.showGallery!(item.key),
+                      onPressed: () => widget.changeDirectory(item.key),
                     )
                   : null,
               child: child!,
             ),
+            child: Icon(
+              p.s3.split(item.key).length > 1
+                  ? Icons.folder
+                  : Icons.cloud_circle_rounded,
+            ),
+          )
+        : ListenableBuilder(
+            listenable: Listenable.merge([
+              _selectionNotifiers.anySelected,
+              _selectionNotifiers[item.key].explicitlySelected,
+              _selectionNotifiers[item.key].inherentlySelected,
+              _selectionNotifiers[item.key].partiallySelected,
+              widget.selectionAction,
+              widget.relativeto,
+              uiConfigNotifier.showDownloadStatus,
+            ]),
+            builder: (context, child) {
+              bool enabled = _mimeTypes.any(
+                (mime) => mime.hasMatch(lookupMimeType(item.key) ?? ''),
+              );
+              return MyGridTile(
+                selected:
+                    _selectionNotifiers[item.key].explicitlySelected.value ||
+                    _selectionNotifiers[item.key].inherentlySelected.value ||
+                    _selectionNotifiers[item.key].partiallySelected.value,
+                footer: Column(
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Text(
+                        p.s3.isWithin(widget.relativeto.value, item.key)
+                            ? p.s3.relative(
+                                item.key,
+                                from: widget.relativeto.value,
+                              )
+                            : item.key,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: enabled
+                              ? null
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withAlpha(100),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                onTap:
+                    (_selectionNotifiers.anySelected.value &&
+                            widget.selectionAction.value ==
+                                SelectionAction.none) ||
+                        widget.forceSelectionMode
+                    ? widget.getSelectAction(item.key)
+                    : widget.showGallery != null
+                    ? () => widget.showGallery!(item.key)
+                    : null,
+                onLongPress: widget.getSelectAction(item.key),
+                enabled: enabled,
+                topLeftBadge: uiConfigNotifier.showDownloadStatus.value
+                    ? Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Theme(
+                          data: Theme.of(context).copyWith(
+                            iconTheme: Theme.of(context).iconTheme.copyWith(
+                              color: enabled
+                                  ? Theme.of(context).iconTheme.color
+                                  : Theme.of(
+                                      context,
+                                    ).iconTheme.color?.withAlpha(100),
+                            ),
+                          ),
+                          child: DownloadStatusIcon(remoteKey: item.key),
+                        ),
+                      )
+                    : null,
+                topRightBadge:
+                    _selectionNotifiers.anySelected.value ||
+                        widget.forceSelectionMode
+                    ? IconButton(
+                        icon: Icon(
+                          _selectionNotifiers[item.key].explicitlySelected.value
+                              ? Icons.check_circle
+                              : _selectionNotifiers[item.key]
+                                    .inherentlySelected
+                                    .value
+                              ? Icons.check_circle_outline
+                              : Icons.circle_outlined,
+                        ),
+                        disabledColor:
+                            widget.selectionAction.value ==
+                                    SelectionAction.none &&
+                                enabled
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                        onPressed: null,
+                      )
+                    : widget.showContextMenu != null
+                    ? IconButton(
+                        onPressed: () async {
+                          widget.showContextMenu!(item.key);
+                        },
+                        icon: Icon(Icons.more_vert),
+                      )
+                    : null,
+                bottomLeftBadge:
+                    (_selectionNotifiers.anySelected.value ||
+                            widget.forceSelectionMode) &&
+                        widget.selectionAction.value == SelectionAction.none &&
+                        widget.showGallery != null
+                    ? IconButton(
+                        icon: Icon(Icons.zoom_out_map),
+                        onPressed: () => widget.showGallery!(item.key),
+                      )
+                    : null,
+                child: Theme(
+                  data: Theme.of(context).copyWith(
+                    iconTheme: Theme.of(context).iconTheme.copyWith(
+                      color: enabled
+                          ? Theme.of(context).iconTheme.color
+                          : Theme.of(context).iconTheme.color?.withAlpha(100),
+                    ),
+                  ),
+                  child: child!,
+                ),
+              );
+            },
             child: Hero(tag: item.key, child: preview(item)),
           );
   }
@@ -927,6 +977,7 @@ class ListFilesState extends State<ListFiles> {
                                 ),
                                 ListenableBuilder(
                                   listenable: Listenable.merge([
+                                    _viewMode,
                                     _selectionNotifiers.anySelected,
                                     _selectionNotifiers[group.key]
                                         .explicitlySelected,
@@ -960,13 +1011,34 @@ class ListFilesState extends State<ListFiles> {
                                           },
                                           child: Icon(
                                             _selectionNotifiers[group.key]
-                                                    .explicitlySelected
-                                                    .value
+                                                        .explicitlySelected
+                                                        .value &&
+                                                    group.value.any(
+                                                      (file) =>
+                                                          _selectionNotifiers[file
+                                                                  .key]
+                                                              .explicitlySelected
+                                                              .value,
+                                                    )
                                                 ? Icons.check_circle
                                                 : Icons.circle_outlined,
                                             color:
                                                 widget.selectionAction.value ==
-                                                    SelectionAction.none
+                                                        SelectionAction.none &&
+                                                    group.value.any(
+                                                      (file) =>
+                                                          p.isDir(file.key) ||
+                                                          _mimeTypes.any(
+                                                            (
+                                                              mime,
+                                                            ) => mime.hasMatch(
+                                                              lookupMimeType(
+                                                                    file.key,
+                                                                  ) ??
+                                                                  '',
+                                                            ),
+                                                          ),
+                                                    )
                                                 ? _viewMode.value ==
                                                           ViewMode.grid
                                                       ? Theme.of(
@@ -977,7 +1049,7 @@ class ListFilesState extends State<ListFiles> {
                                                             .onSecondaryContainer
                                                 : Theme.of(context)
                                                       .colorScheme
-                                                      .onSurfaceVariant
+                                                      .onSurface
                                                       .withAlpha(100),
                                           ),
                                         )

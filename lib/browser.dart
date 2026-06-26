@@ -463,7 +463,16 @@ class BrowserState extends State<Browser> {
   final ManualNotifier _rebuildContext = ManualNotifier();
 
   Iterable<String> get _allSelectableItems => widget.allowMultiple
-      ? _currentItems.value.whereType<RemoteFile>().map((file) => file.key)
+      ? _currentItems.value
+            .whereType<RemoteFile>()
+            .map((file) => file.key)
+            .where(
+              (key) =>
+                  p.isDir(key) ||
+                  _mimeTypes.any(
+                    (mime) => mime.hasMatch(lookupMimeType(key) ?? ''),
+                  ),
+            )
       : const [];
 
   late final Listenable _currentItemsNotifiers = Listenable.merge([
@@ -489,7 +498,7 @@ class BrowserState extends State<Browser> {
     final counts =
         await Main.remoteFileByKey(
           _driveDir.value,
-        )?.getCount(recursive: false, mimeTypes: _mimeTypes) ??
+        )?.getCount(recursive: false) ??
         (0, 0);
     _dirCount.value = counts.$1;
     _fileCount.value = counts.$2;
@@ -500,7 +509,11 @@ class BrowserState extends State<Browser> {
 
   void Function()? _getSelectAction(String key) =>
       _selection.value.any((selected) => p.s3.isWithin(selected, key)) ||
-          _selectionAction.value != SelectionAction.none
+          _selectionAction.value != SelectionAction.none ||
+          (!p.isDir(key) &&
+              _mimeTypes.every(
+                (mime) => !mime.hasMatch(lookupMimeType(key) ?? ''),
+              ))
       ? null
       : () {
           if (p.isDir(key)) {
@@ -689,13 +702,7 @@ class BrowserState extends State<Browser> {
         : _driveDir.value != '' && _navIndex.value == 0
         ? Main.remoteFilesByDir(_driveDir.value, recursive: false)
               .where(
-                (file) =>
-                    !Job.jobs.any((job) => job.remoteKey == file.key) &&
-                    (p.isDir(file.key) ||
-                        _mimeTypes.any(
-                          (mime) =>
-                              mime.hasMatch(lookupMimeType(file.key) ?? ''),
-                        )),
+                (file) => !Job.jobs.any((job) => job.remoteKey == file.key),
               )
               .cast<dynamic>()
               .followedBy(
@@ -1840,6 +1847,7 @@ class BrowserState extends State<Browser> {
                           : SizedBox.shrink(),
                       // More Options
                       (_selection.value.isEmpty ||
+                                  widget.onFilesPick != null ||
                                   _selectionAction.value !=
                                       SelectionAction.none) &&
                               !_searching.value
@@ -2164,7 +2172,6 @@ class BrowserState extends State<Browser> {
                             spacing: 6,
                             iconSize: 14,
                             textStyle: Theme.of(context).textTheme.labelSmall,
-                            mimeTypes: _mimeTypes,
                           );
                         },
                       ),
