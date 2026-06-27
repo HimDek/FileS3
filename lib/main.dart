@@ -231,46 +231,59 @@ class _HomeState extends State<Home> {
       }
     } catch (e) {
       showSnackBar(SnackBar(content: Text('Error creating directory: $e')));
+    } finally {
+      loading.value = false;
     }
-    loading.value = false;
   }
 
-  void _deleteLocal(String key) {
-    if (p.isDir(key)) {
-      final dir = Directory(Main.pathFromKey(key));
-      if (dir.existsSync()) {
-        if (Main.backupModeFromKey(key) != BackupMode.upload) {
-          ConfigManager.setBackupMode(
-            key,
-            Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.upload
-                ? null
-                : BackupMode.upload,
-          );
+  void _deleteLocals(List<String> keys) {
+    for (final key in keys) {
+      try {
+        if (p.isDir(key)) {
+          final dir = Directory(Main.pathFromKey(key));
+          if (dir.existsSync()) {
+            if (Main.backupModeFromKey(key) != BackupMode.upload) {
+              ConfigManager.setBackupMode(
+                key,
+                Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.upload
+                    ? null
+                    : BackupMode.upload,
+              );
+            }
+            dir.deleteSync(recursive: true);
+            for (final file in Main.remoteFilesByDir(key, recursive: true)) {
+              file.downloaded = false;
+            }
+          }
+          final cacheDir = Directory(Main.cachePathFromKey(key));
+          if (cacheDir.existsSync()) {
+            cacheDir.deleteSync(recursive: true);
+          }
+        } else {
+          final file = File(Main.pathFromKey(key));
+          if (file.existsSync()) {
+            if (Main.backupModeFromKey(key) != BackupMode.upload) {
+              ConfigManager.setBackupMode(
+                key,
+                Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.upload
+                    ? null
+                    : BackupMode.upload,
+              );
+            }
+            file.deleteSync();
+            Main.remoteFileByKey(key)?.downloaded = false;
+          }
+          final cacheFile = File(Main.cachePathFromKey(key));
+          if (cacheFile.existsSync()) {
+            cacheFile.deleteSync();
+          }
         }
-        dir.deleteSync(recursive: true);
-      }
-      final cacheDir = Directory(Main.cachePathFromKey(key));
-      if (cacheDir.existsSync()) {
-        cacheDir.deleteSync(recursive: true);
-      }
-    } else {
-      final file = File(Main.pathFromKey(key));
-      if (file.existsSync()) {
-        if (Main.backupModeFromKey(key) != BackupMode.upload) {
-          ConfigManager.setBackupMode(
-            key,
-            Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.upload
-                ? null
-                : BackupMode.upload,
-          );
-        }
-        file.deleteSync();
-      }
-      final cacheFile = File(Main.cachePathFromKey(key));
-      if (cacheFile.existsSync()) {
-        cacheFile.deleteSync();
+      } catch (e) {
+        showSnackBar(SnackBar(content: Text('Error deleting files: $e')));
       }
     }
+    Main.onRemoteFilesChanged.notifyListeners();
+    loading.value = false;
   }
 
   void _deleteCache(String key) {
@@ -282,67 +295,92 @@ class _HomeState extends State<Home> {
     }
   }
 
-  void _downloadFile(String key, {String? localPath}) {
-    final mfile = File(Main.pathFromKey(key));
-    final cacheFile = File(Main.cachePathFromKey(key));
+  void _downloadFiles(Iterable<String> keys, {String? localPath}) {
+    loading.value = true;
+    for (final key in keys) {
+      try {
+        final mfile = File(Main.pathFromKey(key));
+        final cacheFile = File(Main.cachePathFromKey(key));
 
-    if (!mfile.existsSync()) {
-      if (Main.backupModeFromKey(key) != BackupMode.sync &&
-          (localPath ?? Main.pathFromKey(key)) == Main.pathFromKey(key)) {
-        ConfigManager.setBackupMode(
-          key,
-          Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.sync
-              ? null
-              : BackupMode.sync,
-        );
-      }
-      if (cacheFile.existsSync()) {
-        renameOrCopyAndDelete(cacheFile, localPath ?? Main.pathFromKey(key));
-      } else {
-        Main.downloadFile(key, localPath: localPath);
+        if (!mfile.existsSync()) {
+          if (Main.backupModeFromKey(key) != BackupMode.sync &&
+              (localPath ?? Main.pathFromKey(key)) == Main.pathFromKey(key)) {
+            ConfigManager.setBackupMode(
+              key,
+              Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.sync
+                  ? null
+                  : BackupMode.sync,
+            );
+          }
+          if (cacheFile.existsSync()) {
+            renameOrCopyAndDelete(
+              cacheFile,
+              localPath ?? Main.pathFromKey(key),
+            );
+            Main.remoteFileByKey(key)?.downloaded = true;
+          } else {
+            Main.downloadFile(key, localPath: localPath);
+          }
+        }
+      } catch (e) {
+        showSnackBar(SnackBar(content: Text('Error downloading files: $e')));
       }
     }
+    Main.onRemoteFilesChanged.notifyListeners();
+    loading.value = false;
   }
 
-  void _downloadDirectory(String key, {String? localPath}) {
-    if (Main.backupModeFromKey(key) != BackupMode.sync &&
-        (localPath ?? Main.pathFromKey(key)) == Main.pathFromKey(key)) {
-      ConfigManager.setBackupMode(
-        key,
-        Main.backupModeFromKey(p.s3.dirname(key)) == BackupMode.sync
-            ? null
-            : BackupMode.sync,
-      );
-    }
-    final keys = Main.remoteFilesByDir(
-      key,
-      recursive: true,
-    ).where((file) => !p.isDir(file.key)).map((file) => file.key).toList();
-    int progressCount = 0;
-    final totalFiles = keys.length;
-    for (final key in keys) {
-      progressCount += 1;
-      progress.value = progressCount / totalFiles;
-      final relativePath = p.s3.relative(key, from: key);
-      final localFilePath = p.context.joinAll([
-        localPath ?? Main.pathFromKey(key),
-        ...p.s3.split(relativePath),
-      ]);
-
-      final localFileDir = Directory(p.context.dirname(localFilePath));
-      if (!localFileDir.existsSync()) {
-        localFileDir.createSync(recursive: true);
-      }
-
-      if (!File(localFilePath).existsSync()) {
-        final cacheFile = File(Main.cachePathFromKey(key));
-        if (cacheFile.existsSync()) {
-          renameOrCopyAndDelete(cacheFile, localFilePath);
-        } else {
-          Main.downloadFile(key, localPath: localFilePath);
+  void _downloadDirectories(Iterable<String> dirs, {String? localPath}) {
+    loading.value = true;
+    for (final dir in dirs) {
+      try {
+        if (Main.backupModeFromKey(dir) != BackupMode.sync &&
+            (localPath ?? Main.pathFromKey(dir)) == Main.pathFromKey(dir)) {
+          ConfigManager.setBackupMode(
+            dir,
+            Main.backupModeFromKey(p.s3.dirname(dir)) == BackupMode.sync
+                ? null
+                : BackupMode.sync,
+          );
         }
+        final keys = Main.remoteFilesByDir(
+          dir,
+          recursive: true,
+        ).where((file) => !p.isDir(file.key)).map((file) => file.key).toList();
+        int progressCount = 0;
+        final totalFiles = keys.length;
+        for (final key in keys) {
+          progressCount += 1;
+          progress.value = progressCount / totalFiles;
+          final relativePath = p.s3.relative(key, from: dir);
+          final localFilePath = p.context.joinAll([
+            localPath ?? Main.pathFromKey(key),
+            ...p.s3.split(relativePath),
+          ]);
+
+          final localFileDir = Directory(p.context.dirname(localFilePath));
+          if (!localFileDir.existsSync()) {
+            localFileDir.createSync(recursive: true);
+          }
+
+          if (!File(localFilePath).existsSync()) {
+            final cacheFile = File(Main.cachePathFromKey(key));
+            if (cacheFile.existsSync()) {
+              renameOrCopyAndDelete(cacheFile, localFilePath);
+              Main.remoteFileByKey(key)?.downloaded = true;
+            } else {
+              Main.downloadFile(key, localPath: localFilePath);
+            }
+          }
+        }
+      } catch (e) {
+        showSnackBar(
+          SnackBar(content: Text('Error downloading directories: $e')),
+        );
       }
     }
+    Main.onRemoteFilesChanged.notifyListeners();
+    loading.value = false;
   }
 
   void _saveFile(String key, String savePath) {
@@ -687,11 +725,11 @@ class _HomeState extends State<Home> {
         ? _getContentBuilder(context)
         : MyBrowser(
             title: Text('FileS3'),
-            downloadFile: _downloadFile,
-            downloadDirectory: _downloadDirectory,
+            downloadFiles: _downloadFiles,
+            downloadDirectories: _downloadDirectories,
             saveFile: _saveFile,
             saveDirectory: _saveDirectory,
-            deleteLocal: _deleteLocal,
+            deleteLocals: _deleteLocals,
             deleteCache: _deleteCache,
             createDirectory: _createDirectory,
             uploadDirectory: _uploadDirectory,

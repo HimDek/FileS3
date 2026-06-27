@@ -16,7 +16,6 @@ class InfoRow extends StatefulWidget {
   final double spacing;
   final double iconSize;
   final TextStyle? textStyle;
-  final bool refresh;
 
   const InfoRow({
     super.key,
@@ -31,7 +30,6 @@ class InfoRow extends StatefulWidget {
     this.spacing = 8.0,
     this.iconSize = 16.0,
     this.textStyle,
-    this.refresh = false,
   });
 
   @override
@@ -69,13 +67,7 @@ class _InfoRowState extends State<InfoRow> {
       children: [
         if (_uiConfig.showTime)
           FutureBuilder<DateTime?>(
-            future: () async {
-              if (!widget.refresh && _file.lastModified != null) {
-                return _file.lastModified;
-              }
-              final lastModified = await _file.getLastModified();
-              return lastModified;
-            }(),
+            future: _file.getLastModified(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting &&
                   _file.lastModified == null) {
@@ -92,13 +84,7 @@ class _InfoRowState extends State<InfoRow> {
           ),
         if (_uiConfig.showSize)
           FutureBuilder<int>(
-            future: () async {
-              if (!widget.refresh && _file.size != 0) {
-                return _file.size;
-              }
-              final size = await _file.getSize();
-              return size;
-            }(),
+            future: _file.getSize(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting &&
                   _file.size == 0) {
@@ -117,7 +103,6 @@ class _InfoRowState extends State<InfoRow> {
           DownloadStatusIcon(
             remoteKey: widget.remoteKey,
             size: widget.iconSize,
-            refresh: widget.refresh,
           ),
         if (p.isDir(widget.remoteKey)) ...[
           if (_uiConfig.showContent)
@@ -158,14 +143,12 @@ class DownloadStatusIcon extends StatelessWidget {
   final String remoteKey;
   final double size;
   final Color? activeColor;
-  final bool refresh;
 
   const DownloadStatusIcon({
     super.key,
     required this.remoteKey,
     this.size = 16,
     this.activeColor,
-    this.refresh = false,
   });
 
   @override
@@ -174,14 +157,10 @@ class DownloadStatusIcon extends StatelessWidget {
     return FutureBuilder<void>(
       future: () async {
         file = Main.remoteFileByKey(remoteKey);
-        if (!refresh && file?.downloaded != null) {
-          return file!.downloaded;
-        }
-        final downloaded = await file!.getDownloaded();
-        return downloaded;
+        return await file!.getDownloaded();
       }(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
+        if (snapshot.connectionState == ConnectionState.waiting ||
             file?.downloaded == null) {
           return Icon(Icons.hourglass_empty, size: size);
         }

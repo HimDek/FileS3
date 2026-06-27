@@ -154,11 +154,11 @@ class MyBrowser extends Browser {
     super.subtitle,
     super.initialDir,
     super.onInit,
-    required super.downloadFile,
-    required super.downloadDirectory,
+    required super.downloadFiles,
+    required super.downloadDirectories,
     required super.saveFile,
     required super.saveDirectory,
-    required super.deleteLocal,
+    required super.deleteLocals,
     required super.deleteCache,
     required super.createDirectory,
     required super.uploadDirectory,
@@ -383,11 +383,11 @@ class Browser extends StatefulWidget {
   final Widget? drawer;
   final Widget? floatingActionButton;
   final Widget? bottomNavigationBar;
-  final Function(String)? downloadFile;
-  final Function(String)? downloadDirectory;
+  final Function(Iterable<String>)? downloadFiles;
+  final Function(Iterable<String>)? downloadDirectories;
   final Function(String, String)? saveFile;
   final Function(String, String)? saveDirectory;
-  final Function(String)? deleteLocal;
+  final Function(List<String>)? deleteLocals;
   final Function(String)? deleteCache;
   final Future<void> Function(String)? createDirectory;
   final void Function(String, Directory)? uploadDirectory;
@@ -405,11 +405,11 @@ class Browser extends StatefulWidget {
     this.drawer,
     this.floatingActionButton,
     this.bottomNavigationBar,
-    this.downloadFile,
-    this.downloadDirectory,
+    this.downloadFiles,
+    this.downloadDirectories,
     this.saveFile,
     this.saveDirectory,
-    this.deleteLocal,
+    this.deleteLocals,
     this.deleteCache,
     this.createDirectory,
     this.uploadDirectory,
@@ -895,10 +895,10 @@ class BrowserState extends State<Browser> {
                 _getLink,
                 loading.value || widget.onFilesPick != null
                     ? null
-                    : widget.downloadFile,
+                    : widget.downloadFiles,
                 loading.value || widget.onFilesPick != null
                     ? null
-                    : widget.downloadDirectory,
+                    : widget.downloadDirectories,
                 loading.value || widget.onFilesPick != null
                     ? null
                     : widget.saveFile,
@@ -909,7 +909,7 @@ class BrowserState extends State<Browser> {
                 loading.value || widget.onFilesPick != null ? null : _copy,
                 loading.value || widget.onFilesPick != null
                     ? null
-                    : widget.deleteLocal,
+                    : widget.deleteLocals,
                 loading.value || widget.onFilesPick != null
                     ? null
                     : widget.deleteCache,
@@ -935,7 +935,7 @@ class BrowserState extends State<Browser> {
                 _selection.value.isEmpty,
                 loading.value || widget.onFilesPick != null
                     ? null
-                    : widget.downloadDirectory,
+                    : widget.downloadDirectories,
                 loading.value || widget.onFilesPick != null
                     ? null
                     : widget.saveDirectory,
@@ -951,7 +951,7 @@ class BrowserState extends State<Browser> {
                           ),
                 loading.value || widget.onFilesPick != null
                     ? null
-                    : widget.deleteLocal,
+                    : widget.deleteLocals,
                 loading.value || widget.onFilesPick != null
                     ? null
                     : widget.deleteCache,
@@ -970,7 +970,7 @@ class BrowserState extends State<Browser> {
                 _getLink,
                 loading.value || widget.onFilesPick != null
                     ? null
-                    : widget.downloadFile,
+                    : widget.downloadFiles,
                 loading.value || widget.onFilesPick != null
                     ? null
                     : widget.saveFile,
@@ -982,7 +982,7 @@ class BrowserState extends State<Browser> {
                           await Main.moveFiles(keys, newKeys, refresh: true),
                 loading.value || widget.onFilesPick != null
                     ? null
-                    : widget.deleteLocal,
+                    : widget.deleteLocals,
                 loading.value || widget.onFilesPick != null
                     ? null
                     : widget.deleteCache,

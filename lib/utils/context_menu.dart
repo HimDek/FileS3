@@ -27,10 +27,10 @@ abstract class ContextActionHandler {
 class FileContextActionHandler extends ContextActionHandler {
   final String file;
   final String? Function(String, int?) getLink;
-  final Function(String)? downloadFile;
+  final Function(List<String>)? downloadFiles;
   final Function(String, String)? saveFile;
   final Future<void> Function(List<String>, List<String>)? moveFiles;
-  final Function(String)? deleteLocalFile;
+  final Function(List<String>)? deleteLocalFiles;
   final Function(String)? deleteCacheFile;
   final Future<void> Function(List<String>)? deleteFiles;
 
@@ -43,10 +43,10 @@ class FileContextActionHandler extends ContextActionHandler {
   FileContextActionHandler({
     required this.file,
     required this.getLink,
-    required this.downloadFile,
+    required this.downloadFiles,
     required this.saveFile,
     required this.moveFiles,
-    required this.deleteLocalFile,
+    required this.deleteLocalFiles,
     required this.deleteCacheFile,
     required this.deleteFiles,
   });
@@ -63,7 +63,7 @@ class FileContextActionHandler extends ContextActionHandler {
       _rootExistsCache ??= p.isAbsolute(Main.pathFromKey(file));
 
   bool get downloaded => _downloadedCache ??=
-      !p.isDir(file) && File(Main.pathFromKey(file)).existsSync();
+      !p.isDir(file) && Main.remoteFileByKey(file)?.downloaded == true;
 
   bool get cacheExists => _cacheExistsCache ??=
       !p.isDir(file) && File(Main.cachePathFromKey(file)).existsSync();
@@ -77,7 +77,7 @@ class FileContextActionHandler extends ContextActionHandler {
 
   dynamic Function()? open() {
     final link = getLink(file, null);
-    return File(Main.pathFromKey(file)).existsSync()
+    return downloaded
         ? () {
             OpenFile.open(Main.pathFromKey(file));
           }
@@ -94,11 +94,11 @@ class FileContextActionHandler extends ContextActionHandler {
 
   @override
   void Function()? download() {
-    return !rootExists || downloaded || active || downloadFile == null
+    return !rootExists || downloaded || active || downloadFiles == null
         ? null
         : () {
             try {
-              downloadFile!(file);
+              downloadFiles!([file]);
             } finally {
               invalidateCache();
             }
@@ -120,7 +120,7 @@ class FileContextActionHandler extends ContextActionHandler {
   }
 
   XFile Function()? getXFile() {
-    return File(Main.pathFromKey(file)).existsSync()
+    return downloaded
         ? () {
             return XFile(Main.pathFromKey(file));
           }
@@ -155,10 +155,10 @@ class FileContextActionHandler extends ContextActionHandler {
   }
 
   Future<String> Function()? deleteUploaded(bool? yes) {
-    return (yes ?? false) && deleteLocalFile != null && removable
+    return (yes ?? false) && deleteLocalFiles != null && removable
         ? () async {
             try {
-              await deleteLocalFile!(file);
+              await deleteLocalFiles!([file]);
               return 'Deleted local copy of ${p.s3.basename(file)}';
             } finally {
               invalidateCache();
@@ -168,10 +168,13 @@ class FileContextActionHandler extends ContextActionHandler {
   }
 
   Future<String> Function()? deleteLocal(bool? yes) {
-    return (yes ?? false) && deleteLocalFile != null && !removable && downloaded
+    return (yes ?? false) &&
+            deleteLocalFiles != null &&
+            !removable &&
+            downloaded
         ? () async {
             try {
-              await deleteLocalFile!(file);
+              await deleteLocalFiles!([file]);
               return 'Deleted local copy of ${p.s3.basename(file)}';
             } finally {
               invalidateCache();
@@ -212,9 +215,9 @@ class FileContextActionHandler extends ContextActionHandler {
 class FilesContextActionHandler extends ContextActionHandler {
   final Iterable<String> files;
   final String? Function(String, int?) getLink;
-  final Function(String)? downloadFile;
+  final Function(Iterable<String>)? downloadFiles;
   final Function(String, String)? saveFile;
-  final Function(String)? deleteLocalFile;
+  final Function(List<String>)? deleteLocalFiles;
   final Function(String)? deleteCacheFile;
   final Future<void> Function(Iterable<String>)? deleteFiles;
   List<bool>? _rootExistsCache;
@@ -226,9 +229,9 @@ class FilesContextActionHandler extends ContextActionHandler {
   FilesContextActionHandler({
     required this.files,
     required this.getLink,
-    required this.downloadFile,
+    required this.downloadFiles,
     required this.saveFile,
-    required this.deleteLocalFile,
+    required this.deleteLocalFiles,
     required this.deleteCacheFile,
     required this.deleteFiles,
   });
@@ -248,7 +251,7 @@ class FilesContextActionHandler extends ContextActionHandler {
   List<String> get downloadedFiles =>
       _downloadedFilesCache ??= List.unmodifiable(
         files.where(
-          (f) => !p.isDir(f) && File(Main.pathFromKey(f)).existsSync(),
+          (f) => !p.isDir(f) && Main.remoteFileByKey(f)?.downloaded == true,
         ),
       );
 
@@ -270,7 +273,7 @@ class FilesContextActionHandler extends ContextActionHandler {
     files.where(
       (f) =>
           !p.isDir(f) &&
-          File(Main.pathFromKey(f)).existsSync() &&
+          Main.remoteFileByKey(f)?.downloaded == true &&
           Main.backupModeFromKey(f) == BackupMode.upload,
     ),
   );
@@ -280,15 +283,15 @@ class FilesContextActionHandler extends ContextActionHandler {
     return downloadedFiles.length == files.length ||
             downloadedFiles.toSet().union(activeFiles.toSet()).length ==
                 files.length ||
-            downloadFile == null
+            downloadFiles == null
         ? null
         : () {
             try {
-              for (String file in files.where(
-                (file) => !File(Main.pathFromKey(file)).existsSync(),
-              )) {
-                downloadFile!(file);
-              }
+              downloadFiles!(
+                files.where(
+                  (file) => Main.remoteFileByKey(file)?.downloaded != true,
+                ),
+              );
             } finally {
               invalidateCache();
             }
@@ -317,11 +320,11 @@ class FilesContextActionHandler extends ContextActionHandler {
             return files
                 .where(
                   (file) =>
-                      File((Main.pathFromKey(file))).existsSync() ||
+                      Main.remoteFileByKey(file)?.downloaded == true ||
                       File(Main.cachePathFromKey(file)).existsSync(),
                 )
                 .map((file) {
-                  if (File(Main.pathFromKey(file)).existsSync()) {
+                  if (Main.remoteFileByKey(file)?.downloaded == true) {
                     return XFile(Main.pathFromKey(file));
                   } else if (File(Main.cachePathFromKey(file)).existsSync()) {
                     return XFile(Main.cachePathFromKey(file));
@@ -350,13 +353,11 @@ class FilesContextActionHandler extends ContextActionHandler {
     bool? yes,
   ) {
     return (yes ?? false) &&
-            deleteLocalFile != null &&
+            deleteLocalFiles != null &&
             removableFiles.isNotEmpty
         ? () async {
             try {
-              for (final file in removableFiles) {
-                await deleteLocalFile!(file);
-              }
+              await deleteLocalFiles!(removableFiles);
               return 'Deleted local copies of ${removableFiles.length} uploaded files';
             } finally {
               invalidateCache();
@@ -370,13 +371,11 @@ class FilesContextActionHandler extends ContextActionHandler {
     List<String> downloadedFiles,
   ) {
     return (yes ?? false) &&
-            deleteLocalFile != null &&
+            deleteLocalFiles != null &&
             downloadedFiles.isNotEmpty
         ? () async {
             try {
-              for (final file in downloadedFiles) {
-                await deleteLocalFile!(file);
-              }
+              await deleteLocalFiles!(downloadedFiles);
               return 'Deleted local copies of ${downloadedFiles.length} files';
             } finally {
               invalidateCache();
@@ -421,10 +420,10 @@ class FilesContextActionHandler extends ContextActionHandler {
 
 class DirectoryContextActionHandler extends ContextActionHandler {
   final String file;
-  final Function(String)? downloadDirectory;
+  final Function(List<String>)? downloadDirectories;
   final Function(String, String)? saveDirectory;
   final Future<void> Function(List<String>, List<String>)? moveDirectories;
-  final Function(String)? deleteLocalDirectory;
+  final Function(List<String>)? deleteLocalDirectories;
   final Function(String)? deleteCacheDirectory;
   final Future<void> Function(List<String>)? deleteDirectories;
 
@@ -438,10 +437,10 @@ class DirectoryContextActionHandler extends ContextActionHandler {
 
   DirectoryContextActionHandler({
     required this.file,
-    required this.downloadDirectory,
+    required this.downloadDirectories,
     required this.saveDirectory,
     required this.moveDirectories,
-    required this.deleteLocalDirectory,
+    required this.deleteLocalDirectories,
     required this.deleteCacheDirectory,
     required this.deleteDirectories,
   });
@@ -471,7 +470,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
 
   List<String> get downloadedFiles =>
       _downloadedFilesCache ??= List.unmodifiable(
-        files.where((f) => File(Main.pathFromKey(f)).existsSync()),
+        files.where((f) => Main.remoteFileByKey(f)?.downloaded == true),
       );
 
   bool get cacheExist =>
@@ -491,7 +490,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
         .where(
           (f) =>
               !p.isDir(f) &&
-              File(Main.pathFromKey(f)).existsSync() &&
+              Main.remoteFileByKey(f)?.downloaded == true &&
               Main.backupModeFromKey(f) == BackupMode.upload,
         ),
   );
@@ -510,11 +509,11 @@ class DirectoryContextActionHandler extends ContextActionHandler {
             downloadedFiles.length == files.length ||
             downloadedFiles.toSet().union(activeFiles.toSet()).length ==
                 files.length ||
-            downloadDirectory == null
+            downloadDirectories == null
         ? null
         : () {
             try {
-              downloadDirectory!(file);
+              downloadDirectories!([file]);
             } finally {
               invalidateCache();
             }
@@ -560,13 +559,11 @@ class DirectoryContextActionHandler extends ContextActionHandler {
     bool? yes,
   ) {
     return (yes ?? false) &&
-            deleteLocalDirectory != null &&
+            deleteLocalDirectories != null &&
             removableFiles.isNotEmpty
         ? () async {
             try {
-              for (final file in removableFiles) {
-                deleteLocalDirectory!(file);
-              }
+              await deleteLocalDirectories!(removableFiles.toList());
               return 'Deleted local copies of ${removableFiles.length} uploaded files in ${p.s3.basename(file)}';
             } finally {
               invalidateCache();
@@ -576,10 +573,10 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   }
 
   Future<String> Function()? deleteLocal(bool? yes) {
-    return (yes ?? false) && deleteLocalDirectory != null && localExists
+    return (yes ?? false) && deleteLocalDirectories != null && localExists
         ? () async {
             try {
-              deleteLocalDirectory!(file);
+              await deleteLocalDirectories!([file]);
               return 'Deleted local copy of ${p.s3.basename(file)}';
             } finally {
               invalidateCache();
@@ -619,9 +616,9 @@ class DirectoryContextActionHandler extends ContextActionHandler {
 
 class DirectoriesContextActionHandler extends ContextActionHandler {
   final Iterable<String> directories;
-  final Function(String)? downloadDirectory;
+  final Function(Iterable<String>)? downloadDirectories;
   final Function(String, String)? saveDirectory;
-  final Function(String)? deleteLocalDirectory;
+  final Function(List<String>)? deleteLocalDirectories;
   final Function(String)? deleteCacheDirectory;
   final Future<void> Function(Iterable<String>)? deleteDirectories;
 
@@ -635,9 +632,9 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
 
   DirectoriesContextActionHandler({
     required this.directories,
-    required this.downloadDirectory,
+    required this.downloadDirectories,
     required this.saveDirectory,
-    required this.deleteLocalDirectory,
+    required this.deleteLocalDirectories,
     required this.deleteCacheDirectory,
     required this.deleteDirectories,
   });
@@ -678,7 +675,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
 
   List<String> get downloadedFiles =>
       _downloadedFilesCache ??= List.unmodifiable(
-        files.where((f) => File(Main.pathFromKey(f)).existsSync()),
+        files.where((f) => Main.remoteFileByKey(f)?.downloaded == true),
       );
 
   List<String> get cachedDirectories =>
@@ -705,7 +702,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
                 .where(
                   (f) =>
                       !p.isDir(f.key) &&
-                      File(Main.pathFromKey(f.key)).existsSync() &&
+                      Main.remoteFileByKey(f.key)?.downloaded == true &&
                       Main.backupModeFromKey(f.key) == BackupMode.upload,
                 )
                 .map((f) => f.key),
@@ -720,15 +717,15 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
             downloadedFiles.length == files.length ||
             downloadedFiles.toSet().union(activeFiles.toSet()).length ==
                 files.length ||
-            downloadDirectory == null
+            downloadDirectories == null
         ? null
         : () {
             try {
-              for (final dir in directories.where(
-                (dir) => Directory(Main.pathFromKey(dir)).existsSync(),
-              )) {
-                downloadDirectory!(dir);
-              }
+              downloadDirectories!(
+                directories.where(
+                  (dir) => Directory(Main.pathFromKey(dir)).existsSync(),
+                ),
+              );
             } finally {
               invalidateCache();
             }
@@ -755,16 +752,10 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     List<String> removableFiles,
     bool? yes,
   ) {
-    return (yes ?? false) && deleteLocalDirectory != null
+    return (yes ?? false) && deleteLocalDirectories != null
         ? () async {
             try {
-              for (final dir in directories) {
-                for (final file in removableFiles) {
-                  if (p.s3.isWithin(dir, file)) {
-                    deleteLocalDirectory!(file);
-                  }
-                }
-              }
+              deleteLocalDirectories!(removableFiles);
               return 'Deleted local copies of ${removableFiles.length} uploaded files in ${directories.length} directories';
             } finally {
               invalidateCache();
@@ -775,13 +766,11 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
 
   Future<String> Function()? deleteLocal(bool? yes, List<String> localDirs) {
     return (yes ?? false) &&
-            deleteLocalDirectory != null &&
+            deleteLocalDirectories != null &&
             localDirs.isNotEmpty
         ? () async {
             try {
-              for (final dir in localDirs) {
-                deleteLocalDirectory!(dir);
-              }
+              deleteLocalDirectories!(localDirs);
               return 'Deleted local copies of ${localDirs.length} folders';
             } finally {
               invalidateCache();
@@ -2788,12 +2777,12 @@ Widget buildFileContextMenu(
   String item,
   bool allowModify,
   String? Function(String, int?) getLink,
-  Function(String)? downloadFile,
+  Function(List<String>)? downloadFiles,
   Function(String, String)? saveFile,
   Function(String)? cut,
   Function(String)? copy,
   Future<void> Function(List<String>, List<String>)? moveFiles,
-  Function(String)? deleteLocal,
+  Function(List<String>)? deleteLocals,
   Function(String)? deleteCache,
   Future<void> Function(List<String>)? deleteFiles,
   void Function()? onInvoked,
@@ -2804,10 +2793,10 @@ Widget buildFileContextMenu(
       FileContextActionHandler handler = FileContextActionHandler(
         file: item,
         getLink: getLink,
-        downloadFile: downloadFile,
+        downloadFiles: downloadFiles,
         saveFile: saveFile,
         moveFiles: allowModify ? moveFiles : null,
-        deleteLocalFile: deleteLocal,
+        deleteLocalFiles: deleteLocals,
         deleteCacheFile: deleteCache,
         deleteFiles: allowModify ? deleteFiles : null,
       );
@@ -2854,7 +2843,6 @@ Widget buildFileContextMenu(
                       showDownloadStatus: false,
                       showType: true,
                     ),
-                    refresh: true,
                   ),
                 ),
               ),
@@ -2939,11 +2927,11 @@ Widget buildFilesContextMenu(
   BuildContext context,
   Iterable<String> items,
   String? Function(String, int?) getLink,
-  Function(String)? downloadFile,
+  Function(Iterable<String>)? downloadFiles,
   Function(String, String)? saveFile,
   Function(String?)? cut,
   Function(String?)? copy,
-  Function(String)? deleteLocal,
+  Function(List<String>)? deleteLocals,
   Function(String)? deleteCache,
   Future<void> Function(Iterable<String>)? deleteFiles,
   Function() clearSelection,
@@ -2954,9 +2942,9 @@ Widget buildFilesContextMenu(
       FilesContextActionHandler handler = FilesContextActionHandler(
         files: items,
         getLink: getLink,
-        downloadFile: downloadFile,
+        downloadFiles: downloadFiles,
         saveFile: saveFile,
-        deleteLocalFile: deleteLocal,
+        deleteLocalFiles: deleteLocals,
         deleteCacheFile: deleteCache,
         deleteFiles: deleteFiles,
       );
@@ -3037,12 +3025,12 @@ Widget buildDirectoryContextMenu(
   BuildContext context,
   String file,
   bool allowModify,
-  Function(String)? downloadDirectory,
+  Function(List<String>)? downloadDirectories,
   Function(String, String)? saveDirectory,
   Function(String)? cut,
   Function(String)? copy,
   Future<void> Function(List<String>, List<String>)? moveDirectories,
-  Function(String)? deleteLocal,
+  Function(List<String>)? deleteLocals,
   Function(String)? deleteCache,
   Future<void> Function(List<String>)? deleteDirectories,
   void Function()? onInvoked,
@@ -3051,10 +3039,10 @@ Widget buildDirectoryContextMenu(
     future: () async {
       DirectoryContextActionHandler handler = DirectoryContextActionHandler(
         file: file,
-        downloadDirectory: downloadDirectory,
+        downloadDirectories: downloadDirectories,
         saveDirectory: saveDirectory,
         moveDirectories: allowModify ? moveDirectories : null,
-        deleteLocalDirectory: deleteLocal,
+        deleteLocalDirectories: deleteLocals,
         deleteCacheDirectory: deleteCache,
         deleteDirectories: allowModify ? deleteDirectories : null,
       );
@@ -3102,7 +3090,6 @@ Widget buildDirectoryContextMenu(
                         showDownloadStatus: false,
                         showContent: true,
                       ),
-                      refresh: true,
                     ),
                   ),
                   SingleChildScrollView(
@@ -3196,11 +3183,11 @@ Widget buildDirectoryContextMenu(
 Widget buildDirectoriesContextMenu(
   BuildContext context,
   Iterable<String> dirs,
-  Function(String)? downloadDirectory,
+  Function(Iterable<String>)? downloadDirectories,
   Function(String, String)? saveDirectory,
   Function(String?)? cut,
   Function(String?)? copy,
-  Function(String)? deleteLocal,
+  Function(List<String>)? deleteLocals,
   Function(String)? deleteCache,
   Future<void> Function(Iterable<String>)? deleteDirectories,
   Function() clearSelection,
@@ -3210,9 +3197,9 @@ Widget buildDirectoriesContextMenu(
     future: () async {
       DirectoriesContextActionHandler handler = DirectoriesContextActionHandler(
         directories: dirs,
-        downloadDirectory: downloadDirectory,
+        downloadDirectories: downloadDirectories,
         saveDirectory: saveDirectory,
-        deleteLocalDirectory: deleteLocal,
+        deleteLocalDirectories: deleteLocals,
         deleteCacheDirectory: deleteCache,
         deleteDirectories: deleteDirectories,
       );
@@ -3282,13 +3269,13 @@ Widget buildBulkContextMenu(
   BuildContext context,
   Iterable<String> items,
   String? Function(String, int?) getLink,
-  Function(String)? downloadFile,
-  Function(String)? downloadDirectory,
+  Function(Iterable<String>)? downloadFiles,
+  Function(Iterable<String>)? downloadDirectories,
   Function(String, String)? saveFile,
   Function(String, String)? saveDirectory,
   Function(String?)? cut,
   Function(String?)? copy,
-  Function(String)? deleteLocal,
+  Function(List<String>)? deleteLocals,
   Function(String)? deleteCache,
   Future<void> Function(Iterable<String>)? deleteFiles,
   Future<void> Function(Iterable<String>)? deleteDirectories,
@@ -3300,11 +3287,11 @@ Widget buildBulkContextMenu(
       context,
       items,
       getLink,
-      downloadFile,
+      downloadFiles,
       saveFile,
       cut,
       copy,
-      deleteLocal,
+      deleteLocals,
       deleteCache,
       deleteFiles,
       clearSelection,
@@ -3314,11 +3301,11 @@ Widget buildBulkContextMenu(
     return buildDirectoriesContextMenu(
       context,
       items,
-      downloadDirectory,
+      downloadDirectories,
       saveDirectory,
       cut,
       copy,
-      deleteLocal,
+      deleteLocals,
       deleteCache,
       deleteDirectories,
       clearSelection,
@@ -3330,18 +3317,18 @@ Widget buildBulkContextMenu(
       DirectoriesContextActionHandler dirHandler =
           DirectoriesContextActionHandler(
             directories: items.where((item) => p.isDir(item)),
-            downloadDirectory: downloadDirectory,
+            downloadDirectories: downloadDirectories,
             saveDirectory: saveDirectory,
-            deleteLocalDirectory: deleteLocal,
+            deleteLocalDirectories: deleteLocals,
             deleteCacheDirectory: deleteCache,
             deleteDirectories: deleteDirectories,
           );
       FilesContextActionHandler fileHandler = FilesContextActionHandler(
         files: items.where((item) => !p.isDir(item)),
         getLink: getLink,
-        downloadFile: downloadFile,
+        downloadFiles: downloadFiles,
         saveFile: saveFile,
-        deleteLocalFile: deleteLocal,
+        deleteLocalFiles: deleteLocals,
         deleteCacheFile: deleteCache,
         deleteFiles: deleteFiles,
       );

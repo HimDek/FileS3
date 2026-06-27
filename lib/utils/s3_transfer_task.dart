@@ -352,12 +352,15 @@ class S3TransferTask {
       await localFile.setLastModified(lastModified);
       await tagFile.delete();
       Main.remoteFileByKey(key)?.downloaded = true;
+      Main.onRemoteFilesChanged.notifyListeners();
       onStatus?.call('Download complete');
     } on FileSystemException catch (e) {
       if (e.osError?.errorCode == 18) {
         await tempFile.copy(localFile.path);
         await tempFile.delete();
         await tagFile.delete();
+        Main.remoteFileByKey(key)?.downloaded = true;
+        Main.onRemoteFilesChanged.notifyListeners();
         onStatus?.call('Download complete');
       } else {
         throw Exception('Storage write failed: $e');

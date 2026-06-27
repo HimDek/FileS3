@@ -154,7 +154,6 @@ class RemoteFile implements RemoteFileFields {
   DateTime? _lastModified;
   (int, int) _count = (0, 1);
   bool? downloaded;
-  bool? cached;
 
   RemoteFile({
     required this.key,
@@ -177,10 +176,8 @@ class RemoteFile implements RemoteFileFields {
       return _size;
     }
     int size = 0;
-    for (final file in Main.remoteFilesByDir(
-      key,
-      recursive: true,
-    ).where((file) => !p.isDir(file.key))) {
+    for (final file in Main.remoteFilesByDir(key)) {
+      await file.getSize();
       size += file.size;
     }
     _size = size;
@@ -192,10 +189,8 @@ class RemoteFile implements RemoteFileFields {
       return _lastModified;
     }
     DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
-    for (final file in Main.remoteFilesByDir(
-      key,
-      recursive: true,
-    ).where((file) => !p.isDir(file.key))) {
+    for (final file in Main.remoteFilesByDir(key)) {
+      await file.getLastModified();
       if (file.lastModified?.isAfter(latest) ?? false) {
         latest = file.lastModified!;
       }
@@ -212,8 +207,13 @@ class RemoteFile implements RemoteFileFields {
     }
     int dirCount = 0;
     int fileCount = 0;
-    for (final file in Main.remoteFilesByDir(key, recursive: recursive)) {
+    for (final file in Main.remoteFilesByDir(key)) {
       if (p.isDir(file.key)) {
+        if (recursive) {
+          final subCount = await file.getCount(recursive: true);
+          dirCount += subCount.$1;
+          fileCount += subCount.$2;
+        }
         dirCount += 1;
       } else {
         fileCount += 1;
@@ -223,44 +223,39 @@ class RemoteFile implements RemoteFileFields {
     return (dirCount, fileCount);
   }
 
-  Future<bool> getDownloaded() async {
+  Future<bool?> getDownloaded() async {
     if (p.isDir(key)) {
-      bool downloaded = true;
-      for (var file in Main.remoteFilesByDir(
-        key,
-        recursive: true,
-      ).where((file) => !p.isDir(file.key))) {
-        file.downloaded = await File(Main.pathFromKey(file.key)).exists();
-        if (!file.downloaded!) {
+      bool? downloaded = true;
+      for (var file in Main.remoteFilesByDir(key)) {
+        await file.getDownloaded();
+        if (file.downloaded == false) {
           downloaded = false;
+          break;
+        }
+        if (file.downloaded == null) {
+          downloaded = null;
           break;
         }
       }
       this.downloaded = downloaded;
-    } else {
-      downloaded = await File(Main.pathFromKey(key)).exists();
     }
-    return downloaded!;
+    return downloaded;
   }
 
   Future<bool> getCached() async {
     if (p.isDir(key)) {
       bool cached = true;
-      for (var file in Main.remoteFilesByDir(
-        key,
-        recursive: true,
-      ).where((file) => !p.isDir(file.key))) {
-        file.cached = await File(Main.cachePathFromKey(file.key)).exists();
-        if (!file.cached!) {
+      for (var file in Main.remoteFilesByDir(key)) {
+        final fileCached = await file.getCached();
+        if (!fileCached) {
           cached = false;
           break;
         }
       }
-      this.cached = cached;
+      return cached;
     } else {
-      cached = await File(Main.cachePathFromKey(key)).exists();
+      return await File(Main.cachePathFromKey(key)).exists();
     }
-    return cached!;
   }
 
   Future<void> refresh() async {

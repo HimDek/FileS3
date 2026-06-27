@@ -1066,7 +1066,6 @@ class DeletionRegistrar {
         return Digest(bytes);
       }(),
       profile: profile,
-      onStatus: (job, result) {},
     );
 
     await job.start();
@@ -1089,7 +1088,6 @@ class DeletionRegistrar {
       localFile: _file,
       remoteKey: _key,
       bytes: _file.lengthSync(),
-      onStatus: (job, result) {},
       md5: await HashUtil(_file).md5Hash(),
       profile: profile,
     );

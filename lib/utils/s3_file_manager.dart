@@ -49,7 +49,7 @@ class S3FileManager {
     }
   }
 
-  Future<dynamic> createDirectory(String dir) async {
+  Future<Map<String, String>> createDirectory(String dir) async {
     final encodedUri = getEncodedUri(key: p.s3.asDir(dir));
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
@@ -166,7 +166,10 @@ class S3FileManager {
     return files;
   }
 
-  Future<dynamic> copyFile(String sourceKey, String destinationKey) async {
+  Future<Map<String, String>> copyFile(
+    String sourceKey,
+    String destinationKey,
+  ) async {
     final encodedUri = getEncodedUri(key: destinationKey);
     final copySource =
         '/$_bucket/${p.s3.join(_prefix, p.s3.relative(sourceKey, from: _profile.name)).split('/').map(awsEncode).join('/')}';
@@ -204,7 +207,7 @@ class S3FileManager {
     return response.headers;
   }
 
-  Future<dynamic> deleteFile(String key) async {
+  Future<Map<String, String>> deleteFile(String key) async {
     final encodedUri = getEncodedUri(key: key);
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
