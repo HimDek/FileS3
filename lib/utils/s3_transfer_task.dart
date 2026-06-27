@@ -351,6 +351,7 @@ class S3TransferTask {
       await tempFile.rename(localFile.path);
       await localFile.setLastModified(lastModified);
       await tagFile.delete();
+      Main.remoteFileByKey(key)?.downloaded = true;
       onStatus?.call('Download complete');
     } on FileSystemException catch (e) {
       if (e.osError?.errorCode == 18) {
