@@ -717,9 +717,9 @@ class BrowserState extends State<Browser> {
                     .cast<dynamic>(),
               )
         : _navIndex.value == 1
-        ? Job.completedJobs
+        ? Job.completedJobs.where((element) => true)
         : _navIndex.value == 2
-        ? Job.jobs
+        ? Job.jobs.where((element) => true)
         : [];
     if (kDebugMode) {
       debugPrint('Current items set: ${_currentItems.value.length} items');

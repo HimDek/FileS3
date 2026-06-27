@@ -722,7 +722,6 @@ abstract class Main {
       remoteFilesAdd(newFile, notify: false);
     } finally {
       if (refresh) {
-        Main.onRemoteFilesChanged.notifyListeners();
         loading.value = false;
       }
     }

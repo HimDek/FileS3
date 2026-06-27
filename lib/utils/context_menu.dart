@@ -853,7 +853,6 @@ class FileContextOption {
     final downloadAction = handler.download();
     final rootExists = handler.rootExists;
     final active = handler.active;
-    final localPath = Main.pathFromKey(handler.file);
     return FileContextOption(
       title: downloadAction == null
           ? rootExists
@@ -862,13 +861,9 @@ class FileContextOption {
                       : 'Downloaded'
                 : 'Cannot Download'
           : 'Download',
-      subtitle: downloadAction == null
-          ? rootExists
-                ? active
-                      ? null
-                      : localPath
-                : 'Set backup folder to enable downloads'
-          : localPath,
+      subtitle: downloadAction == null && !rootExists
+          ? 'Set backup folder to enable downloads'
+          : null,
       icon: downloadAction == null && !active
           ? rootExists
                 ? Icons.file_download_done_rounded
@@ -1999,9 +1994,7 @@ class DirectoriesContextOption {
           : 'Cannot Download',
       subtitle: downloadAction != null
           ? "Only missing files with backup folder set will be downloaded"
-          : allDownloaded
-          ? null
-          : allHandled
+          : allDownloaded || allHandled
           ? null
           : 'Set backup folder to enable downloads',
       icon: downloadAction != null
@@ -2395,9 +2388,7 @@ class BulkContextOption {
           : 'Cannot Download',
       subtitle: hasDownloadAction
           ? 'Only missing files with backup folder set will be downloaded'
-          : allDownloaded
-          ? null
-          : allItemsHandled
+          : allDownloaded || allItemsHandled
           ? null
           : 'Set backup folder to enable downloads',
       icon: hasDownloadAction
