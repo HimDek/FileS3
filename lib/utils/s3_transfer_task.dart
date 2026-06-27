@@ -105,7 +105,6 @@ class S3TransferTask {
   Future<dynamic> _upload(HttpClient httpClient) async {
     onStatus?.call('Starting upload...');
     final totalBytes = await localFile.length();
-    final lastModified = await localFile.lastModified();
 
     int uploaded = 0;
 
@@ -126,7 +125,7 @@ class S3TransferTask {
       contentHash: contentHash,
       contentMD5: contentMD5,
       contentType: lookupMimeType(localFile.path),
-      metadata: {'last-modified': lastModified.toIso8601String()},
+      metadata: await getFileMetadata(localFile.path),
     );
     final req = await httpClient.openUrl('PUT', encodedUri);
 
@@ -201,14 +200,14 @@ class S3TransferTask {
     final head = await profile!.fileManager!.headObject(key);
     final remoteEtag = head['etag']?.replaceAll('"', '') ?? '';
     final total = int.tryParse(head['size'] ?? '0') ?? 0;
-    final metadata = Map.fromEntries(
-      head.entries
-          .where((e) => e.key.startsWith('x-amz-meta-'))
-          .map((e) => MapEntry(e.key.replaceFirst('x-amz-meta-', ''), e.value)),
-    );
     final lastModified =
-        DateTime.tryParse(metadata['last-modified'] ?? '') ??
+        DateTime.tryParse(head['last-modified'] ?? '') ??
         DateTime.fromMillisecondsSinceEpoch(0);
+    // final metadata = Map.fromEntries(
+    //   head.entries
+    //       .where((e) => e.key.startsWith('x-amz-meta-'))
+    //       .map((e) => MapEntry(e.key.replaceFirst('x-amz-meta-', ''), e.value)),
+    // );
 
     final tempFile = File('${Main.cachePathFromKey(key)}.tmp');
     final tagFile = File(Main.tagPathFromKey(key));

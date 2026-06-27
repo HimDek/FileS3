@@ -1,13 +1,15 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:ini/ini.dart';
+import 'package:mime/mime.dart';
+import 'package:exif/exif.dart';
 import 'package:crypto/crypto.dart';
 import 'package:uri_content/uri_content.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:file_magic_number/file_magic_number.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
-import 'package:sleek_circular_slider/sleek_circular_slider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -284,6 +286,85 @@ String timeToReadable(DateTime time) {
     return '${diff.inMinutes}m ago';
   }
   return "${localTime.day.toString().padLeft(2, '0')} ${monthToString(localTime.month)} ${localTime.year} ${(localTime.hour % 12).toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ${localTime.hour >= 12 ? 'PM' : 'AM'}";
+}
+
+Future<Map<String, String?>> getFileMetadata(String path) async {
+  final file = File(path);
+  final bytes = await file
+      .openRead(0, 64)
+      .fold<BytesBuilder>(BytesBuilder(), (b, d) => b..add(d));
+
+  final mime = lookupMimeType(path, headerBytes: bytes.takeBytes());
+
+  final metadata = <String, String?>{};
+
+  // Dispatch to format-specific parser...
+  switch (mime?.split('/').first) {
+    case 'image':
+      metadata.addEntries((await _imageMetadata(file)).entries);
+      break;
+
+    // case 'video':
+    //   metadata['format'] = await _videoMetadata(file);
+    //   break;
+
+    // case 'audio':
+    //   metadata['format'] = await _audioMetadata(file);
+    //   break;
+  }
+
+  return metadata;
+}
+
+Future<Map<String, String>> _imageMetadata(File file) async {
+  final bytes = await file.readAsBytes();
+  final exif = await readExifFromBytes(bytes);
+  return {
+    "ImageLength": exif["Image ImageLength"]?.printable ?? "",
+    "ImageWidth": exif["Image ImageWidth"]?.printable ?? "",
+    "ExifImageLength": exif["EXIF ExifImageLength"]?.printable ?? "",
+    "ExifImageWidth": exif["EXIF ExifImageWidth"]?.printable ?? "",
+    "Make": exif["Image Make"]?.printable ?? "",
+    "Model": exif["Image Model"]?.printable ?? "",
+    "LensMake": exif["EXIF LensMake"]?.printable ?? "",
+    "LensModel": exif["EXIF LensModel"]?.printable ?? "",
+    "DateTime": exif["Image DateTime"]?.printable ?? "",
+    "Orientation": exif["Image Orientation"]?.printable ?? "",
+    "XResolution": exif["Image XResolution"]?.printable ?? "",
+    "YResolution": exif["Image YResolution"]?.printable ?? "",
+    "ResolutionUnit": exif["Image ResolutionUnit"]?.printable ?? "",
+    "GPSInfo": exif["Image GPSInfo"]?.printable ?? "",
+    "GPS-GPSVersionID": exif["GPS GPSVersionID"]?.printable ?? "",
+    "GPS-GPSLatitudeRef": exif["GPS GPSLatitudeRef"]?.printable ?? "",
+    "GPS-GPSLatitude": exif["GPS GPSLatitude"]?.printable ?? "",
+    "GPS-GPSLongitudeRef": exif["GPS GPSLongitudeRef"]?.printable ?? "",
+    "GPS-GPSLongitude": exif["GPS GPSLongitude"]?.printable ?? "",
+    "GPS-GPSAltitudeRef": exif["GPS GPSAltitudeRef"]?.printable ?? "",
+    "GPS-GPSAltitude": exif["GPS GPSAltitude"]?.printable ?? "",
+    "GPS-GPSTimeStamp": exif["GPS GPSTimeStamp"]?.printable ?? "",
+    "GPS-GPSImgDirectionRef": exif["GPS GPSImgDirectionRef"]?.printable ?? "",
+    "GPS-GPSImgDirection": exif["GPS GPSImgDirection"]?.printable ?? "",
+    "GPS-GPSDate": exif["GPS GPSDate"]?.printable ?? "",
+    "DateTimeDigitized": exif["EXIF DateTimeDigitized"]?.printable ?? "",
+    "DateTimeOriginal": exif["EXIF DateTimeOriginal"]?.printable ?? "",
+    "OffsetTimeDigitized": exif["EXIF OffsetTimeDigitized"]?.printable ?? "",
+    "OffsetTimeOriginal": exif["EXIF OffsetTimeOriginal"]?.printable ?? "",
+    "OffsetTime": exif["EXIF OffsetTime"]?.printable ?? "",
+    "ISOSpeed": exif["EXIF ISOSpeed"]?.printable ?? "",
+    "ISOSpeedRatings": exif["EXIF ISOSpeedRatings"]?.printable ?? "",
+    "SensitivityType": exif["EXIF SensitivityType"]?.printable ?? "",
+    "ShutterSpeedValue": exif["EXIF ShutterSpeedValue"]?.printable ?? "",
+    "FNumber": exif["EXIF FNumber"]?.printable ?? "",
+    "ApertureValue": exif["EXIF ApertureValue"]?.printable ?? "",
+    "MaxApertureValue": exif["EXIF MaxApertureValue"]?.printable ?? "",
+    "ExposureTime": exif["EXIF ExposureTime"]?.printable ?? "",
+    "FocalLength": exif["EXIF FocalLength"]?.printable ?? "",
+    "FocalLengthIn35mmFilm":
+        exif["EXIF FocalLengthIn35mmFilm"]?.printable ?? "",
+    "ExposureBiasValue": exif["EXIF ExposureBiasValue"]?.printable ?? "",
+    "WhiteBalance": exif["EXIF WhiteBalance"]?.printable ?? "",
+    "ColorSpace": exif["EXIF ColorSpace"]?.printable ?? "",
+  };
 }
 
 String mimeTypeFromMagic(FileMagicNumberType type) {
@@ -953,14 +1034,14 @@ class DeletionRegistrar {
   Future<Map<String, DateTime>> pullDeletions() async {
     await profile.refreshRemote(dir: _key);
 
-    if (Main.remoteFileByKey(_key) == null) {
+    final remoteFile = Main.remoteFileByKey(_key);
+
+    if (remoteFile == null) {
       return {};
     }
 
-    final remoteFile = Main.remoteFileByKey(_key);
-
     if (_lastPulled.toUtc().isAfter(
-          remoteFile?.lastModified?.toUtc() ??
+          remoteFile.lastModified?.toUtc() ??
               DateTime.fromMillisecondsSinceEpoch(0).toUtc(),
         ) &&
         _file.existsSync()) {
@@ -973,9 +1054,9 @@ class DeletionRegistrar {
     Job job = DownloadJob(
       localFile: _file,
       remoteKey: _key,
-      bytes: remoteFile?.size ?? 0,
+      bytes: remoteFile.size,
       md5: () {
-        final hex = remoteFile?.etag.replaceAll('"', '') ?? '';
+        final hex = remoteFile.etag.replaceAll('"', '');
 
         if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
           throw StateError('ETag is not a single-part MD5 digest');
