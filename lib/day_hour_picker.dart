@@ -11,7 +11,7 @@ Future<Duration?> showDayHourPicker({
     builder: (_) => _DayHourPickerDialog(
       initialDuration: initialDuration,
       minDuration: minDuration,
-      maxDuration: Duration(days: 6, hours: 12),
+      maxDuration: maxDuration,
     ),
   );
 }
