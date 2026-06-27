@@ -250,7 +250,7 @@ class S3FileManager {
       'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
       'X-Amz-Credential': '$_accessKey/$credentialScope',
       'X-Amz-Date': amzDate,
-      'X-Amz-Expires': (validForSeconds ?? 3600).toString(),
+      'X-Amz-Expires': (validForSeconds ?? 604800).toString(),
       'X-Amz-SignedHeaders': 'host',
       'X-Amz-Content-Sha256': 'UNSIGNED-PAYLOAD',
     };

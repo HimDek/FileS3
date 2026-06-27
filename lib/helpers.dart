@@ -7,6 +7,7 @@ import 'package:uri_content/uri_content.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:file_magic_number/file_magic_number.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
+import 'package:sleek_circular_slider/sleek_circular_slider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -16,6 +17,7 @@ import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/models.dart';
+import 'package:files3/day_hour_picker.dart';
 
 Future<File> uriToFile(
   String uriString, {
@@ -75,116 +77,78 @@ Future<File> uriToFile(
   return file;
 }
 
-Future<int?> Function(BuildContext) expiryDialog = (BuildContext context) =>
-    showDialog<int>(
-      context: context,
-      builder: (_) {
-        int d = 0, h = 1;
-        return StatefulBuilder(
-          builder: (c, set) => AlertDialog(
-            title: const Text('Select Validity Duration'),
-            content: Row(
-              children: [
-                DropdownButton<int>(
-                  value: d,
-                  items: List.generate(
-                    31,
-                    (i) => DropdownMenuItem(value: i, child: Text('$i d')),
-                  ),
-                  onChanged: (v) => set(() => d = v!),
-                ),
-                DropdownButton<int>(
-                  value: h,
-                  items: List.generate(
-                    24,
-                    (i) => DropdownMenuItem(value: i, child: Text('$i h')),
-                  ),
-                  onChanged: (v) => set(() => h = v!),
-                ),
-              ],
-            ),
-            actions: [
-              ElevatedButton(
-                onPressed: d * 86400 + h * 3600 == 0
-                    ? null
-                    : () => Navigator.pop(c, d * 86400 + h * 3600),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+Future<int?> expiryDialog(BuildContext context) async {
+  return (await showDayHourPicker(
+        context: context,
+        initialDuration: const Duration(hours: 1),
+        minDuration: const Duration(hours: 1),
+        maxDuration: const Duration(days: 7),
+      ))?.inMinutes ??
+      604800;
+}
 
-Future<String?> Function(
-  BuildContext,
-  String, {
-  String title,
-  Iterable<String> existingNames,
-})
-renameDialog =
-    (
-      BuildContext context,
-      String currentName, {
-      String title = 'Rename File',
-      Iterable<String> existingNames = const [],
-    }) => showDialog<String>(
-      context: context,
-      builder: (_) {
-        final GlobalKey<FormState> formKey = GlobalKey<FormState>();
-        TextEditingController controller = TextEditingController(
-          text: currentName,
-        );
-        return StatefulBuilder(
-          builder: (c, set) => AlertDialog(
-            title: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Text(title),
+Future<String?> renameDialog(
+  BuildContext context,
+  String currentName, {
+  String title = 'Rename File',
+  Iterable<String> existingNames = const [],
+}) => showDialog<String>(
+  context: context,
+  builder: (_) {
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+    TextEditingController controller = TextEditingController(text: currentName);
+    return StatefulBuilder(
+      builder: (c, set) => AlertDialog(
+        title: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Text(title),
+        ),
+        content: Form(
+          key: formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          child: TextFormField(
+            controller: controller,
+            decoration: InputDecoration(
+              labelText: 'New Name',
+              errorText:
+                  existingNames
+                      .where((name) => name != currentName)
+                      .contains(controller.text.trim())
+                  ? 'Will overwrite existing'
+                  : null,
             ),
-            content: Form(
-              key: formKey,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              child: TextFormField(
-                controller: controller,
-                decoration: InputDecoration(
-                  labelText: 'New Name',
-                  errorText:
-                      existingNames
-                          .where((name) => name != currentName)
-                          .contains(controller.text.trim())
-                      ? 'Will overwrite existing'
-                      : null,
-                ),
-                onChanged: (value) => set(() {}),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a name';
-                  }
-                  return null;
-                },
-                onFieldSubmitted: (value) {
-                  if (formKey.currentState!.validate()) {
-                    Navigator.pop(c, controller.text.trim());
-                  }
-                },
-              ),
-            ),
-            actions: [
-              ElevatedButton(
-                onPressed: () {
-                  bool valid = formKey.currentState?.validate() ?? false;
-                  if (valid) Navigator.pop(c, controller.text.trim());
-                },
-                child: const Text('OK'),
-              ),
-            ],
+            onChanged: (value) => set(() {}),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Please enter a name';
+              }
+              return null;
+            },
+            onFieldSubmitted: (value) {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(c, controller.text.trim());
+              }
+            },
           ),
-        );
-      },
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              bool valid = formKey.currentState?.validate() ?? false;
+              if (valid) Navigator.pop(c, controller.text.trim());
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
     );
+  },
+);
 
-Future<FileSaveLocation?> Function(BuildContext, {String suggestedName})
-saveAsDialog = (BuildContext context, {String suggestedName = ''}) async {
+Future<FileSaveLocation?> saveAsDialog(
+  BuildContext context, {
+  String suggestedName = '',
+}) async {
   final TextEditingController nameController = TextEditingController(
     text: suggestedName,
   );
@@ -251,45 +215,37 @@ saveAsDialog = (BuildContext context, {String suggestedName = ''}) async {
     return FileSaveLocation(path);
   }
   return null;
-};
+}
 
-Future<bool> Function(
-  BuildContext, {
-  String title,
+Future<bool> confirmDialog(
+  BuildContext context, {
+  String title = 'Confirm',
   Widget? content,
-  String okText,
-  String cancelText,
-})
-confirmDialog =
-    (
-      BuildContext context, {
-      String title = 'Confirm',
-      Widget? content,
-      String okText = 'Confirm',
-      String cancelText = 'Cancel',
-    }) async {
-      final bool? result = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Text(title),
-          ),
-          content: content,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(cancelText),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(okText),
-            ),
-          ],
+  String okText = 'Confirm',
+  String cancelText = 'Cancel',
+}) async {
+  final bool? result = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Text(title),
+      ),
+      content: content,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(cancelText),
         ),
-      );
-      return result ?? false;
-    };
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(okText),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
+}
 
 String bytesToReadable(int bytes) {
   const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];

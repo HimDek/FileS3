@@ -67,6 +67,7 @@ dependencies:
   file_magic_number:
   shared_preferences:
   permission_handler:
+  sleek_circular_slider:
   flutter_launcher_icons:
   flutter_secure_storage:
   flutter_foreground_task:
