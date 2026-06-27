@@ -10,6 +10,7 @@ import 'package:uri_content/uri_content.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:file_magic_number/file_magic_number.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -628,8 +629,9 @@ abstract class IniManager {
 }
 
 abstract class ConfigManager {
-  static ValueNotifier<bool> initialized = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> initialized = ValueNotifier<bool>(false);
   static const _storage = FlutterSecureStorage();
+  static late final SharedPreferences _sharedPreferences;
 
   static Future<void> init(String dir) async {
     if (!initialized.value || IniManager.config.value == null) {
@@ -637,6 +639,7 @@ abstract class ConfigManager {
         IniManager.init(dir);
       }
       await _migrateIfNeeded();
+      _sharedPreferences = await SharedPreferences.getInstance();
       initialized.value = true;
     }
   }
@@ -830,7 +833,7 @@ abstract class ConfigManager {
     );
   }
 
-  static Future<void> saveUiConfig(UiConfig config) async {
+  static void saveUiConfig(UiConfig config) {
     if (!IniManager.config.value!.sections().contains("ui")) {
       IniManager.config.value!.addSection("ui");
     }
@@ -887,7 +890,7 @@ abstract class ConfigManager {
     return TransferConfig(maxConcurrentTransfers: maxConcurrentTransfers);
   }
 
-  static Future<void> saveTransferConfig(TransferConfig config) async {
+  static void saveTransferConfig(TransferConfig config) {
     if (!IniManager.config.value!.sections().contains("transfer")) {
       IniManager.config.value!.addSection("transfer");
     }
@@ -919,9 +922,7 @@ abstract class ConfigManager {
     }
   }
 
-  static Future<void> savePinnedFolders(
-    Iterable<MapEntry<String, String>> folders,
-  ) async {
+  static void savePinnedFolders(Iterable<MapEntry<String, String>> folders) {
     if (IniManager.config.value!.sections().contains("pinned_folders")) {
       IniManager.config.value!.removeSection("pinned_folders");
     }
@@ -943,7 +944,7 @@ abstract class ConfigManager {
   static List<Color> loadRecentColors() {
     try {
       final recentColorsStr =
-          IniManager.config.value?.get("ui", "recent_colors") ?? '[]';
+          _sharedPreferences.getString("ui_recent_colors") ?? '[]';
       final List<dynamic> recentColorsJson = jsonDecode(recentColorsStr);
       return recentColorsJson
           .map(
@@ -962,19 +963,14 @@ abstract class ConfigManager {
   }
 
   static Future<void> saveRecentColors(List<Color> colors) async {
-    if (!IniManager.config.value!.sections().contains("ui")) {
-      IniManager.config.value!.addSection("ui");
-    }
-    IniManager.config.value!.set(
-      "ui",
-      "recent_colors",
+    await _sharedPreferences.setString(
+      "ui_recent_colors",
       jsonEncode(colors.map((color) => ColorTools.colorCode(color))),
     );
-    IniManager.save();
   }
 
-  static Future<List<RemoteFile>> loadRemoteFiles() async {
-    final jsonString = await _storage.read(key: 'remote_files') ?? '[]';
+  static List<RemoteFile> loadRemoteFiles() {
+    final jsonString = _sharedPreferences.getString('remote_files') ?? '[]';
     try {
       final List<dynamic> jsonList = jsonDecode(jsonString);
       return jsonList
@@ -986,9 +982,9 @@ abstract class ConfigManager {
   }
 
   static Future<void> saveRemoteFiles(Iterable<RemoteFile> files) async {
-    await _storage.write(
-      key: 'remote_files',
-      value: jsonEncode(files.map((file) => file.toJson()).toList()),
+    await _sharedPreferences.setString(
+      'remote_files',
+      jsonEncode(files.map((file) => file.toJson()).toList()),
     );
   }
 }

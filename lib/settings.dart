@@ -1245,7 +1245,7 @@ class SettingsPageState extends State<SettingsPage> {
           _colorModePopupVisible = false;
           _uiConfig.accentColor = color;
         });
-        await _saveConfig();
+        _saveConfig();
         uiConfigNotifier.accentColor.value = _uiConfig.accentColor;
       },
       width: 40,
@@ -1329,10 +1329,10 @@ class SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _saveConfig() async {
-    await ConfigManager.saveUiConfig(_uiConfig);
+  void _saveConfig() {
+    ConfigManager.saveUiConfig(_uiConfig);
     Job.maxrun = _downloadConfig.maxConcurrentTransfers;
-    await ConfigManager.saveTransferConfig(_downloadConfig);
+    ConfigManager.saveTransferConfig(_downloadConfig);
   }
 
   @override
@@ -1407,7 +1407,7 @@ class SettingsPageState extends State<SettingsPage> {
                               _colorModePopupVisible = false;
                               _uiConfig.colorMode = value;
                             });
-                            await _saveConfig();
+                            _saveConfig();
                             uiConfigNotifier.colorMode.value =
                                 _uiConfig.colorMode;
                           },
@@ -1517,7 +1517,7 @@ class SettingsPageState extends State<SettingsPage> {
                             setState(() {
                               _uiConfig.accentColor = colorBeforeDialog;
                             });
-                            await _saveConfig();
+                            _saveConfig();
                             uiConfigNotifier.accentColor.value =
                                 _uiConfig.accentColor;
                           }
@@ -1531,7 +1531,7 @@ class SettingsPageState extends State<SettingsPage> {
                               content: Text('Accent color reset to default'),
                             ),
                           );
-                          await _saveConfig();
+                          _saveConfig();
                           uiConfigNotifier.accentColor.value =
                               _uiConfig.accentColor;
                         },
@@ -1554,7 +1554,7 @@ class SettingsPageState extends State<SettingsPage> {
                               setState(() {
                                 _uiConfig.accentColor = colorBeforeDialog;
                               });
-                              await _saveConfig();
+                              _saveConfig();
                               uiConfigNotifier.accentColor.value =
                                   _uiConfig.accentColor;
                             }
@@ -1576,7 +1576,7 @@ class SettingsPageState extends State<SettingsPage> {
                                 setState(() {
                                   _uiConfig.ultraDark = value;
                                 });
-                                await _saveConfig();
+                                _saveConfig();
                                 uiConfigNotifier.ultraDark.value = value;
                               }
                             : null,
@@ -1638,7 +1638,7 @@ class SettingsPageState extends State<SettingsPage> {
                           setState(() {
                             _uiConfig.showDirectorySummary = value;
                           });
-                          await _saveConfig();
+                          _saveConfig();
                           uiConfigNotifier.showDirectorySummary.value = value;
                         },
                       );
@@ -1652,7 +1652,7 @@ class SettingsPageState extends State<SettingsPage> {
                           setState(() {
                             _uiConfig.showDirectoryBackupConfig = value;
                           });
-                          await _saveConfig();
+                          _saveConfig();
                           uiConfigNotifier.showDirectoryBackupConfig.value =
                               value;
                         },
@@ -1667,7 +1667,7 @@ class SettingsPageState extends State<SettingsPage> {
                           setState(() {
                             _uiConfig.showTime = value;
                           });
-                          await _saveConfig();
+                          _saveConfig();
                           uiConfigNotifier.showTime.value = value;
                         },
                       );
@@ -1681,7 +1681,7 @@ class SettingsPageState extends State<SettingsPage> {
                           setState(() {
                             _uiConfig.showSize = value;
                           });
-                          await _saveConfig();
+                          _saveConfig();
                           uiConfigNotifier.showSize.value = value;
                         },
                       );
@@ -1695,7 +1695,7 @@ class SettingsPageState extends State<SettingsPage> {
                           setState(() {
                             _uiConfig.showDownloadStatus = value;
                           });
-                          await _saveConfig();
+                          _saveConfig();
                           uiConfigNotifier.showDownloadStatus.value = value;
                         },
                       );
@@ -1709,7 +1709,7 @@ class SettingsPageState extends State<SettingsPage> {
                           setState(() {
                             _uiConfig.showType = value;
                           });
-                          await _saveConfig();
+                          _saveConfig();
                           uiConfigNotifier.showType.value = value;
                         },
                       );
@@ -1723,7 +1723,7 @@ class SettingsPageState extends State<SettingsPage> {
                           setState(() {
                             _uiConfig.showContent = value;
                           });
-                          await _saveConfig();
+                          _saveConfig();
                           uiConfigNotifier.showContent.value = value;
                         },
                       );
@@ -1816,7 +1816,7 @@ class SettingsPageState extends State<SettingsPage> {
                                 maxConcurrentTransfers: value,
                               );
                             });
-                            await _saveConfig();
+                            _saveConfig();
                           },
                           onCanceled: () => setState(() {
                             _maxTransfersPopupVisible = false;
@@ -2011,7 +2011,7 @@ class SettingsPageState extends State<SettingsPage> {
                             _uiConfig = UiConfig();
                             _downloadConfig = TransferConfig();
                             uiConfigNotifier.setValues(_uiConfig);
-                            await _saveConfig();
+                            _saveConfig();
                           }
                         },
                       );
@@ -2045,7 +2045,7 @@ class PinnedFoldersPageState extends State<PinnedFoldersPage> {
   }
 
   Future<void> _saveConfig() async {
-    await ConfigManager.savePinnedFolders(_pinnedFolders);
+    ConfigManager.savePinnedFolders(_pinnedFolders);
   }
 
   @override
