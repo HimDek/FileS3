@@ -160,7 +160,7 @@ class RemoteFile implements RemoteFileFields {
     required this.key,
     int size = 0,
     required this.etag,
-    lastModified,
+    DateTime? lastModified,
   }) : _size = size,
        _lastModified = lastModified;
 

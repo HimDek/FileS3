@@ -199,7 +199,7 @@ class S3TransferTask {
 
     final head = await profile!.fileManager!.headObject(key);
     final remoteEtag = head['etag']?.replaceAll('"', '') ?? '';
-    final total = int.tryParse(head['size'] ?? '0') ?? 0;
+    final total = int.tryParse(head['content-length'] ?? '0') ?? 0;
     final lastModified =
         DateTime.tryParse(head['last-modified'] ?? '') ??
         DateTime.fromMillisecondsSinceEpoch(0);

@@ -1102,14 +1102,25 @@ abstract class Job {
         final result = await task!.start();
         status.value = JobStatus.stopped;
         if (bytesCompleted.value >= bytes && result != null) {
+          int size = bytes;
+          DateTime? lastModified;
+          try {
+            final head = await profile!.fileManager!.headObject(remoteKey);
+            lastModified =
+                DateTime.tryParse(head["last-modified"] ?? '') ??
+                localFile.lastModifiedSync();
+            size = int.tryParse(head["content-length"] ?? '') ?? bytes;
+          } catch (e) {
+            debugPrint("Error parsing result: $e");
+          }
           status.value = JobStatus.completed;
           final resultFile = RemoteFile(
             key: remoteKey,
-            size: bytes,
+            size: size,
             etag: result['etag'] != null && result['etag']!.isNotEmpty
                 ? result['etag']!.substring(1, result['etag']!.length - 1)
                 : '',
-            lastModified: localFile.lastModifiedSync(),
+            lastModified: lastModified,
           );
           onStatus?.call(this, resultFile);
         } else {
