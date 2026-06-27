@@ -32,6 +32,7 @@ dependencies:
     sdk: flutter
   ini:
   dio:
+  xml:
   http:
   path:
   mime:
@@ -43,7 +44,6 @@ dependencies:
   open_file:
   share_plus:
   pasteboard:
-  aws_s3_api:
   collection:
   photo_view:
   fuzzywuzzy:

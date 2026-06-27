@@ -1,14 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:xml/xml.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:aws_s3_api/s3-2006-03-01.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/profile.dart';
 import 'package:files3/models.dart';
 
 class S3FileManager {
-  late final S3 _s3;
   late final Profile _profile;
   late final String _accessKey;
   late final String _secretKey;
@@ -25,17 +24,6 @@ class S3FileManager {
   S3FileManager._(Profile profile, S3Config cfg, http.Client client) {
     _profile = profile;
     _client = client;
-    _s3 = S3(
-      region: cfg.region,
-      credentials: AwsClientCredentials(
-        accessKey: cfg.accessKey,
-        secretKey: cfg.secretKey,
-      ),
-      client: _client,
-      endpointUrl: cfg.host.isEmpty
-          ? 'https://s3.${cfg.region}.amazonaws.com'
-          : 'https://${cfg.host}',
-    );
     _bucket = cfg.bucket;
     _prefix = cfg.prefix;
     _host = cfg.host.isEmpty
@@ -62,22 +50,21 @@ class S3FileManager {
   }
 
   Future<dynamic> createDirectory(String dir) async {
-    String key = p.s3.asDir(dir);
-
+    final encodedUri = getEncodedUri(key: p.s3.asDir(dir));
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
     final amzDate = formatAmzDate(now);
     final shortDate = formatDate(now);
 
     final headers = buildSignedHeaders(
-      key: key,
+      encodedUri: encodedUri,
       method: 'PUT',
       amzDate: amzDate,
       shortDate: shortDate,
       contentHash: contentHash,
     );
 
-    final request = http.Request('PUT', getUri(key))..headers.addAll(headers);
+    final request = http.Request('PUT', encodedUri)..headers.addAll(headers);
 
     final response = await _client
         .send(request)
@@ -102,37 +89,87 @@ class S3FileManager {
       p.s3.relative(dir, from: _profile.name),
     );
     prefix = prefix.isEmpty ? null : prefix;
-    final ListObjectsOutput resp = await _s3.listObjects(
-      bucket: _bucket,
-      prefix: prefix,
-    );
-    final contents = resp.contents ?? [];
-    final files = contents
-        .where((item) => item.key != null)
-        .map(
-          (item) => RemoteFile(
-            key: p.s3.join(
-              _profile.name,
-              p.s3.relative(item.key!, from: _prefix),
+
+    final files = <RemoteFile>[];
+    String? continuationToken;
+
+    while (true) {
+      final contentHash = emptySha256;
+      final now = DateTime.now().toUtc();
+      final amzDate = formatAmzDate(now);
+      final shortDate = formatDate(now);
+      final query = <String, String>{
+        'list-type': '2',
+        'prefix': ?prefix,
+        'continuation-token': ?continuationToken,
+      };
+      final encodedUri = getEncodedUri(queryParameters: query);
+
+      final headers = buildSignedHeaders(
+        encodedUri: encodedUri,
+        method: 'GET',
+        amzDate: amzDate,
+        shortDate: shortDate,
+        contentHash: contentHash,
+      );
+
+      final request = http.Request('GET', encodedUri)..headers.addAll(headers);
+
+      final response = await _client
+          .send(request)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () => throw TimeoutException('Request timed out'),
+          );
+
+      final body = await response.stream.bytesToString();
+
+      if (response.statusCode != 200) {
+        throw Exception('ListObjectsV2 failed: ${response.statusCode} - $body');
+      }
+
+      final xml = XmlDocument.parse(body);
+
+      for (final object in xml.findAllElements('Contents')) {
+        final key = object.getElement('Key')?.innerText;
+        if (key == null) continue;
+
+        files.add(
+          RemoteFile(
+            key: p.s3.join(_profile.name, p.s3.relative(key, from: _prefix)),
+            size: int.parse(object.getElement('Size')?.innerText ?? '0'),
+            etag:
+                object.getElement('ETag')?.innerText.replaceAll('"', '') ?? '',
+            lastModified: DateTime.parse(
+              object.getElement('LastModified')?.innerText ??
+                  '1970-01-01T00:00:00Z',
             ),
-            size: item.size ?? 0,
-            etag: item.eTag != null && item.eTag!.isNotEmpty
-                ? item.eTag!.substring(1, item.eTag!.length - 1)
-                : '',
-            lastModified: item.lastModified ?? DateTime.now(),
           ),
         );
+      }
+
+      final truncated =
+          xml
+              .getElement('ListBucketResult')
+              ?.getElement('IsTruncated')
+              ?.innerText ==
+          'true';
+
+      if (!truncated) break;
+
+      continuationToken = xml
+          .getElement('ListBucketResult')
+          ?.getElement('NextContinuationToken')
+          ?.innerText;
+    }
+
     return files;
   }
 
   Future<dynamic> copyFile(String sourceKey, String destinationKey) async {
-    String prefixedSourceKey = p.s3.join(
-      _prefix,
-      p.s3.relative(sourceKey, from: _profile.name),
-    );
-
+    final encodedUri = getEncodedUri(key: destinationKey);
     final copySource =
-        '/$_bucket/${prefixedSourceKey.split('/').map(awsEncode).join('/')}';
+        '/$_bucket/${p.s3.join(_prefix, p.s3.relative(sourceKey, from: _profile.name)).split('/').map(awsEncode).join('/')}';
 
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
@@ -140,7 +177,7 @@ class S3FileManager {
     final shortDate = formatDate(now);
 
     final headers = buildSignedHeaders(
-      key: destinationKey,
+      encodedUri: encodedUri,
       method: 'PUT',
       amzDate: amzDate,
       shortDate: shortDate,
@@ -148,8 +185,7 @@ class S3FileManager {
       contentHash: contentHash,
     );
 
-    final request = http.Request('PUT', getUri(destinationKey))
-      ..headers.addAll(headers);
+    final request = http.Request('PUT', encodedUri)..headers.addAll(headers);
 
     final response = await _client
         .send(request)
@@ -169,21 +205,21 @@ class S3FileManager {
   }
 
   Future<dynamic> deleteFile(String key) async {
+    final encodedUri = getEncodedUri(key: key);
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
     final amzDate = formatAmzDate(now);
     final shortDate = formatDate(now);
 
     final headers = buildSignedHeaders(
-      key: key,
+      encodedUri: encodedUri,
       method: 'DELETE',
       amzDate: amzDate,
       shortDate: shortDate,
       contentHash: contentHash,
     );
 
-    final request = http.Request('DELETE', getUri(key))
-      ..headers.addAll(headers);
+    final request = http.Request('DELETE', encodedUri)..headers.addAll(headers);
 
     final response = await _client
         .send(request)
@@ -202,20 +238,20 @@ class S3FileManager {
     return response.headers;
   }
 
-  Future<({String etag, int size})> headObject(String key) async {
+  Future<Map<String, String>> headObject(String key) async {
+    final encodedUri = getEncodedUri(key: key);
     final now = DateTime.now().toUtc();
 
     final headers = buildSignedHeaders(
-      key: key,
+      encodedUri: encodedUri,
       method: 'HEAD',
       amzDate: formatAmzDate(now),
       shortDate: formatDate(now),
       contentHash: S3FileManager.emptySha256,
     );
 
-    final uri = getUri(key);
     final res = await _client
-        .head(uri, headers: headers)
+        .head(encodedUri, headers: headers)
         .timeout(
           const Duration(minutes: 1),
           onTimeout: () {
@@ -227,24 +263,14 @@ class S3FileManager {
       throw Exception('HEAD failed: ${res.statusCode}');
     }
 
-    final etag = res.headers['etag']?.replaceAll('"', '');
-    final length = res.headers['content-length'];
-
-    if (etag == null || length == null) {
-      throw Exception('HEAD missing ETag or Content-Length');
-    }
-
-    return (etag: etag, size: int.parse(length));
+    return res.headers;
   }
 
   String getUrl(String key, {int? validForSeconds}) {
     final now = DateTime.now().toUtc();
     final amzDate = formatAmzDate(now);
     final shortDate = formatDate(now);
-
     final credentialScope = '$shortDate/$_region/s3/aws4_request';
-    final encodedPath =
-        '/${p.s3.join(_prefix, p.s3.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}';
 
     final queryParams = <String, String>{
       'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
@@ -255,22 +281,12 @@ class S3FileManager {
       'X-Amz-Content-Sha256': 'UNSIGNED-PAYLOAD',
     };
 
-    /// Canonical query string (sorted)
-    final encodedParams = queryParams.entries.map((e) {
-      return MapEntry(encode(e.key), encode(e.value));
-    }).toList();
+    final encodedUri = getEncodedUri(key: key, queryParameters: queryParams);
 
-    encodedParams.sort((a, b) => a.key.compareTo(b.key));
-
-    final canonicalQuery = encodedParams
-        .map((e) => '${e.key}=${e.value}')
-        .join('&');
-
-    /// Canonical request
     final canonicalRequest = [
       'GET',
-      encodedPath,
-      canonicalQuery,
+      encodedUri.path,
+      encodedUri.query,
       'host:${_host.toLowerCase()}\n',
       'host',
       'UNSIGNED-PAYLOAD',
@@ -290,18 +306,13 @@ class S3FileManager {
       signingKey,
     ).convert(utf8.encode(stringToSign)).toString();
 
-    final presignedUri = Uri(
-      scheme: 'https',
-      host: _host,
-      path: encodedPath,
-      query: '$canonicalQuery&X-Amz-Signature=$signature',
-    );
-
-    return presignedUri.toString();
+    return encodedUri
+        .replace(query: '${encodedUri.query}&X-Amz-Signature=$signature')
+        .toString();
   }
 
   Map<String, String> buildSignedHeaders({
-    required String key,
+    required Uri encodedUri,
     required String method,
     required String amzDate,
     required String shortDate,
@@ -344,26 +355,22 @@ class S3FileManager {
         .map((e) => e.key.toLowerCase())
         .join(';');
 
-    // 5. Canonical URI (already encoded)
-    final encodedPath =
-        '/${p.s3.join(_prefix, p.s3.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}';
-
-    // 6. Assemble canonical request
+    // 5. Assemble canonical request
     final canonicalRequest = [
       method,
-      encodedPath,
-      '', // no query string
+      encodedUri.path,
+      encodedUri.query,
       canonicalHeaders,
       signedHeadersString,
       contentHash,
     ].join('\n');
 
-    // 7. Hash the canonical request
+    // 6. Hash the canonical request
     final hashedCanonical = sha256
         .convert(utf8.encode(canonicalRequest))
         .toString();
 
-    // 8. Build string to sign
+    // 7. Build string to sign
     final stringToSign = [
       'AWS4-HMAC-SHA256',
       amzDate,
@@ -371,23 +378,23 @@ class S3FileManager {
       hashedCanonical,
     ].join('\n');
 
-    // 9. Derive signing key
+    // 8. Derive signing key
     final signingKey = getSigningKey(_secretKey, shortDate, _region, service);
 
-    // 10. Compute signature
+    // 9. Compute signature
     final signature = Hmac(
       sha256,
       signingKey,
     ).convert(utf8.encode(stringToSign)).toString();
 
-    // 11. Build Authorization header
+    // 10. Build Authorization header
     final authorization = [
       'AWS4-HMAC-SHA256 Credential=$_accessKey/$credentialScope',
       'SignedHeaders=$signedHeadersString',
       'Signature=$signature',
     ].join(', ');
 
-    // 12. Return all headers including Authorization
+    // 11. Return all headers including Authorization
     return {...headers, 'Authorization': authorization};
   }
 
@@ -431,12 +438,24 @@ class S3FileManager {
   static String formatDate(DateTime time) =>
       time.toIso8601String().split('T').first.replaceAll('-', '');
 
-  Uri getUri(String key) {
+  Uri getEncodedUri({
+    String? key,
+    Map<String, String> queryParameters = const {},
+  }) {
+    final queryEntries = queryParameters.entries.map((e) {
+      return MapEntry(encode(e.key), encode(e.value));
+    }).toList();
+    queryEntries.sort((a, b) {
+      final c = a.key.compareTo(b.key);
+      return c != 0 ? c : a.value.compareTo(b.value);
+    });
     return Uri(
       scheme: 'https',
       host: _host,
-      path:
-          '/${p.s3.join(_prefix, p.s3.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}',
+      path: key == null
+          ? '/'
+          : '/${p.s3.join(_prefix, p.s3.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}',
+      query: queryEntries.map((e) => '${e.key}=${e.value}').join('&'),
     );
   }
 

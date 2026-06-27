@@ -115,9 +115,9 @@ class S3TransferTask {
     final contentHash = 'UNSIGNED-PAYLOAD';
     final contentMD5 = base64.encode(md5.bytes);
     final now = DateTime.now().toUtc();
-
+    final encodedUri = profile!.fileManager!.getEncodedUri(key: key);
     final headers = profile!.fileManager!.buildSignedHeaders(
-      key: key,
+      encodedUri: encodedUri,
       method: 'PUT',
       amzDate: S3FileManager.formatAmzDate(now),
       shortDate: S3FileManager.formatDate(now),
@@ -125,9 +125,7 @@ class S3TransferTask {
       contentMD5: contentMD5,
       contentType: lookupMimeType(localFile.path),
     );
-
-    final uri = profile!.fileManager!.getUri(key);
-    final req = await httpClient.openUrl('PUT', uri);
+    final req = await httpClient.openUrl('PUT', encodedUri);
 
     headers.forEach(req.headers.set);
     req.contentLength = totalBytes;
@@ -198,8 +196,8 @@ class S3TransferTask {
     final now = DateTime.now().toUtc();
 
     final head = await profile!.fileManager!.headObject(key);
-    final remoteEtag = head.etag;
-    final total = head.size;
+    final remoteEtag = head['etag']?.replaceAll('"', '') ?? '';
+    final total = int.tryParse(head['size'] ?? '0') ?? 0;
 
     final tempFile = File('${Main.cachePathFromKey(key)}.tmp');
     final tagFile = File(Main.tagPathFromKey(key));
@@ -237,16 +235,15 @@ class S3TransferTask {
       if (await tempFile.exists()) await tempFile.delete();
     }
 
+    final encodedUri = profile!.fileManager!.getEncodedUri(key: key);
     final headers = profile!.fileManager!.buildSignedHeaders(
-      key: key,
+      encodedUri: encodedUri,
       method: 'GET',
       amzDate: S3FileManager.formatAmzDate(now),
       shortDate: S3FileManager.formatDate(now),
       contentHash: S3FileManager.emptySha256,
     );
-
-    final uri = profile!.fileManager!.getUri(key);
-    final req = await httpClient.openUrl('GET', uri);
+    final req = await httpClient.openUrl('GET', encodedUri);
 
     if (offset > 0) {
       req.headers.set('Range', 'bytes=$offset-');
