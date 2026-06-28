@@ -240,7 +240,7 @@ class FileContextActionHandler extends FileContextActionHandlerDelegate {
         title: 'Preparing file to open...',
       );
       if (files.isNotEmpty) {
-        OpenFile.open(files[0]);
+        OpenFile.open(files.first);
       }
     };
   }
@@ -434,7 +434,8 @@ class DirectoryContextActionHandler
   String get file => directories.first;
 
   void Function()? open() {
-    return Directory(Main.pathFromKey(file)).existsSync()
+    return Directory(Main.pathFromKey(file)).existsSync() &&
+            (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
         ? () {
             launchUrl(Uri.file(Main.pathFromKey(file)));
           }
@@ -1073,7 +1074,9 @@ class DirectoryContextOption extends DirectoryContextOptionDelegate {
         return DirectoryContextOption(
           title: openAction == null ? 'Cannot Open' : 'Open',
           subtitle: openAction == null
-              ? 'Directory does not exist locally'
+              ? handler.localDirectories.isEmpty
+                    ? 'Directory does not exist locally'
+                    : 'Unsupported platform for opening directories'
               : Main.pathFromKey(handler.file),
           icon: openAction == null ? Icons.open_in_new_off : Icons.open_in_new,
           action: openAction,
@@ -1112,7 +1115,8 @@ class DirectoryContextOption extends DirectoryContextOptionDelegate {
   ) {
     return [
       [
-        DirectoryContextOption.open(handler),
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+          DirectoryContextOption.open(handler),
         ContextOptionDelegate.download(handler),
         DirectoryContextOptionDelegate.saveAs(context, handler),
       ],
