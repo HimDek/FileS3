@@ -595,6 +595,11 @@ Future<List<String>> keysToPaths(
             client: httpClient,
           );
           if (file != null) {
+            if (Directory(p.context.dirname(cachePath)).existsSync() == false) {
+              Directory(
+                p.context.dirname(cachePath),
+              ).createSync(recursive: true);
+            }
             renameOrCopyAndDelete(file, cachePath);
             paths.add(cachePath);
           }
