@@ -73,10 +73,9 @@ class FilesPickerState extends BrowserState {
               child: FloatingActionButton(
                 heroTag: 'done',
                 child: const Icon(Icons.done),
-                onPressed: () {
-                  Navigator.of(
-                    context,
-                  ).pop(widget.onFilesPick?.call(_selection.value.toList()));
+                onPressed: () async {
+                  await widget.onFilesPick?.call(_selection.value.toList());
+                  Navigator.of(context).pop(_selection.value.toList());
                 },
               ),
             ),
@@ -392,7 +391,7 @@ class Browser extends StatefulWidget {
   final Future<void> Function(String)? createDirectory;
   final void Function(String, Directory)? uploadDirectory;
   final Function(String)? onPick;
-  final Function(List<String>)? onFilesPick;
+  final Future<void> Function(List<String>)? onFilesPick;
   final List<RegExp>? mimeTypes;
   final bool allowMultiple;
 

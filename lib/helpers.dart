@@ -567,9 +567,8 @@ Future<List<String>> keysToPaths(
   try {
     while (ikeys.moveNext()) {
       final fileExists = File(Main.pathFromKey(ikeys.current)).existsSync();
-      final cacheExists = File(
-        Main.cachePathFromKey(ikeys.current),
-      ).existsSync();
+      final cachePath = Main.cachePathFromKey(ikeys.current);
+      final cacheExists = File(cachePath).existsSync();
       if (fileExists || cacheExists) {
         onMessage?.call('Adding ${i + 1}/${keys.length}...');
         if (fileExists) {
@@ -579,7 +578,6 @@ Future<List<String>> keysToPaths(
         }
       } else {
         onMessage?.call('Downloading ${i + 1}/${keys.length}...');
-        final cachePath = Main.cachePathFromKey(ikeys.current);
         try {
           final file = await uriToFile(
             Main.profileFromKey(

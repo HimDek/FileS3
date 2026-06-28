@@ -466,10 +466,11 @@ abstract class Main {
 
   static String cachePathFromKey(String key) {
     return p.context.joinAll([
-      _downloadCacheDir,
-      for (String part in p.s3.split(key))
-        sha1.convert(utf8.encode(part)).toString(),
-    ]);
+          _downloadCacheDir,
+          for (String part in p.s3.split(key))
+            sha1.convert(utf8.encode(part)).toString(),
+        ]) +
+        (!p.isDir(key) ? p.s3.extension(key) : '');
   }
 
   static String tagPathFromKey(String key) {
