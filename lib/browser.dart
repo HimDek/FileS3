@@ -386,7 +386,7 @@ class Browser extends StatefulWidget {
   final Function(Iterable<String>)? downloadDirectories;
   final Function(String, String)? saveFile;
   final Function(String, String)? saveDirectory;
-  final Function(List<String>)? deleteLocals;
+  final Function(Iterable<String>)? deleteLocals;
   final Function(String)? deleteCache;
   final Future<void> Function(String)? createDirectory;
   final void Function(String, Directory)? uploadDirectory;
@@ -789,16 +789,16 @@ class BrowserState extends State<Browser> {
           );
   }
 
-  void _cut(String? key) {
-    if (key != null) {
-      _selection.value = {..._selection.value, key};
+  void _cut(Iterable<String>? keys) {
+    if (keys != null) {
+      _selection.value = {..._selection.value, ...keys};
     }
     _selectionAction.value = SelectionAction.cut;
   }
 
-  void _copy(String? key) {
-    if (key != null) {
-      _selection.value = {..._selection.value, key};
+  void _copy(Iterable<String>? keys) {
+    if (keys != null) {
+      _selection.value = {..._selection.value, ...keys};
     }
     _selectionAction.value = SelectionAction.copy;
   }
@@ -957,7 +957,7 @@ class BrowserState extends State<Browser> {
                     : widget.deleteCache,
                 loading.value || widget.onFilesPick != null
                     ? null
-                    : (List<String> dirs) async =>
+                    : (Iterable<String> dirs) async =>
                           await Main.deleteDirectories(dirs, refresh: true),
                 () {
                   _rebuildContext.notifyListeners();
@@ -988,7 +988,7 @@ class BrowserState extends State<Browser> {
                     : widget.deleteCache,
                 loading.value || widget.onFilesPick != null
                     ? null
-                    : (List<String> keys) async =>
+                    : (Iterable<String> keys) async =>
                           await Main.deleteFiles(keys, refresh: true),
                 () {
                   _rebuildContext.notifyListeners();

@@ -53,7 +53,7 @@ Future<File?> uriToFile(
 
     bytes = bytesBuilder.takeBytes();
   } catch (e) {
-    showSnackBar(SnackBar(content: Text("Error: $e")));
+    showSnackBar(SnackBar(content: Text(e.toString())));
     bytes = null;
     return null;
   } finally {
@@ -259,7 +259,7 @@ Future<T> showProgressDialog<T>(
   VoidCallback? onCancel,
   required Future<T> future,
 }) async {
-  final dialogFuture = showDialog(
+  showDialog<bool>(
     context: context,
     barrierDismissible: false,
     builder: (BuildContext context) => AlertDialog(
@@ -279,16 +279,19 @@ Future<T> showProgressDialog<T>(
         if (onCancel != null)
           TextButton(
             onPressed: () {
-              onCancel();
-              Navigator.of(context).pop();
+              Navigator.of(context).pop(false);
             },
             child: const Text('Cancel'),
           ),
       ],
     ),
-  );
+  ).then((value) {
+    if (value == false) {
+      onCancel?.call();
+    }
+  });
   final result = await future;
-  await dialogFuture;
+  Navigator.of(context).pop(true);
   return result;
 }
 
@@ -616,7 +619,7 @@ Future<List<String>> keysToPaths(
               double progress = totalBytes > 0 ? bytesRead / totalBytes : 0.0;
               onProgress?.call((i + progress) / keys.length);
               if (cancelNotifier?.value ?? false) {
-                throw Exception('Download Cancelled');
+                throw 'Download Cancelled';
               }
             },
             client: httpClient,
@@ -637,7 +640,7 @@ Future<List<String>> keysToPaths(
         }
       }
       if (cancelNotifier?.value ?? false) {
-        throw Exception('Download Cancelled');
+        break;
       }
       onProgress?.call((i + 1) / keys.length);
       i++;

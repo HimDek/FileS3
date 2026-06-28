@@ -236,7 +236,7 @@ class _HomeState extends State<Home> {
     }
   }
 
-  void _deleteLocals(List<String> keys) {
+  void _deleteLocals(Iterable<String> keys) {
     for (final key in keys) {
       try {
         if (p.isDir(key)) {
@@ -354,7 +354,7 @@ class _HomeState extends State<Home> {
           progress.value = progressCount / totalFiles;
           final relativePath = p.s3.relative(key, from: dir);
           final localFilePath = p.context.joinAll([
-            localPath ?? Main.pathFromKey(key),
+            localPath ?? p.s3.dirname(Main.pathFromKey(key)),
             ...p.s3.split(relativePath),
           ]);
 
