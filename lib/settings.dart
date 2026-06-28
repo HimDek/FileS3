@@ -1217,7 +1217,7 @@ class SettingsPage extends StatefulWidget {
 class SettingsPageState extends State<SettingsPage> {
   UiConfig _uiConfig = ConfigManager.loadUiConfig();
   TransferConfig _downloadConfig = ConfigManager.loadTransferConfig();
-  int _cacheSize = Main.thumbCacheSize();
+  int _cacheSize = Main.cacheSize();
   int _thumbCacheSize = Main.thumbCacheSize();
   int _downloadCacheSize = Main.downloadCacheSize();
 
