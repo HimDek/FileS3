@@ -554,14 +554,14 @@ List<FileProps> sort(
   return sortedItems;
 }
 
-Future<List<XFile>> keysToXFiles(
+Future<List<String>> keysToPaths(
   Iterable<String> keys, {
   Function(double progress)? onProgress,
   Function(String message)? onMessage,
   ValueNotifier<bool>? cancelNotifier,
 }) async {
   final HttpClient httpClient = HttpClient();
-  final List<XFile> xFiles = [];
+  final List<String> paths = [];
   final ikeys = keys.iterator;
   int i = 0;
   try {
@@ -573,9 +573,9 @@ Future<List<XFile>> keysToXFiles(
       if (fileExists || cacheExists) {
         onMessage?.call('Adding ${i + 1}/${keys.length}...');
         if (fileExists) {
-          xFiles.add(XFile(Main.pathFromKey(ikeys.current)));
+          paths.add(Main.pathFromKey(ikeys.current));
         } else {
-          xFiles.add(XFile(Main.cachePathFromKey(ikeys.current)));
+          paths.add(Main.cachePathFromKey(ikeys.current));
         }
       } else {
         onMessage?.call('Downloading ${i + 1}/${keys.length}...');
@@ -596,7 +596,7 @@ Future<List<XFile>> keysToXFiles(
           );
           if (file != null) {
             renameOrCopyAndDelete(file, cachePath);
-            xFiles.add(XFile(cachePath));
+            paths.add(cachePath);
           }
         } catch (e) {
           if (!(cancelNotifier?.value ?? false)) {
@@ -618,7 +618,7 @@ Future<List<XFile>> keysToXFiles(
   } finally {
     httpClient.close(force: true);
   }
-  return xFiles;
+  return paths;
 }
 
 void renameOrCopyAndDelete(File file, String newPath) {

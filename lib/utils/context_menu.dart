@@ -88,14 +88,14 @@ class FileContextActionHandler extends ContextActionHandler {
         message,
         cancelNotifier,
       );
-      final paths = await keysToXFiles(
+      final paths = await keysToPaths(
         [file],
         onMessage: (m) => message.value = m,
         onProgress: (p) => progress.value = p,
         cancelNotifier: cancelNotifier,
       );
       if (!cancelNotifier.value && paths.isNotEmpty) {
-        OpenFile.open(paths[0].path);
+        OpenFile.open(paths[0]);
       }
       progress.dispose();
       message.dispose();
@@ -909,14 +909,16 @@ class FileContextOption {
           message,
           cancelNotifier,
         );
-        final files = await keysToXFiles(
+        final files = await keysToPaths(
           [handler.file],
           onMessage: (m) => message.value = m,
           onProgress: (p) => progress.value = p,
           cancelNotifier: cancelNotifier,
         );
         if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(ShareParams(files: <XFile>[files[0]]));
+          SharePlus.instance.share(
+            ShareParams(files: <XFile>[XFile(files[0])]),
+          );
         }
         progress.dispose();
         message.dispose();
@@ -1287,14 +1289,16 @@ class FilesContextOption {
           message,
           cancelNotifier,
         );
-        final files = await keysToXFiles(
+        final files = await keysToPaths(
           handler.files,
           onMessage: (m) => message.value = m,
           onProgress: (p) => progress.value = p,
           cancelNotifier: cancelNotifier,
         );
         if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(ShareParams(files: files));
+          SharePlus.instance.share(
+            ShareParams(files: files.map((path) => XFile(path)).toList()),
+          );
         }
         progress.dispose();
         message.dispose();
@@ -1741,14 +1745,16 @@ class DirectoryContextOption {
           message,
           cancelNotifier,
         );
-        final files = await keysToXFiles(
+        final files = await keysToPaths(
           handler.files,
           onMessage: (m) => message.value = m,
           onProgress: (p) => progress.value = p,
           cancelNotifier: cancelNotifier,
         );
         if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(ShareParams(files: files));
+          SharePlus.instance.share(
+            ShareParams(files: files.map((path) => XFile(path)).toList()),
+          );
         }
         progress.dispose();
         message.dispose();
@@ -2145,14 +2151,16 @@ class DirectoriesContextOption {
           message,
           cancelNotifier,
         );
-        final files = await keysToXFiles(
+        final files = await keysToPaths(
           handler.files,
           onMessage: (m) => message.value = m,
           onProgress: (p) => progress.value = p,
           cancelNotifier: cancelNotifier,
         );
         if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(ShareParams(files: files));
+          SharePlus.instance.share(
+            ShareParams(files: files.map((path) => XFile(path)).toList()),
+          );
         }
         progress.dispose();
         message.dispose();
@@ -2615,7 +2623,7 @@ class BulkContextOption {
           message,
           cancelNotifier,
         );
-        final files = await keysToXFiles(
+        final files = await keysToPaths(
           [...filesHandler.files, ...directoriesHandler.files],
           onProgress: (p) {
             progress.value =
@@ -2626,7 +2634,9 @@ class BulkContextOption {
           cancelNotifier: cancelNotifier,
         );
         if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(ShareParams(files: files));
+          SharePlus.instance.share(
+            ShareParams(files: files.map((path) => XFile(path)).toList()),
+          );
         }
         progress.dispose();
         message.dispose();

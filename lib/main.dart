@@ -504,20 +504,27 @@ class _HomeState extends State<Home> {
     }
     return FilesPicker(
       title: Text('Select File${allowMultiple ? 's' : ''}'),
-      onFilesPick: (keys) {
+      onFilesPick: (keys) async {
         List<String> files = [];
-        for (final key in keys) {
-          if (p.isDir(key)) {
-            for (final file in Main.remoteFilesByDir(
-              key,
-              recursive: true,
-            ).where((file) => !p.isDir(file.key))) {
-              files.add(Main.pathFromKey(file.key));
-            }
-          } else {
-            files.add(Main.pathFromKey(key));
-          }
-        }
+        final progress = ValueNotifier<double>(0.0);
+        final message = ValueNotifier<String>('');
+        final cancelNotifier = ValueNotifier<bool>(false);
+        showProgressDialog(
+          context,
+          'Preparing files...',
+          progress,
+          message,
+          cancelNotifier,
+        );
+        files = await keysToPaths(
+          keys,
+          onMessage: (m) => message.value = m,
+          onProgress: (p) => progress.value = p,
+          cancelNotifier: cancelNotifier,
+        );
+        progress.dispose();
+        message.dispose();
+        cancelNotifier.dispose();
         final resultIntent = receive_intent.Intent(
           data: files.isNotEmpty ? files.first : null,
           clipData: files.length > 1 ? files : null,
