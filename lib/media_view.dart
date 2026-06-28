@@ -925,7 +925,6 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
   void dispose() {
     _progress.dispose();
     _photoViewController.dispose();
-    widget.httpClient?.close(force: true);
     super.dispose();
   }
 
