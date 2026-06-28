@@ -32,9 +32,8 @@ Future<File> uriToFile(
   final HttpClient httpClient = HttpClient();
   final UriContent uriContent = UriContent(httpClient: httpClient);
 
+  final uri = Uri.parse(uriString);
   try {
-    final uri = Uri.parse(uriString);
-
     final int? totalBytes = await uriContent.getContentLengthOrNull(uri);
     final Stream<List<int>> byteStream = uriContent.getContentStream(uri);
     final BytesBuilder bytesBuilder = BytesBuilder(copy: false);
@@ -63,7 +62,7 @@ Future<File> uriToFile(
     bytes ?? Uint8List(0),
   );
 
-  final b = p.posix.basename(uriString);
+  final b = p.posix.basename(uri.path);
   String destinationPath = p.context.join(Main.cacheDir, b);
 
   if (!destinationPath.endsWith('.${type.toString().split('.').last}') &&
@@ -248,6 +247,32 @@ Future<bool> confirmDialog(
     ),
   );
   return result ?? false;
+}
+
+Future<void> showProgressDialog(
+  BuildContext context,
+  String title,
+  ValueNotifier<double> progress,
+  ValueNotifier<String> message,
+) {
+  return showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (BuildContext context) => AlertDialog(
+      title: Text(title),
+      content: ListenableBuilder(
+        listenable: Listenable.merge([progress, message]),
+        builder: (context, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LinearProgressIndicator(value: progress.value),
+            SizedBox(height: 16),
+            Text(message.value),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 String bytesToReadable(int bytes) {
@@ -509,6 +534,47 @@ List<FileProps> sort(
     }
   });
   return sortedItems;
+}
+
+Future<List<XFile>> keysToXFiles(
+  Iterable<String> keys, {
+  Function(double progress)? onProgress,
+  Function(String message)? onMessage,
+}) async {
+  List<XFile> xFiles = [];
+  final ikeys = keys.iterator;
+  int i = 0;
+  while (ikeys.moveNext()) {
+    final fileExists = File(Main.pathFromKey(ikeys.current)).existsSync();
+    final cacheExists = File(Main.cachePathFromKey(ikeys.current)).existsSync();
+    if (fileExists || cacheExists) {
+      onMessage?.call('Adding ${i + 1}/${keys.length}...');
+      if (fileExists) {
+        xFiles.add(XFile(Main.pathFromKey(ikeys.current)));
+      } else {
+        xFiles.add(XFile(Main.cachePathFromKey(ikeys.current)));
+      }
+    } else {
+      onMessage?.call('Downloading ${i + 1}/${keys.length}...');
+      final cachePath = Main.cachePathFromKey(ikeys.current);
+      renameOrCopyAndDelete(
+        await uriToFile(
+          Main.profileFromKey(
+            ikeys.current,
+          )!.fileManager!.getUrl(ikeys.current),
+          onProgress: (bytesRead, totalBytes) {
+            double progress = totalBytes > 0 ? bytesRead / totalBytes : 0.0;
+            onProgress?.call((i + progress) / keys.length);
+          },
+        ),
+        cachePath,
+      );
+      xFiles.add(XFile(cachePath));
+    }
+    onProgress?.call((i + 1) / keys.length);
+    i++;
+  }
+  return xFiles;
 }
 
 void renameOrCopyAndDelete(File file, String newPath) {

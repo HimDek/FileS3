@@ -933,6 +933,7 @@ class BrowserState extends State<Browser> {
                 context,
                 file.key,
                 _selection.value.isEmpty,
+                _getLink,
                 loading.value || widget.onFilesPick != null
                     ? null
                     : widget.downloadDirectories,

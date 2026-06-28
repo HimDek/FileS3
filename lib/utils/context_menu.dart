@@ -63,7 +63,8 @@ class FileContextActionHandler extends ContextActionHandler {
       _rootExistsCache ??= p.isAbsolute(Main.pathFromKey(file));
 
   bool get downloaded => _downloadedCache ??=
-      !p.isDir(file) && Main.remoteFileByKey(file)?.downloaded == true;
+      !p.isDir(file) &&
+      Main.remoteFileByKey(file)?.getDownloaded(refresh: true) == true;
 
   bool get cacheExists => _cacheExistsCache ??=
       !p.isDir(file) && File(Main.cachePathFromKey(file)).existsSync();
@@ -75,21 +76,23 @@ class FileContextActionHandler extends ContextActionHandler {
   bool get removable => _removableCache ??=
       downloaded && Main.backupModeFromKey(file) == BackupMode.upload;
 
-  dynamic Function()? open() {
-    final link = getLink(file, null);
-    return downloaded
-        ? () {
-            OpenFile.open(Main.pathFromKey(file));
-          }
-        : cacheExists
-        ? () {
-            OpenFile.open(Main.cachePathFromKey(file));
-          }
-        : link == null
-        ? null
-        : () {
-            launchUrl(Uri.parse(link));
-          };
+  dynamic Function() open(BuildContext context) {
+    return () async {
+      final progress = ValueNotifier<double>(0.0);
+      final message = ValueNotifier<String>('');
+      showProgressDialog(
+        context,
+        'Opening ${p.s3.basename(file)}...',
+        progress,
+        message,
+      );
+      final path = (await getXFile(
+        onMessage: (m) => message.value = m,
+        onProgress: (p) => progress.value = p,
+      )()).path;
+      Navigator.of(context).pop(); // Close the progress dialog
+      OpenFile.open(path);
+    };
   }
 
   @override
@@ -119,16 +122,17 @@ class FileContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  XFile Function()? getXFile() {
-    return downloaded
-        ? () {
-            return XFile(Main.pathFromKey(file));
-          }
-        : cacheExists
-        ? () {
-            return XFile(Main.cachePathFromKey(file));
-          }
-        : null;
+  Future<XFile> Function() getXFile({
+    Function(double progress)? onProgress,
+    Function(String message)? onMessage,
+  }) {
+    return () async {
+      return (await keysToXFiles(
+        [file],
+        onProgress: onProgress,
+        onMessage: onMessage,
+      ))[0];
+    };
   }
 
   String? Function() getLinkToCopy(int? seconds) {
@@ -251,7 +255,9 @@ class FilesContextActionHandler extends ContextActionHandler {
   List<String> get downloadedFiles =>
       _downloadedFilesCache ??= List.unmodifiable(
         files.where(
-          (f) => !p.isDir(f) && Main.remoteFileByKey(f)?.downloaded == true,
+          (f) =>
+              !p.isDir(f) &&
+              Main.remoteFileByKey(f)?.getDownloaded(refresh: true) == true,
         ),
       );
 
@@ -270,11 +276,8 @@ class FilesContextActionHandler extends ContextActionHandler {
   );
 
   List<String> get removableFiles => _removableFilesCache ??= List.unmodifiable(
-    files.where(
-      (f) =>
-          !p.isDir(f) &&
-          Main.remoteFileByKey(f)?.downloaded == true &&
-          Main.backupModeFromKey(f) == BackupMode.upload,
+    downloadedFiles.where(
+      (f) => Main.backupModeFromKey(f) == BackupMode.upload,
     ),
   );
 
@@ -314,27 +317,17 @@ class FilesContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  List<XFile> Function()? getXFiles() {
-    return downloadedFiles.isNotEmpty
-        ? () {
-            return files
-                .where(
-                  (file) =>
-                      Main.remoteFileByKey(file)?.downloaded == true ||
-                      File(Main.cachePathFromKey(file)).existsSync(),
-                )
-                .map((file) {
-                  if (Main.remoteFileByKey(file)?.downloaded == true) {
-                    return XFile(Main.pathFromKey(file));
-                  } else if (File(Main.cachePathFromKey(file)).existsSync()) {
-                    return XFile(Main.cachePathFromKey(file));
-                  } else {
-                    throw Exception('File $file does not exist locally');
-                  }
-                })
-                .toList();
-          }
-        : null;
+  Future<List<XFile>> Function() getXFiles({
+    Function(double progress)? onProgress,
+    Function(String message)? onMessage,
+  }) {
+    return () async {
+      return await keysToXFiles(
+        files,
+        onProgress: onProgress,
+        onMessage: onMessage,
+      );
+    };
   }
 
   String Function() getLinksToCopy(int? seconds) {
@@ -420,6 +413,7 @@ class FilesContextActionHandler extends ContextActionHandler {
 
 class DirectoryContextActionHandler extends ContextActionHandler {
   final String file;
+  final String? Function(String, int?) getLink;
   final Function(List<String>)? downloadDirectories;
   final Function(String, String)? saveDirectory;
   final Future<void> Function(List<String>, List<String>)? moveDirectories;
@@ -437,6 +431,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
 
   DirectoryContextActionHandler({
     required this.file,
+    required this.getLink,
     required this.downloadDirectories,
     required this.saveDirectory,
     required this.moveDirectories,
@@ -470,7 +465,9 @@ class DirectoryContextActionHandler extends ContextActionHandler {
 
   List<String> get downloadedFiles =>
       _downloadedFilesCache ??= List.unmodifiable(
-        files.where((f) => Main.remoteFileByKey(f)?.downloaded == true),
+        files.where(
+          (f) => Main.remoteFileByKey(f)?.getDownloaded(refresh: true) == true,
+        ),
       );
 
   bool get cacheExist =>
@@ -485,14 +482,9 @@ class DirectoryContextActionHandler extends ContextActionHandler {
   );
 
   List<String> get removableFiles => _removableFilesCache ??= List.unmodifiable(
-    Main.remoteFilesByDir(file)
-        .map((f) => f.key)
-        .where(
-          (f) =>
-              !p.isDir(f) &&
-              Main.remoteFileByKey(f)?.downloaded == true &&
-              Main.backupModeFromKey(f) == BackupMode.upload,
-        ),
+    downloadedFiles.where(
+      (f) => Main.backupModeFromKey(f) == BackupMode.upload,
+    ),
   );
 
   void Function()? open() {
@@ -532,6 +524,30 @@ class DirectoryContextActionHandler extends ContextActionHandler {
             }
             return 'Saving ${p.s3.basename(file)} to $path';
           };
+  }
+
+  Future<List<XFile>> Function() getXFiles({
+    Function(double progress)? onProgress,
+    Function(String message)? onMessage,
+  }) {
+    return () async {
+      return await keysToXFiles(
+        files,
+        onProgress: onProgress,
+        onMessage: onMessage,
+      );
+    };
+  }
+
+  String Function() getLinksToCopy(int? seconds) {
+    return () {
+      final buffer = StringBuffer();
+      for (final file in files) {
+        buffer.writeln(getLink(file, seconds));
+        buffer.writeln();
+      }
+      return buffer.toString();
+    };
   }
 
   Future<String> Function()? rename(String newName) {
@@ -616,6 +632,7 @@ class DirectoryContextActionHandler extends ContextActionHandler {
 
 class DirectoriesContextActionHandler extends ContextActionHandler {
   final Iterable<String> directories;
+  final String? Function(String, int?) getLink;
   final Function(Iterable<String>)? downloadDirectories;
   final Function(String, String)? saveDirectory;
   final Function(List<String>)? deleteLocalDirectories;
@@ -632,6 +649,7 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
 
   DirectoriesContextActionHandler({
     required this.directories,
+    required this.getLink,
     required this.downloadDirectories,
     required this.saveDirectory,
     required this.deleteLocalDirectories,
@@ -675,7 +693,9 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
 
   List<String> get downloadedFiles =>
       _downloadedFilesCache ??= List.unmodifiable(
-        files.where((f) => Main.remoteFileByKey(f)?.downloaded == true),
+        files.where(
+          (f) => Main.remoteFileByKey(f)?.getDownloaded(refresh: true) == true,
+        ),
       );
 
   List<String> get cachedDirectories =>
@@ -693,23 +713,11 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
     ),
   );
 
-  List<String> get removableFiles =>
-      _removableFilesCache ??= List.unmodifiable(() {
-        List<String> removable = [];
-        for (final dir in directories) {
-          removable.addAll(
-            Main.remoteFilesByDir(dir, recursive: true)
-                .where(
-                  (f) =>
-                      !p.isDir(f.key) &&
-                      Main.remoteFileByKey(f.key)?.downloaded == true &&
-                      Main.backupModeFromKey(f.key) == BackupMode.upload,
-                )
-                .map((f) => f.key),
-          );
-        }
-        return removable;
-      }());
+  List<String> get removableFiles => _removableFilesCache ??= List.unmodifiable(
+    downloadedFiles.where(
+      (f) => Main.backupModeFromKey(f) == BackupMode.upload,
+    ),
+  );
 
   @override
   void Function()? download() {
@@ -746,6 +754,30 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
             return 'Saving ${directories.length} folders to $path';
           }
         : null;
+  }
+
+  Future<List<XFile>> Function() getXFiles({
+    Function(double progress)? onProgress,
+    Function(String message)? onMessage,
+  }) {
+    return () async {
+      return await keysToXFiles(
+        files,
+        onProgress: onProgress,
+        onMessage: onMessage,
+      );
+    };
+  }
+
+  String Function() getLinksToCopy(int? seconds) {
+    return () {
+      final buffer = StringBuffer();
+      for (final file in files) {
+        buffer.writeln(getLink(file, seconds));
+        buffer.writeln();
+      }
+      return buffer.toString();
+    };
   }
 
   Future<String> Function()? deleteUploaded(
@@ -833,15 +865,13 @@ class FileContextOption {
     this.popOnInvoked = false,
   });
 
-  static FileContextOption open(FileContextActionHandler handler) => (() {
-    final openAction = handler.open();
-    final localExists = handler.downloaded;
+  static FileContextOption open(
+    FileContextActionHandler handler,
+    BuildContext context,
+  ) => (() {
+    final openAction = handler.open(context);
     return FileContextOption(
-      title: localExists
-          ? 'Open with...'
-          : openAction == null
-          ? 'Link Unavailable'
-          : 'Open Link',
+      title: 'Open with...',
       subtitle: Main.pathFromKey(handler.file),
       icon: Icons.open_in_new_rounded,
       action: openAction,
@@ -905,17 +935,30 @@ class FileContextOption {
     popOnInvoked: false,
   );
 
-  static FileContextOption share(FileContextActionHandler handler) => (() {
-    final getXFile = handler.getXFile();
+  static FileContextOption share(
+    FileContextActionHandler handler,
+    BuildContext context,
+  ) => (() {
+    final progress = ValueNotifier<double>(0.0);
+    final message = ValueNotifier<String>('');
+    final getXFile = handler.getXFile(
+      onMessage: (m) => message.value = m,
+      onProgress: (p) => progress.value = p,
+    );
     return FileContextOption(
-      title: getXFile == null ? 'Cannot Share' : 'Share',
+      title: 'Share',
       icon: Icons.share_rounded,
-      subtitle: getXFile == null ? 'Only downloaded files can be shared' : null,
-      action: getXFile != null
-          ? () {
-              SharePlus.instance.share(ShareParams(files: <XFile>[getXFile()]));
-            }
-          : null,
+      action: () async {
+        showProgressDialog(
+          context,
+          'Preparing file for sharing...',
+          progress,
+          message,
+        );
+        final file = await getXFile();
+        Navigator.of(context).pop();
+        SharePlus.instance.share(ShareParams(files: <XFile>[file]));
+      },
       popOnInvoked: false,
     );
   })();
@@ -1167,8 +1210,8 @@ class FileContextOption {
     Function(String)? copyKey,
   ) {
     return [
-      [open(handler), download(handler), saveAs(handler, context)],
-      [share(handler), copyLink(handler, context)],
+      [open(handler, context), download(handler), saveAs(handler, context)],
+      [share(handler, context), copyLink(handler, context)],
       [cut(handler, cutKey), copy(handler, copyKey), rename(handler, context)],
       [
         if (handler.removable)
@@ -1263,23 +1306,30 @@ class FilesContextOption {
     popOnInvoked: false,
   );
 
-  static FilesContextOption shareAll(FilesContextActionHandler handler) => (() {
-    final getXFiles = handler.getXFiles();
-    final allDownloaded =
-        handler.downloadedFiles.length == handler.files.length;
+  static FilesContextOption shareAll(
+    FilesContextActionHandler handler,
+    BuildContext context,
+  ) => (() {
+    final progress = ValueNotifier<double>(0.0);
+    final message = ValueNotifier<String>('');
+    final getXFiles = handler.getXFiles(
+      onMessage: (m) => message.value = m,
+      onProgress: (p) => progress.value = p,
+    );
     return FilesContextOption(
-      title: getXFiles == null ? 'Cannot Share' : 'Share All',
+      title: 'Share Files',
       icon: Icons.share_rounded,
-      subtitle: getXFiles == null
-          ? 'No downloaded files to share'
-          : allDownloaded
-          ? null
-          : 'Only downloaded files will be shared',
-      action: getXFiles != null
-          ? () {
-              SharePlus.instance.share(ShareParams(files: getXFiles()));
-            }
-          : null,
+      action: () async {
+        showProgressDialog(
+          context,
+          'Preparing files for sharing...',
+          progress,
+          message,
+        );
+        final files = await getXFiles();
+        Navigator.of(context).pop(); // Close the progress dialog
+        SharePlus.instance.share(ShareParams(files: files));
+      },
     );
   })();
 
@@ -1598,7 +1648,7 @@ class FilesContextOption {
   ) {
     return [
       [downloadAll(handler), saveAllTo(context, handler)],
-      [shareAll(handler), copyAllLinks(context, handler)],
+      [shareAll(handler, context), copyAllLinks(context, handler)],
       [cut(cutKey), copy(copyKey)],
       [
         if (handler.removableFiles.isNotEmpty)
@@ -1617,6 +1667,8 @@ class DirectoryContextOption {
   final IconData icon;
   final String? subtitle;
   final dynamic Function()? action;
+  final dynamic Function()? secondaryAction;
+  final IconData? secondaryIcon;
   final bool popOnInvoked;
 
   DirectoryContextOption({
@@ -1624,6 +1676,8 @@ class DirectoryContextOption {
     required this.icon,
     this.subtitle,
     this.action,
+    this.secondaryAction,
+    this.secondaryIcon,
     this.popOnInvoked = false,
   });
 
@@ -1697,6 +1751,63 @@ class DirectoryContextOption {
               showSnackBar(SnackBar(content: Text(handle())));
             }
           },
+  );
+
+  static DirectoryContextOption shareAll(
+    DirectoryContextActionHandler handler,
+    BuildContext context,
+  ) => (() {
+    final progress = ValueNotifier<double>(0.0);
+    final message = ValueNotifier<String>('');
+    final getXFiles = handler.getXFiles(
+      onMessage: (m) => message.value = m,
+      onProgress: (p) => progress.value = p,
+    );
+    return DirectoryContextOption(
+      title: 'Share Files',
+      icon: Icons.share_rounded,
+      action: () async {
+        showProgressDialog(
+          context,
+          'Preparing file for sharing...',
+          progress,
+          message,
+        );
+        final files = await getXFiles();
+        Navigator.of(context).pop(); // Close the progress dialog
+        SharePlus.instance.share(ShareParams(files: files));
+      },
+    );
+  })();
+
+  static DirectoryContextOption copyAllLinks(
+    BuildContext context,
+    DirectoryContextActionHandler handler,
+  ) => DirectoryContextOption(
+    title: 'Copy File Links',
+    icon: Icons.link_rounded,
+    action: () async {
+      int? seconds = await expiryDialog(context);
+      String allLinks = handler.getLinksToCopy(seconds)();
+      if (allLinks.isNotEmpty) {
+        Clipboard.setData(ClipboardData(text: allLinks));
+        showSnackBar(
+          const SnackBar(content: Text('File links copied to clipboard')),
+        );
+      }
+    },
+    secondaryIcon: Icons.share_rounded,
+    secondaryAction: () async {
+      int? seconds = await expiryDialog(context);
+      String allLinks = handler.getLinksToCopy(seconds)();
+      if (allLinks.isNotEmpty) {
+        Clipboard.setData(ClipboardData(text: allLinks));
+        showSnackBar(
+          const SnackBar(content: Text('File links copied to clipboard')),
+        );
+        SharePlus.instance.share(ShareParams(text: allLinks));
+      }
+    },
   );
 
   static DirectoryContextOption cut(
@@ -1941,6 +2052,7 @@ class DirectoryContextOption {
   ) {
     return [
       [open(handler), download(handler), saveTo(handler, context)],
+      [shareAll(handler, context), copyAllLinks(context, handler)],
       [
         cut(handler, cutKey),
         copy(handler, copyKey),
@@ -1962,6 +2074,8 @@ class DirectoriesContextOption {
   final IconData icon;
   final String? subtitle;
   final dynamic Function()? action;
+  final dynamic Function()? secondaryAction;
+  final IconData? secondaryIcon;
   final bool popOnInvoked;
 
   DirectoriesContextOption({
@@ -1969,6 +2083,8 @@ class DirectoriesContextOption {
     required this.icon,
     this.subtitle,
     this.action,
+    this.secondaryAction,
+    this.secondaryIcon,
     this.popOnInvoked = false,
   });
 
@@ -2032,6 +2148,63 @@ class DirectoriesContextOption {
               );
             }
           },
+  );
+
+  static DirectoriesContextOption shareAll(
+    DirectoriesContextActionHandler handler,
+    BuildContext context,
+  ) => (() {
+    final progress = ValueNotifier<double>(0.0);
+    final message = ValueNotifier<String>('');
+    final getXFiles = handler.getXFiles(
+      onMessage: (m) => message.value = m,
+      onProgress: (p) => progress.value = p,
+    );
+    return DirectoriesContextOption(
+      title: 'Share Files',
+      icon: Icons.share_rounded,
+      action: () async {
+        showProgressDialog(
+          context,
+          'Preparing file for sharing...',
+          progress,
+          message,
+        );
+        final files = await getXFiles();
+        Navigator.of(context).pop(); // Close the progress dialog
+        SharePlus.instance.share(ShareParams(files: files));
+      },
+    );
+  })();
+
+  static DirectoriesContextOption copyAllLinks(
+    BuildContext context,
+    DirectoriesContextActionHandler handler,
+  ) => DirectoriesContextOption(
+    title: 'Copy File Links',
+    icon: Icons.link_rounded,
+    action: () async {
+      int? seconds = await expiryDialog(context);
+      String allLinks = handler.getLinksToCopy(seconds)();
+      if (allLinks.isNotEmpty) {
+        Clipboard.setData(ClipboardData(text: allLinks));
+        showSnackBar(
+          const SnackBar(content: Text('File links copied to clipboard')),
+        );
+      }
+    },
+    secondaryIcon: Icons.share_rounded,
+    secondaryAction: () async {
+      int? seconds = await expiryDialog(context);
+      String allLinks = handler.getLinksToCopy(seconds)();
+      if (allLinks.isNotEmpty) {
+        Clipboard.setData(ClipboardData(text: allLinks));
+        showSnackBar(
+          const SnackBar(content: Text('File links copied to clipboard')),
+        );
+        SharePlus.instance.share(ShareParams(text: allLinks));
+      }
+    },
   );
 
   static DirectoriesContextOption cut(Function(String?)? cutKey) =>
@@ -2331,6 +2504,7 @@ class DirectoriesContextOption {
   ) {
     return [
       [downloadAll(handler), saveAllTo(handler, context)],
+      [shareAll(handler, context), copyAllLinks(context, handler)],
       [cut(cutKey), copy(copyKey)],
       [
         if (handler.removableFiles.isNotEmpty)
@@ -2348,7 +2522,9 @@ class BulkContextOption {
   final String title;
   final IconData icon;
   final String? subtitle;
-  final dynamic Function(BuildContext context)? action;
+  final dynamic Function()? action;
+  final dynamic Function()? secondaryAction;
+  final IconData? secondaryIcon;
   final bool popOnInvoked;
 
   BulkContextOption({
@@ -2356,6 +2532,8 @@ class BulkContextOption {
     required this.icon,
     this.subtitle,
     this.action,
+    this.secondaryAction,
+    this.secondaryIcon,
     this.popOnInvoked = false,
   });
 
@@ -2400,7 +2578,7 @@ class BulkContextOption {
           : Icons.file_download_off_rounded,
       action: directoryDownload == null && fileDownload == null
           ? null
-          : (BuildContext context) {
+          : () {
               directoryDownload?.call();
               fileDownload?.call();
             },
@@ -2414,7 +2592,7 @@ class BulkContextOption {
   ) => BulkContextOption(
     title: 'Save To...',
     icon: Icons.save_as_rounded,
-    action: (BuildContext context) async {
+    action: () async {
       final directory = await getDirectoryPath(canCreateDirectories: true);
       bool saved = false;
       for (final handler in [directoriesHandler, filesHandler]) {
@@ -2430,12 +2608,98 @@ class BulkContextOption {
     },
   );
 
+  static BulkContextOption shareAll(
+    DirectoriesContextActionHandler directoriesHandler,
+    FilesContextActionHandler filesHandler,
+    BuildContext context,
+  ) => (() {
+    final progress = ValueNotifier<double>(0.0);
+    final message = ValueNotifier<String>('');
+
+    int totalFiles = filesHandler.files.length;
+    int totalFilesInDirectories = directoriesHandler.files.length;
+    final getXFiles = filesHandler.getXFiles(
+      onProgress: (p) {
+        progress.value =
+            p * totalFiles / (totalFiles + totalFilesInDirectories);
+        message.value =
+            'Downloading ${(p * totalFiles).floor()}/${totalFiles + totalFilesInDirectories} files';
+      },
+    );
+    final getXFilesFromDirectories = directoriesHandler.getXFiles(
+      onProgress: (p) {
+        progress.value =
+            p *
+            totalFilesInDirectories /
+            (totalFiles + totalFilesInDirectories);
+        message.value =
+            'Downloading ${(p * totalFilesInDirectories).floor()}/${totalFiles + totalFilesInDirectories} files';
+      },
+    );
+
+    return BulkContextOption(
+      title: 'Share Files',
+      icon: Icons.share_rounded,
+      action: () async {
+        showProgressDialog(
+          context,
+          'Preparing file for sharing...',
+          progress,
+          message,
+        );
+        final files = [
+          ...(await getXFiles()),
+          ...(await getXFilesFromDirectories()),
+        ];
+        Navigator.of(context).pop(); // Close the progress dialog
+        SharePlus.instance.share(ShareParams(files: files));
+      },
+    );
+  })();
+
+  static BulkContextOption copyAllLinks(
+    DirectoriesContextActionHandler directoriesHandler,
+    FilesContextActionHandler filesHandler,
+    BuildContext context,
+  ) => BulkContextOption(
+    title: 'Copy File Links',
+    icon: Icons.link_rounded,
+    action: () async {
+      int? seconds = await expiryDialog(context);
+      String allLinks = [
+        filesHandler.getLinksToCopy(seconds)(),
+        directoriesHandler.getLinksToCopy(seconds)(),
+      ].join(', ');
+      if (allLinks.isNotEmpty) {
+        Clipboard.setData(ClipboardData(text: allLinks));
+        showSnackBar(
+          const SnackBar(content: Text('File links copied to clipboard')),
+        );
+      }
+    },
+    secondaryIcon: Icons.share_rounded,
+    secondaryAction: () async {
+      int? seconds = await expiryDialog(context);
+      String allLinks = [
+        filesHandler.getLinksToCopy(seconds)(),
+        directoriesHandler.getLinksToCopy(seconds)(),
+      ].join(', ');
+      if (allLinks.isNotEmpty) {
+        Clipboard.setData(ClipboardData(text: allLinks));
+        showSnackBar(
+          const SnackBar(content: Text('File links copied to clipboard')),
+        );
+        SharePlus.instance.share(ShareParams(text: allLinks));
+      }
+    },
+  );
+
   static BulkContextOption cut(Function(String?)? cutKey) => BulkContextOption(
     title: 'Move To...',
     icon: Icons.cut_rounded,
     action: cutKey == null
         ? null
-        : (BuildContext context) {
+        : () {
             cutKey(null);
           },
     popOnInvoked: true,
@@ -2447,7 +2711,7 @@ class BulkContextOption {
         icon: Icons.copy_rounded,
         action: copyKey == null
             ? null
-            : (BuildContext context) {
+            : () {
                 copyKey(null);
               },
         popOnInvoked: true,
@@ -2461,7 +2725,7 @@ class BulkContextOption {
     title: 'Remove from Device',
     subtitle: 'Only uploaded files',
     icon: Icons.phonelink_off_rounded,
-    action: (BuildContext context) async {
+    action: () async {
       final removableFiles = [
         ...directoriesHandler.removableFiles,
         ...filesHandler.removableFiles,
@@ -2531,7 +2795,7 @@ class BulkContextOption {
     title: 'Delete Local Copies',
     subtitle: 'Delete from device',
     icon: Icons.folder_delete_rounded,
-    action: (BuildContext context) async {
+    action: () async {
       final localDirectories = directoriesHandler.localDirectories;
       final downloadedFiles = filesHandler.downloadedFiles;
       final yes = await showDialog<bool>(
@@ -2604,7 +2868,7 @@ class BulkContextOption {
     title: 'Permanently Delete Selection',
     subtitle: 'Delete from device as well as S3',
     icon: Icons.delete_forever_rounded,
-    action: (BuildContext context) async {
+    action: () async {
       final directories = directoriesHandler.directories;
       final files = filesHandler.files;
       final yes =
@@ -2679,7 +2943,7 @@ class BulkContextOption {
         filesHandler.deleteCache(true) == null &&
             directoriesHandler.deleteCache(true) == null
         ? null
-        : (BuildContext context) async {
+        : () async {
             final cacheFiles = filesHandler.cachedFiles;
             final cachedDirectories = directoriesHandler.cachedDirectories;
             final yes = await showDialog<bool>(
@@ -2747,6 +3011,10 @@ class BulkContextOption {
       [
         downloadAll(directoriesHandler, filesHandler),
         saveAllTo(directoriesHandler, filesHandler, context),
+      ],
+      [
+        shareAll(directoriesHandler, filesHandler, context),
+        copyAllLinks(directoriesHandler, filesHandler, context),
       ],
       [cut(cutKey), copy(copyKey)],
       [
@@ -3016,6 +3284,7 @@ Widget buildDirectoryContextMenu(
   BuildContext context,
   String file,
   bool allowModify,
+  String? Function(String, int?) getLink,
   Function(List<String>)? downloadDirectories,
   Function(String, String)? saveDirectory,
   Function(String)? cut,
@@ -3030,6 +3299,7 @@ Widget buildDirectoryContextMenu(
     future: () async {
       DirectoryContextActionHandler handler = DirectoryContextActionHandler(
         file: file,
+        getLink: getLink,
         downloadDirectories: downloadDirectories,
         saveDirectory: saveDirectory,
         moveDirectories: allowModify ? moveDirectories : null,
@@ -3147,6 +3417,16 @@ Widget buildDirectoryContextMenu(
                               child: Text(option.subtitle!),
                             )
                           : null,
+                      trailing: option.secondaryAction != null
+                          ? IconButton(
+                              onPressed: () async {
+                                await option.secondaryAction!();
+                                snapshot.data?.handler.invalidateCache();
+                                onInvoked?.call();
+                              },
+                              icon: Icon(option.secondaryIcon),
+                            )
+                          : null,
                       onTap: option.action != null
                           ? () async {
                               if (option.popOnInvoked) globalNavigator?.pop();
@@ -3174,6 +3454,7 @@ Widget buildDirectoryContextMenu(
 Widget buildDirectoriesContextMenu(
   BuildContext context,
   Iterable<String> dirs,
+  String? Function(String, int?) getLink,
   Function(Iterable<String>)? downloadDirectories,
   Function(String, String)? saveDirectory,
   Function(String?)? cut,
@@ -3188,6 +3469,7 @@ Widget buildDirectoriesContextMenu(
     future: () async {
       DirectoriesContextActionHandler handler = DirectoriesContextActionHandler(
         directories: dirs,
+        getLink: getLink,
         downloadDirectories: downloadDirectories,
         saveDirectory: saveDirectory,
         deleteLocalDirectories: deleteLocals,
@@ -3234,6 +3516,16 @@ Widget buildDirectoriesContextMenu(
                             title: Text(option.title),
                             subtitle: option.subtitle != null
                                 ? Text(option.subtitle!)
+                                : null,
+                            trailing: option.secondaryAction != null
+                                ? IconButton(
+                                    onPressed: () async {
+                                      await option.secondaryAction!();
+                                      snapshot.data?.handler.invalidateCache();
+                                      onInvoked?.call();
+                                    },
+                                    icon: Icon(option.secondaryIcon),
+                                  )
                                 : null,
                             onTap: option.action != null
                                 ? () async {
@@ -3292,6 +3584,7 @@ Widget buildBulkContextMenu(
     return buildDirectoriesContextMenu(
       context,
       items,
+      getLink,
       downloadDirectories,
       saveDirectory,
       cut,
@@ -3308,6 +3601,7 @@ Widget buildBulkContextMenu(
       DirectoriesContextActionHandler dirHandler =
           DirectoriesContextActionHandler(
             directories: items.where((item) => p.isDir(item)),
+            getLink: getLink,
             downloadDirectories: downloadDirectories,
             saveDirectory: saveDirectory,
             deleteLocalDirectories: deleteLocals,
@@ -3366,12 +3660,25 @@ Widget buildBulkContextMenu(
                             subtitle: option.subtitle != null
                                 ? Text(option.subtitle!)
                                 : null,
+                            trailing: option.secondaryAction != null
+                                ? IconButton(
+                                    onPressed: () async {
+                                      await option.secondaryAction!();
+                                      snapshot.data?.dirHandler
+                                          .invalidateCache();
+                                      snapshot.data?.fileHandler
+                                          .invalidateCache();
+                                      onInvoked?.call();
+                                    },
+                                    icon: Icon(option.secondaryIcon),
+                                  )
+                                : null,
                             onTap: option.action != null
                                 ? () async {
                                     if (option.popOnInvoked) {
                                       globalNavigator?.pop();
                                     }
-                                    await option.action!(context);
+                                    await option.action!();
                                     snapshot.data?.dirHandler.invalidateCache();
                                     snapshot.data?.fileHandler
                                         .invalidateCache();

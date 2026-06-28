@@ -157,7 +157,7 @@ class DownloadStatusIcon extends StatelessWidget {
     return FutureBuilder<void>(
       future: () async {
         file = Main.remoteFileByKey(remoteKey);
-        return await file!.getDownloaded();
+        return file!.getDownloaded();
       }(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting ||

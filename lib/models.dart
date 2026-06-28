@@ -223,11 +223,11 @@ class RemoteFile implements RemoteFileFields {
     return (dirCount, fileCount);
   }
 
-  Future<bool?> getDownloaded() async {
+  bool? getDownloaded({bool refresh = false}) {
     if (p.isDir(key)) {
       bool? downloaded = true;
       for (var file in Main.remoteFilesByDir(key)) {
-        await file.getDownloaded();
+        file.getDownloaded(refresh: refresh);
         if (file.downloaded == false) {
           downloaded = false;
           break;
@@ -238,6 +238,8 @@ class RemoteFile implements RemoteFileFields {
         }
       }
       this.downloaded = downloaded;
+    } else if (refresh) {
+      downloaded = File(Main.pathFromKey(key)).existsSync();
     }
     return downloaded;
   }

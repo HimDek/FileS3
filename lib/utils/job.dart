@@ -1428,6 +1428,7 @@ class Watcher {
       }
 
       for (String key in result.remoteOnly) {
+        Main.remoteFileByKey(key)?.downloaded = false;
         if (Job.jobs.any(
           (job) =>
               job.localFile.path == Main.pathFromKey(key) &&
