@@ -217,7 +217,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
       maintainAspect: true,
     );
 
-    return TransferableTypedData.fromList([img.encodeJpg(thumb, quality: 40)]);
+    return TransferableTypedData.fromList([img.encodeJpg(thumb, quality: 60)]);
   }
 
   Future<void> _writeOriginal(Uint8List bytes) async {

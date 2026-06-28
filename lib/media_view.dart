@@ -1176,7 +1176,10 @@ class GalleryState extends State<Gallery> {
     return PopScope<String>(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
+        if (_contextMenuSheetController.isAttached &&
+            _contextMenuSheetController.size >= _maxBottomSheetSize) {
+          _collapseBottomSheet();
+        } else if (!didPop) {
           if (_contextMenuSheetController.size <= _defaultBottomSheetSize) {
             popWithCurrentKey();
           } else {
