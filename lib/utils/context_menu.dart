@@ -80,18 +80,26 @@ class FileContextActionHandler extends ContextActionHandler {
     return () async {
       final progress = ValueNotifier<double>(0.0);
       final message = ValueNotifier<String>('');
+      final cancelNotifier = ValueNotifier<bool>(false);
       showProgressDialog(
         context,
         'Opening ${p.s3.basename(file)}...',
         progress,
         message,
+        cancelNotifier,
       );
-      final path = (await getXFile(
+      final paths = await keysToXFiles(
+        [file],
         onMessage: (m) => message.value = m,
         onProgress: (p) => progress.value = p,
-      )()).path;
-      Navigator.of(context).pop(); // Close the progress dialog
-      OpenFile.open(path);
+        cancelNotifier: cancelNotifier,
+      );
+      if (!cancelNotifier.value && paths.isNotEmpty) {
+        OpenFile.open(paths[0].path);
+      }
+      progress.dispose();
+      message.dispose();
+      cancelNotifier.dispose();
     };
   }
 
@@ -120,19 +128,6 @@ class FileContextActionHandler extends ContextActionHandler {
             return 'Saving to $path';
           }
         : null;
-  }
-
-  Future<XFile> Function() getXFile({
-    Function(double progress)? onProgress,
-    Function(String message)? onMessage,
-  }) {
-    return () async {
-      return (await keysToXFiles(
-        [file],
-        onProgress: onProgress,
-        onMessage: onMessage,
-      ))[0];
-    };
   }
 
   String? Function() getLinkToCopy(int? seconds) {
@@ -315,19 +310,6 @@ class FilesContextActionHandler extends ContextActionHandler {
             return 'Saving ${files.length} files to $path';
           }
         : null;
-  }
-
-  Future<List<XFile>> Function() getXFiles({
-    Function(double progress)? onProgress,
-    Function(String message)? onMessage,
-  }) {
-    return () async {
-      return await keysToXFiles(
-        files,
-        onProgress: onProgress,
-        onMessage: onMessage,
-      );
-    };
   }
 
   String Function() getLinksToCopy(int? seconds) {
@@ -524,19 +506,6 @@ class DirectoryContextActionHandler extends ContextActionHandler {
             }
             return 'Saving ${p.s3.basename(file)} to $path';
           };
-  }
-
-  Future<List<XFile>> Function() getXFiles({
-    Function(double progress)? onProgress,
-    Function(String message)? onMessage,
-  }) {
-    return () async {
-      return await keysToXFiles(
-        files,
-        onProgress: onProgress,
-        onMessage: onMessage,
-      );
-    };
   }
 
   String Function() getLinksToCopy(int? seconds) {
@@ -756,19 +725,6 @@ class DirectoriesContextActionHandler extends ContextActionHandler {
         : null;
   }
 
-  Future<List<XFile>> Function() getXFiles({
-    Function(double progress)? onProgress,
-    Function(String message)? onMessage,
-  }) {
-    return () async {
-      return await keysToXFiles(
-        files,
-        onProgress: onProgress,
-        onMessage: onMessage,
-      );
-    };
-  }
-
   String Function() getLinksToCopy(int? seconds) {
     return () {
       final buffer = StringBuffer();
@@ -941,10 +897,7 @@ class FileContextOption {
   ) => (() {
     final progress = ValueNotifier<double>(0.0);
     final message = ValueNotifier<String>('');
-    final getXFile = handler.getXFile(
-      onMessage: (m) => message.value = m,
-      onProgress: (p) => progress.value = p,
-    );
+    final cancelNotifier = ValueNotifier<bool>(false);
     return FileContextOption(
       title: 'Share',
       icon: Icons.share_rounded,
@@ -954,10 +907,20 @@ class FileContextOption {
           'Preparing file for sharing...',
           progress,
           message,
+          cancelNotifier,
         );
-        final file = await getXFile();
-        Navigator.of(context).pop();
-        SharePlus.instance.share(ShareParams(files: <XFile>[file]));
+        final files = await keysToXFiles(
+          [handler.file],
+          onMessage: (m) => message.value = m,
+          onProgress: (p) => progress.value = p,
+          cancelNotifier: cancelNotifier,
+        );
+        if (!cancelNotifier.value && files.isNotEmpty) {
+          SharePlus.instance.share(ShareParams(files: <XFile>[files[0]]));
+        }
+        progress.dispose();
+        message.dispose();
+        cancelNotifier.dispose();
       },
       popOnInvoked: false,
     );
@@ -1312,10 +1275,7 @@ class FilesContextOption {
   ) => (() {
     final progress = ValueNotifier<double>(0.0);
     final message = ValueNotifier<String>('');
-    final getXFiles = handler.getXFiles(
-      onMessage: (m) => message.value = m,
-      onProgress: (p) => progress.value = p,
-    );
+    final cancelNotifier = ValueNotifier<bool>(false);
     return FilesContextOption(
       title: 'Share Files',
       icon: Icons.share_rounded,
@@ -1325,10 +1285,20 @@ class FilesContextOption {
           'Preparing files for sharing...',
           progress,
           message,
+          cancelNotifier,
         );
-        final files = await getXFiles();
-        Navigator.of(context).pop(); // Close the progress dialog
-        SharePlus.instance.share(ShareParams(files: files));
+        final files = await keysToXFiles(
+          handler.files,
+          onMessage: (m) => message.value = m,
+          onProgress: (p) => progress.value = p,
+          cancelNotifier: cancelNotifier,
+        );
+        if (!cancelNotifier.value && files.isNotEmpty) {
+          SharePlus.instance.share(ShareParams(files: files));
+        }
+        progress.dispose();
+        message.dispose();
+        cancelNotifier.dispose();
       },
     );
   })();
@@ -1759,23 +1729,30 @@ class DirectoryContextOption {
   ) => (() {
     final progress = ValueNotifier<double>(0.0);
     final message = ValueNotifier<String>('');
-    final getXFiles = handler.getXFiles(
-      onMessage: (m) => message.value = m,
-      onProgress: (p) => progress.value = p,
-    );
+    final cancelNotifier = ValueNotifier<bool>(false);
     return DirectoryContextOption(
       title: 'Share Files',
       icon: Icons.share_rounded,
       action: () async {
         showProgressDialog(
           context,
-          'Preparing file for sharing...',
+          'Preparing files for sharing...',
           progress,
           message,
+          cancelNotifier,
         );
-        final files = await getXFiles();
-        Navigator.of(context).pop(); // Close the progress dialog
-        SharePlus.instance.share(ShareParams(files: files));
+        final files = await keysToXFiles(
+          handler.files,
+          onMessage: (m) => message.value = m,
+          onProgress: (p) => progress.value = p,
+          cancelNotifier: cancelNotifier,
+        );
+        if (!cancelNotifier.value && files.isNotEmpty) {
+          SharePlus.instance.share(ShareParams(files: files));
+        }
+        progress.dispose();
+        message.dispose();
+        cancelNotifier.dispose();
       },
     );
   })();
@@ -2156,23 +2133,30 @@ class DirectoriesContextOption {
   ) => (() {
     final progress = ValueNotifier<double>(0.0);
     final message = ValueNotifier<String>('');
-    final getXFiles = handler.getXFiles(
-      onMessage: (m) => message.value = m,
-      onProgress: (p) => progress.value = p,
-    );
+    final cancelNotifier = ValueNotifier<bool>(false);
     return DirectoriesContextOption(
       title: 'Share Files',
       icon: Icons.share_rounded,
       action: () async {
         showProgressDialog(
           context,
-          'Preparing file for sharing...',
+          'Preparing files for sharing...',
           progress,
           message,
+          cancelNotifier,
         );
-        final files = await getXFiles();
-        Navigator.of(context).pop(); // Close the progress dialog
-        SharePlus.instance.share(ShareParams(files: files));
+        final files = await keysToXFiles(
+          handler.files,
+          onMessage: (m) => message.value = m,
+          onProgress: (p) => progress.value = p,
+          cancelNotifier: cancelNotifier,
+        );
+        if (!cancelNotifier.value && files.isNotEmpty) {
+          SharePlus.instance.share(ShareParams(files: files));
+        }
+        progress.dispose();
+        message.dispose();
+        cancelNotifier.dispose();
       },
     );
   })();
@@ -2615,27 +2599,10 @@ class BulkContextOption {
   ) => (() {
     final progress = ValueNotifier<double>(0.0);
     final message = ValueNotifier<String>('');
+    final cancelNotifier = ValueNotifier<bool>(false);
 
     int totalFiles = filesHandler.files.length;
     int totalFilesInDirectories = directoriesHandler.files.length;
-    final getXFiles = filesHandler.getXFiles(
-      onProgress: (p) {
-        progress.value =
-            p * totalFiles / (totalFiles + totalFilesInDirectories);
-        message.value =
-            'Downloading ${(p * totalFiles).floor()}/${totalFiles + totalFilesInDirectories} files';
-      },
-    );
-    final getXFilesFromDirectories = directoriesHandler.getXFiles(
-      onProgress: (p) {
-        progress.value =
-            p *
-            totalFilesInDirectories /
-            (totalFiles + totalFilesInDirectories);
-        message.value =
-            'Downloading ${(p * totalFilesInDirectories).floor()}/${totalFiles + totalFilesInDirectories} files';
-      },
-    );
 
     return BulkContextOption(
       title: 'Share Files',
@@ -2646,13 +2613,24 @@ class BulkContextOption {
           'Preparing file for sharing...',
           progress,
           message,
+          cancelNotifier,
         );
-        final files = [
-          ...(await getXFiles()),
-          ...(await getXFilesFromDirectories()),
-        ];
-        Navigator.of(context).pop(); // Close the progress dialog
-        SharePlus.instance.share(ShareParams(files: files));
+        final files = await keysToXFiles(
+          [...filesHandler.files, ...directoriesHandler.files],
+          onProgress: (p) {
+            progress.value =
+                p * totalFiles / (totalFiles + totalFilesInDirectories);
+            message.value =
+                'Downloading ${(p * totalFiles).floor()}/${totalFiles + totalFilesInDirectories} files';
+          },
+          cancelNotifier: cancelNotifier,
+        );
+        if (!cancelNotifier.value && files.isNotEmpty) {
+          SharePlus.instance.share(ShareParams(files: files));
+        }
+        progress.dispose();
+        message.dispose();
+        cancelNotifier.dispose();
       },
     );
   })();

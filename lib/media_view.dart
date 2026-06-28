@@ -828,6 +828,7 @@ class InteractiveMediaView extends StatefulWidget {
   final bool isActive;
   final Function()? onCached;
   final Function(String path)? onPathChanged;
+  final HttpClient? httpClient;
 
   const InteractiveMediaView({
     super.key,
@@ -842,6 +843,7 @@ class InteractiveMediaView extends StatefulWidget {
     this.isActive = false,
     this.onCached,
     this.onPathChanged,
+    this.httpClient,
   }) : assert(
          path != null || url != null,
          'At least path or url must be provided',
@@ -880,7 +882,8 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
         _path = (await uriToFile(
           widget.url!,
           onProgress: (d, t) => _progress.value = d / t,
-        )).path;
+          client: widget.httpClient,
+        ))?.path;
         widget.onPathChanged?.call(_path!);
         mediaType = await FileMagicNumber.detectFileTypeFromPathOrBlob(_path!)
             .then(
@@ -922,6 +925,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
   void dispose() {
     _progress.dispose();
     _photoViewController.dispose();
+    widget.httpClient?.close(force: true);
     super.dispose();
   }
 
@@ -1056,6 +1060,7 @@ class Gallery extends StatefulWidget {
 }
 
 class GalleryState extends State<Gallery> {
+  HttpClient _httpClient = HttpClient();
   double dismissOffset = 0.0;
 
   static const double _defaultBottomSheetSize = 0.13;
@@ -1157,6 +1162,7 @@ class GalleryState extends State<Gallery> {
 
   @override
   void dispose() {
+    _httpClient.close(force: true);
     _pageController.dispose();
     _contextMenuSheetController.dispose();
     _currentIndex.dispose();
@@ -1207,6 +1213,8 @@ class GalleryState extends State<Gallery> {
                   itemCount: widget.files.length,
                   onPageChanged: (i) {
                     setState(() => _currentIndex.value = i);
+                    _httpClient.close(force: true);
+                    _httpClient = HttpClient();
                   },
                   itemBuilder: (context, index) => PointerGestureRouter(
                     allowTap: () => _allowPaging.value,
@@ -1251,6 +1259,7 @@ class GalleryState extends State<Gallery> {
                             widget.files[index].path = path;
                             widget.rebuildContext?.call();
                           },
+                          httpClient: _httpClient,
                         ),
                       ),
                     ),

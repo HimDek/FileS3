@@ -22,14 +22,15 @@ import 'package:files3/globals.dart';
 import 'package:files3/models.dart';
 import 'package:files3/day_hour_picker.dart';
 
-Future<File> uriToFile(
+Future<File?> uriToFile(
   String uriString, {
   void Function(int, int)? onProgress,
+  HttpClient? client,
 }) async {
   File file;
   Uint8List? bytes;
 
-  final HttpClient httpClient = HttpClient();
+  final HttpClient httpClient = client ?? HttpClient();
   final UriContent uriContent = UriContent(httpClient: httpClient);
 
   final uri = Uri.parse(uriString);
@@ -52,15 +53,16 @@ Future<File> uriToFile(
 
     bytes = bytesBuilder.takeBytes();
   } catch (e) {
-    showSnackBar(SnackBar(content: Text('Failed to read file bytes: $e')));
+    showSnackBar(SnackBar(content: Text("Error: $e")));
     bytes = null;
+    return null;
   } finally {
-    httpClient.close();
+    if (client == null) {
+      httpClient.close();
+    }
   }
 
-  FileMagicNumberType type = FileMagicNumber.detectFileTypeFromBytes(
-    bytes ?? Uint8List(0),
-  );
+  FileMagicNumberType type = FileMagicNumber.detectFileTypeFromBytes(bytes);
 
   final b = p.posix.basename(uri.path);
   String destinationPath = p.context.join(Main.cacheDir, b);
@@ -74,7 +76,7 @@ Future<File> uriToFile(
   }
 
   await file.parent.create(recursive: true);
-  await file.writeAsBytes(bytes ?? Uint8List(0));
+  await file.writeAsBytes(bytes);
 
   return file;
 }
@@ -254,8 +256,14 @@ Future<void> showProgressDialog(
   String title,
   ValueNotifier<double> progress,
   ValueNotifier<String> message,
-) {
-  return showDialog(
+  ValueNotifier<bool>? cancelNotifier,
+) async {
+  progress.addListener(() {
+    if (progress.value >= 1.0) {
+      Navigator.of(context).pop();
+    }
+  });
+  return await showDialog(
     context: context,
     barrierDismissible: false,
     builder: (BuildContext context) => AlertDialog(
@@ -271,6 +279,16 @@ Future<void> showProgressDialog(
           ],
         ),
       ),
+      actions: [
+        if (cancelNotifier != null)
+          TextButton(
+            onPressed: () {
+              cancelNotifier.value = true;
+              Navigator.of(context).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+      ],
     ),
   );
 }
@@ -540,39 +558,65 @@ Future<List<XFile>> keysToXFiles(
   Iterable<String> keys, {
   Function(double progress)? onProgress,
   Function(String message)? onMessage,
+  ValueNotifier<bool>? cancelNotifier,
 }) async {
-  List<XFile> xFiles = [];
+  final HttpClient httpClient = HttpClient();
+  final List<XFile> xFiles = [];
   final ikeys = keys.iterator;
   int i = 0;
-  while (ikeys.moveNext()) {
-    final fileExists = File(Main.pathFromKey(ikeys.current)).existsSync();
-    final cacheExists = File(Main.cachePathFromKey(ikeys.current)).existsSync();
-    if (fileExists || cacheExists) {
-      onMessage?.call('Adding ${i + 1}/${keys.length}...');
-      if (fileExists) {
-        xFiles.add(XFile(Main.pathFromKey(ikeys.current)));
+  try {
+    while (ikeys.moveNext()) {
+      final fileExists = File(Main.pathFromKey(ikeys.current)).existsSync();
+      final cacheExists = File(
+        Main.cachePathFromKey(ikeys.current),
+      ).existsSync();
+      if (fileExists || cacheExists) {
+        onMessage?.call('Adding ${i + 1}/${keys.length}...');
+        if (fileExists) {
+          xFiles.add(XFile(Main.pathFromKey(ikeys.current)));
+        } else {
+          xFiles.add(XFile(Main.cachePathFromKey(ikeys.current)));
+        }
       } else {
-        xFiles.add(XFile(Main.cachePathFromKey(ikeys.current)));
+        onMessage?.call('Downloading ${i + 1}/${keys.length}...');
+        final cachePath = Main.cachePathFromKey(ikeys.current);
+        try {
+          final file = await uriToFile(
+            Main.profileFromKey(
+              ikeys.current,
+            )!.fileManager!.getUrl(ikeys.current),
+            onProgress: (bytesRead, totalBytes) {
+              double progress = totalBytes > 0 ? bytesRead / totalBytes : 0.0;
+              onProgress?.call((i + progress) / keys.length);
+              if (cancelNotifier?.value ?? false) {
+                throw Exception('Download Cancelled');
+              }
+            },
+            client: httpClient,
+          );
+          if (file != null) {
+            renameOrCopyAndDelete(file, cachePath);
+            xFiles.add(XFile(cachePath));
+          }
+        } catch (e) {
+          if (!(cancelNotifier?.value ?? false)) {
+            showSnackBar(SnackBar(content: Text('Error downloading file: $e')));
+          }
+        }
       }
-    } else {
-      onMessage?.call('Downloading ${i + 1}/${keys.length}...');
-      final cachePath = Main.cachePathFromKey(ikeys.current);
-      renameOrCopyAndDelete(
-        await uriToFile(
-          Main.profileFromKey(
-            ikeys.current,
-          )!.fileManager!.getUrl(ikeys.current),
-          onProgress: (bytesRead, totalBytes) {
-            double progress = totalBytes > 0 ? bytesRead / totalBytes : 0.0;
-            onProgress?.call((i + progress) / keys.length);
-          },
-        ),
-        cachePath,
-      );
-      xFiles.add(XFile(cachePath));
+      if (cancelNotifier?.value ?? false) {
+        throw Exception('Download Cancelled');
+      }
+      onProgress?.call((i + 1) / keys.length);
+      i++;
     }
-    onProgress?.call((i + 1) / keys.length);
-    i++;
+  } catch (e) {
+    if (!(cancelNotifier?.value ?? false)) {
+      showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+    return [];
+  } finally {
+    httpClient.close(force: true);
   }
   return xFiles;
 }

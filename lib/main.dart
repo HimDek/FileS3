@@ -463,13 +463,13 @@ class _HomeState extends State<Home> {
                   int progressCount = 0;
                   paths = await Future.wait(
                     paths.map((e) async {
-                      String f = (await uriToFile(
+                      String? f = (await uriToFile(
                         e,
                         onProgress: (d, t) => progress.value =
                             (progressCount + d / t) / totalCount,
-                      )).path;
+                      ))?.path;
                       progressCount += 1;
-                      return f;
+                      return f!;
                     }),
                   );
                   loading.value = false;
@@ -592,8 +592,10 @@ class _HomeState extends State<Home> {
         final uri = _receivedIntent!.extra?['android.intent.extra.STREAM'];
 
         if (uri != null) {
-          final File file = await uriToFile(uri);
-          _sharedFiles.value = [file.path];
+          final File? file = await uriToFile(uri);
+          if (file != null) {
+            _sharedFiles.value = [file.path];
+          }
         }
         break;
 

@@ -68,14 +68,17 @@ class _ExternalFilesState extends State<ExternalFiles> {
     final int total = widget.path.length;
     int i = 0;
     for (final path in widget.path) {
-      String normalizedPath = path;
+      String? normalizedPath = path;
       if (_urlPattern.hasMatch(path)) {
         normalizedPath = (await uriToFile(
           path,
           onProgress: (d, t) => _progress.value = (i + (d / t)) / total,
-        )).path;
+        ))?.path;
       }
       i++;
+      if (normalizedPath == null) {
+        continue;
+      }
       _files.add(GalleryProps(key: path, path: normalizedPath));
       _listKey.currentState?.insertItem(_files.length - 1);
       _gridKey.currentState?.insertItem(_files.length - 1);
