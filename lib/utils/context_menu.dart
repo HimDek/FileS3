@@ -612,7 +612,6 @@ class ContextOptionDelegate {
           ? Icons.file_download_rounded
           : Icons.file_download_off_rounded,
       action: handle,
-      popOnInvoked: false,
     );
   })();
 
@@ -669,19 +668,18 @@ class ContextOptionDelegate {
         showSnackBar(SnackBar(content: Text('Failed to generate link: $e')));
       }
     },
-    popOnInvoked: false,
   );
 
   factory ContextOptionDelegate.deleteUploaded(
     BuildContext context,
     ContextActionHandlerDelegate handler,
-  ) => ContextOptionDelegate(
-    title: 'Remove from Device',
-    subtitle: 'Only if uploaded to S3',
-    icon: Icons.phonelink_off_rounded,
-    action: () {
-      final handle = handler.deleteUploaded(handler.removableFiles);
-      return handle == null
+  ) {
+    final handle = handler.deleteUploaded(handler.removableFiles);
+    return ContextOptionDelegate(
+      title: 'Remove from Device',
+      subtitle: 'Only if uploaded to S3',
+      icon: Icons.phonelink_off_rounded,
+      action: handle == null
           ? null
           : () async {
               final yes = await confirmDialog(
@@ -695,19 +693,19 @@ class ContextOptionDelegate {
               if (yes) {
                 showSnackBar(SnackBar(content: Text(handle.call())));
               }
-            };
-    }(),
-  );
+            },
+    );
+  }
 
   factory ContextOptionDelegate.deleteLocal(
     BuildContext context,
     ContextActionHandlerDelegate handler,
-  ) => ContextOptionDelegate(
-    title: 'Remove from Device',
-    icon: Icons.delete_rounded,
-    action: () {
-      final handle = handler.deleteLocal(handler.downloadedFiles);
-      return handle == null
+  ) {
+    final handle = handler.deleteLocal(handler.downloadedFiles);
+    return ContextOptionDelegate(
+      title: 'Remove from Device',
+      icon: Icons.delete_rounded,
+      action: handle == null
           ? null
           : () async {
               final yes = await confirmDialog(
@@ -721,21 +719,21 @@ class ContextOptionDelegate {
               if (yes) {
                 showSnackBar(SnackBar(content: Text(handle.call())));
               }
-            };
-    }(),
-  );
+            },
+    );
+  }
 
   factory ContextOptionDelegate.delete(
     BuildContext context,
     ContextActionHandlerDelegate handler,
     Function() clearSelection,
-  ) => ContextOptionDelegate(
-    title: 'Delete Permanently',
-    icon: Icons.delete_forever_rounded,
-    subtitle: 'Delete from device as well as S3',
-    action: () {
-      final handle = handler.delete();
-      handle == null
+  ) {
+    final handle = handler.delete();
+    return ContextOptionDelegate(
+      title: 'Delete Permanently',
+      icon: Icons.delete_forever_rounded,
+      subtitle: 'Delete from device as well as S3',
+      action: handle == null
           ? null
           : () async {
               final yes = await confirmDialog(
@@ -751,20 +749,20 @@ class ContextOptionDelegate {
                 clearSelection();
                 showSnackBar(SnackBar(content: Text(result)));
               }
-            };
-    }(),
-    popOnInvoked: true,
-  );
+            },
+      popOnInvoked: true,
+    );
+  }
 
   factory ContextOptionDelegate.deleteCache(
     BuildContext context,
     ContextActionHandlerDelegate handler,
-  ) => ContextOptionDelegate(
-    title: 'Remove Cache',
-    icon: Icons.delete_outline_rounded,
-    action: () {
-      final handle = handler.deleteCache();
-      return handle == null
+  ) {
+    final handle = handler.deleteCache();
+    return ContextOptionDelegate(
+      title: 'Remove Cache',
+      icon: Icons.delete_outline_rounded,
+      action: handle == null
           ? null
           : () async {
               final yes = await confirmDialog(
@@ -779,9 +777,9 @@ class ContextOptionDelegate {
                 final result = handle.call();
                 showSnackBar(SnackBar(content: Text(result)));
               }
-            };
-    }(),
-  );
+            },
+    );
+  }
 }
 
 class FileContextOptionDelegate extends ContextOptionDelegate {
@@ -838,16 +836,15 @@ class FileContextOption extends FileContextOptionDelegate {
   factory FileContextOption.open(
     BuildContext context,
     FileContextActionHandler handler,
-  ) => (() {
+  ) {
     final openAction = handler.open(context);
     return FileContextOption(
       title: 'Open with...',
       subtitle: Main.pathFromKey(handler.file),
       icon: Icons.open_in_new_rounded,
       action: openAction,
-      popOnInvoked: false,
     );
-  })();
+  }
 
   factory FileContextOption.saveAs(
     BuildContext context,
@@ -875,7 +872,6 @@ class FileContextOption extends FileContextOptionDelegate {
               showSnackBar(SnackBar(content: Text(handle())));
             }
           },
-    popOnInvoked: false,
   );
 
   factory FileContextOption.rename(
@@ -963,7 +959,6 @@ class FilesContextOption extends FileContextOptionDelegate {
               showSnackBar(SnackBar(content: Text(handle())));
             }
           },
-    popOnInvoked: false,
   );
 
   static List<List<ContextOptionDelegate>> allOptions(
@@ -1068,20 +1063,19 @@ class DirectoryContextOption extends DirectoryContextOptionDelegate {
     super.popOnInvoked = false,
   });
 
-  factory DirectoryContextOption.open(DirectoryContextActionHandler handler) =>
-      (() {
-        final openAction = handler.open();
-        return DirectoryContextOption(
-          title: openAction == null ? 'Cannot Open' : 'Open',
-          subtitle: openAction == null
-              ? handler.localDirectories.isEmpty
-                    ? 'Directory does not exist locally'
-                    : 'Unsupported platform for opening directories'
-              : Main.pathFromKey(handler.file),
-          icon: openAction == null ? Icons.open_in_new_off : Icons.open_in_new,
-          action: openAction,
-        );
-      })();
+  factory DirectoryContextOption.open(DirectoryContextActionHandler handler) {
+    final openAction = handler.open();
+    return DirectoryContextOption(
+      title: openAction == null ? 'Cannot Open' : 'Open',
+      subtitle: openAction == null
+          ? handler.localDirectories.isEmpty
+                ? 'Directory does not exist locally'
+                : 'Unsupported platform for opening directories'
+          : Main.pathFromKey(handler.file),
+      icon: openAction == null ? Icons.open_in_new_off : Icons.open_in_new,
+      action: openAction,
+    );
+  }
 
   factory DirectoryContextOption.rename(
     BuildContext context,
