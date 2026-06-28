@@ -251,19 +251,15 @@ Future<bool> confirmDialog(
   return result ?? false;
 }
 
-Future<void> showProgressDialog(
-  BuildContext context,
-  String title,
-  ValueNotifier<double> progress,
-  ValueNotifier<String> message,
-  ValueNotifier<bool>? cancelNotifier,
-) async {
-  progress.addListener(() {
-    if (progress.value >= 1.0) {
-      Navigator.of(context).pop();
-    }
-  });
-  return await showDialog(
+Future<T> showProgressDialog<T>(
+  BuildContext context, {
+  String title = 'Processing...',
+  required ValueNotifier<double> progress,
+  required ValueNotifier<String> message,
+  VoidCallback? onCancel,
+  required Future<T> future,
+}) async {
+  final dialogFuture = showDialog(
     context: context,
     barrierDismissible: false,
     builder: (BuildContext context) => AlertDialog(
@@ -280,10 +276,10 @@ Future<void> showProgressDialog(
         ),
       ),
       actions: [
-        if (cancelNotifier != null)
+        if (onCancel != null)
           TextButton(
             onPressed: () {
-              cancelNotifier.value = true;
+              onCancel();
               Navigator.of(context).pop();
             },
             child: const Text('Cancel'),
@@ -291,6 +287,9 @@ Future<void> showProgressDialog(
       ],
     ),
   );
+  final result = await future;
+  await dialogFuture;
+  return result;
 }
 
 String bytesToReadable(int bytes) {
@@ -552,6 +551,36 @@ List<FileProps> sort(
     }
   });
   return sortedItems;
+}
+
+Future<List<String>> keysToPathWithProgressDialog(
+  BuildContext context, {
+  required Iterable<String> keys,
+  String title = 'Preparing files...',
+}) async {
+  final progress = ValueNotifier<double>(0.0);
+  final message = ValueNotifier<String>('');
+  final cancelNotifier = ValueNotifier<bool>(false);
+  final files = await showProgressDialog(
+    context,
+    title: title,
+    progress: progress,
+    message: message,
+    onCancel: () => cancelNotifier.value = true,
+    future: keysToPaths(
+      keys,
+      onMessage: (m) => message.value = m,
+      onProgress: (p) => progress.value = p,
+      cancelNotifier: cancelNotifier,
+    ),
+  );
+  progress.dispose();
+  message.dispose();
+  cancelNotifier.dispose();
+  if (!cancelNotifier.value) {
+    return files;
+  }
+  return [];
 }
 
 Future<List<String>> keysToPaths(

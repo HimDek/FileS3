@@ -78,28 +78,14 @@ class FileContextActionHandler extends ContextActionHandler {
 
   dynamic Function() open(BuildContext context) {
     return () async {
-      final progress = ValueNotifier<double>(0.0);
-      final message = ValueNotifier<String>('');
-      final cancelNotifier = ValueNotifier<bool>(false);
-      showProgressDialog(
+      final files = await keysToPathWithProgressDialog(
         context,
-        'Opening ${p.s3.basename(file)}...',
-        progress,
-        message,
-        cancelNotifier,
+        keys: [file],
+        title: 'Preparing file to open...',
       );
-      final paths = await keysToPaths(
-        [file],
-        onMessage: (m) => message.value = m,
-        onProgress: (p) => progress.value = p,
-        cancelNotifier: cancelNotifier,
-      );
-      if (!cancelNotifier.value && paths.isNotEmpty) {
-        OpenFile.open(paths[0]);
+      if (files.isNotEmpty) {
+        OpenFile.open(files[0]);
       }
-      progress.dispose();
-      message.dispose();
-      cancelNotifier.dispose();
     };
   }
 
@@ -894,39 +880,21 @@ class FileContextOption {
   static FileContextOption share(
     FileContextActionHandler handler,
     BuildContext context,
-  ) => (() {
-    final progress = ValueNotifier<double>(0.0);
-    final message = ValueNotifier<String>('');
-    final cancelNotifier = ValueNotifier<bool>(false);
-    return FileContextOption(
-      title: 'Share',
-      icon: Icons.share_rounded,
-      action: () async {
-        showProgressDialog(
-          context,
-          'Preparing file for sharing...',
-          progress,
-          message,
-          cancelNotifier,
-        );
-        final files = await keysToPaths(
-          [handler.file],
-          onMessage: (m) => message.value = m,
-          onProgress: (p) => progress.value = p,
-          cancelNotifier: cancelNotifier,
-        );
-        if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(
-            ShareParams(files: <XFile>[XFile(files[0])]),
-          );
-        }
-        progress.dispose();
-        message.dispose();
-        cancelNotifier.dispose();
-      },
-      popOnInvoked: false,
-    );
-  })();
+  ) => FileContextOption(
+    title: 'Share',
+    icon: Icons.share_rounded,
+    action: () async {
+      final files = await keysToPathWithProgressDialog(
+        context,
+        keys: [handler.file],
+        title: 'Preparing file for sharing...',
+      );
+      if (files.isNotEmpty) {
+        SharePlus.instance.share(ShareParams(files: <XFile>[XFile(files[0])]));
+      }
+    },
+    popOnInvoked: false,
+  );
 
   static FileContextOption copyLink(
     FileContextActionHandler handler,
@@ -1274,38 +1242,22 @@ class FilesContextOption {
   static FilesContextOption shareAll(
     FilesContextActionHandler handler,
     BuildContext context,
-  ) => (() {
-    final progress = ValueNotifier<double>(0.0);
-    final message = ValueNotifier<String>('');
-    final cancelNotifier = ValueNotifier<bool>(false);
-    return FilesContextOption(
-      title: 'Share Files',
-      icon: Icons.share_rounded,
-      action: () async {
-        showProgressDialog(
-          context,
-          'Preparing files for sharing...',
-          progress,
-          message,
-          cancelNotifier,
+  ) => FilesContextOption(
+    title: 'Share Files',
+    icon: Icons.share_rounded,
+    action: () async {
+      final files = await keysToPathWithProgressDialog(
+        context,
+        keys: handler.files,
+        title: 'Preparing file for sharing...',
+      );
+      if (files.isNotEmpty) {
+        SharePlus.instance.share(
+          ShareParams(files: files.map((path) => XFile(path)).toList()),
         );
-        final files = await keysToPaths(
-          handler.files,
-          onMessage: (m) => message.value = m,
-          onProgress: (p) => progress.value = p,
-          cancelNotifier: cancelNotifier,
-        );
-        if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(
-            ShareParams(files: files.map((path) => XFile(path)).toList()),
-          );
-        }
-        progress.dispose();
-        message.dispose();
-        cancelNotifier.dispose();
-      },
-    );
-  })();
+      }
+    },
+  );
 
   static FilesContextOption copyAllLinks(
     BuildContext context,
@@ -1730,38 +1682,22 @@ class DirectoryContextOption {
   static DirectoryContextOption shareAll(
     DirectoryContextActionHandler handler,
     BuildContext context,
-  ) => (() {
-    final progress = ValueNotifier<double>(0.0);
-    final message = ValueNotifier<String>('');
-    final cancelNotifier = ValueNotifier<bool>(false);
-    return DirectoryContextOption(
-      title: 'Share Files',
-      icon: Icons.share_rounded,
-      action: () async {
-        showProgressDialog(
-          context,
-          'Preparing files for sharing...',
-          progress,
-          message,
-          cancelNotifier,
+  ) => DirectoryContextOption(
+    title: 'Share Files',
+    icon: Icons.share_rounded,
+    action: () async {
+      final files = await keysToPathWithProgressDialog(
+        context,
+        keys: handler.files,
+        title: 'Preparing file for sharing...',
+      );
+      if (files.isNotEmpty) {
+        SharePlus.instance.share(
+          ShareParams(files: files.map((path) => XFile(path)).toList()),
         );
-        final files = await keysToPaths(
-          handler.files,
-          onMessage: (m) => message.value = m,
-          onProgress: (p) => progress.value = p,
-          cancelNotifier: cancelNotifier,
-        );
-        if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(
-            ShareParams(files: files.map((path) => XFile(path)).toList()),
-          );
-        }
-        progress.dispose();
-        message.dispose();
-        cancelNotifier.dispose();
-      },
-    );
-  })();
+      }
+    },
+  );
 
   static DirectoryContextOption copyAllLinks(
     BuildContext context,
@@ -2136,38 +2072,22 @@ class DirectoriesContextOption {
   static DirectoriesContextOption shareAll(
     DirectoriesContextActionHandler handler,
     BuildContext context,
-  ) => (() {
-    final progress = ValueNotifier<double>(0.0);
-    final message = ValueNotifier<String>('');
-    final cancelNotifier = ValueNotifier<bool>(false);
-    return DirectoriesContextOption(
-      title: 'Share Files',
-      icon: Icons.share_rounded,
-      action: () async {
-        showProgressDialog(
-          context,
-          'Preparing files for sharing...',
-          progress,
-          message,
-          cancelNotifier,
+  ) => DirectoriesContextOption(
+    title: 'Share Files',
+    icon: Icons.share_rounded,
+    action: () async {
+      final files = await keysToPathWithProgressDialog(
+        context,
+        keys: handler.files,
+        title: 'Preparing file for sharing...',
+      );
+      if (files.isNotEmpty) {
+        SharePlus.instance.share(
+          ShareParams(files: files.map((path) => XFile(path)).toList()),
         );
-        final files = await keysToPaths(
-          handler.files,
-          onMessage: (m) => message.value = m,
-          onProgress: (p) => progress.value = p,
-          cancelNotifier: cancelNotifier,
-        );
-        if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(
-            ShareParams(files: files.map((path) => XFile(path)).toList()),
-          );
-        }
-        progress.dispose();
-        message.dispose();
-        cancelNotifier.dispose();
-      },
-    );
-  })();
+      }
+    },
+  );
 
   static DirectoriesContextOption copyAllLinks(
     BuildContext context,
@@ -2604,46 +2524,22 @@ class BulkContextOption {
     DirectoriesContextActionHandler directoriesHandler,
     FilesContextActionHandler filesHandler,
     BuildContext context,
-  ) => (() {
-    final progress = ValueNotifier<double>(0.0);
-    final message = ValueNotifier<String>('');
-    final cancelNotifier = ValueNotifier<bool>(false);
-
-    int totalFiles = filesHandler.files.length;
-    int totalFilesInDirectories = directoriesHandler.files.length;
-
-    return BulkContextOption(
-      title: 'Share Files',
-      icon: Icons.share_rounded,
-      action: () async {
-        showProgressDialog(
-          context,
-          'Preparing file for sharing...',
-          progress,
-          message,
-          cancelNotifier,
+  ) => BulkContextOption(
+    title: 'Share Files',
+    icon: Icons.share_rounded,
+    action: () async {
+      final files = await keysToPathWithProgressDialog(
+        context,
+        keys: [...filesHandler.files, ...directoriesHandler.files],
+        title: 'Preparing file for sharing...',
+      );
+      if (files.isNotEmpty) {
+        SharePlus.instance.share(
+          ShareParams(files: files.map((path) => XFile(path)).toList()),
         );
-        final files = await keysToPaths(
-          [...filesHandler.files, ...directoriesHandler.files],
-          onProgress: (p) {
-            progress.value =
-                p * totalFiles / (totalFiles + totalFilesInDirectories);
-            message.value =
-                'Downloading ${(p * totalFiles).floor()}/${totalFiles + totalFilesInDirectories} files';
-          },
-          cancelNotifier: cancelNotifier,
-        );
-        if (!cancelNotifier.value && files.isNotEmpty) {
-          SharePlus.instance.share(
-            ShareParams(files: files.map((path) => XFile(path)).toList()),
-          );
-        }
-        progress.dispose();
-        message.dispose();
-        cancelNotifier.dispose();
-      },
-    );
-  })();
+      }
+    },
+  );
 
   static BulkContextOption copyAllLinks(
     DirectoriesContextActionHandler directoriesHandler,

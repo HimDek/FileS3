@@ -505,26 +505,11 @@ class _HomeState extends State<Home> {
     return FilesPicker(
       title: Text('Select File${allowMultiple ? 's' : ''}'),
       onFilesPick: (keys) async {
-        List<String> files = [];
-        final progress = ValueNotifier<double>(0.0);
-        final message = ValueNotifier<String>('');
-        final cancelNotifier = ValueNotifier<bool>(false);
-        showProgressDialog(
+        final files = await keysToPathWithProgressDialog(
           context,
-          'Preparing files...',
-          progress,
-          message,
-          cancelNotifier,
+          keys: keys,
+          title: 'Preparing file...',
         );
-        files = await keysToPaths(
-          keys,
-          onMessage: (m) => message.value = m,
-          onProgress: (p) => progress.value = p,
-          cancelNotifier: cancelNotifier,
-        );
-        progress.dispose();
-        message.dispose();
-        cancelNotifier.dispose();
         final resultIntent = receive_intent.Intent(
           data: files.isNotEmpty ? files.first : null,
           clipData: files.length > 1 ? files : null,
