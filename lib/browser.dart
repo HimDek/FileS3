@@ -753,40 +753,34 @@ class BrowserState extends State<Browser> {
         true)) {
       IniManager.config.value?.addSection('list_options');
     }
-    IniManager.config.value?.set(
-      'list_options',
-      _globalListOptions.value || _navIndex.value != 0
-          ? 'navindex_${_navIndex.value}'
-          : _driveDir.value,
-      options.toJson(),
-    );
+    final dir = _driveDir.value.isEmpty ? '/' : _driveDir.value;
+    final key = _globalListOptions.value || _navIndex.value != 0
+        ? 'navindex_${_navIndex.value}'
+        : dir;
+    final json = options.toJson();
+    IniManager.config.value?.set('list_options', key, json);
     if (_globalListOptions.value &&
-        IniManager.config.value
-                ?.options('list_options')
-                ?.contains(_driveDir.value) ==
+        IniManager.config.value?.options('list_options')?.contains(dir) ==
             true) {
-      IniManager.config.value?.removeOption('list_options', _driveDir.value);
+      IniManager.config.value?.removeOption('list_options', dir);
     }
     IniManager.save();
   }
 
   void _fetchListOptions() {
-    if (IniManager.config.value?.get('list_options', _driveDir.value) != null) {
+    final dir = _driveDir.value.isEmpty ? '/' : _driveDir.value;
+    if (IniManager.config.value?.get('list_options', dir) != null) {
       _globalListOptions.value = false;
     } else {
       _globalListOptions.value = true;
     }
+    final key = _globalListOptions.value || _navIndex.value != 0
+        ? 'navindex_${_navIndex.value}'
+        : dir;
+    final json = IniManager.config.value?.get('list_options', key);
     _listOptions.value = _searching.value
         ? ListOptions()
-        : ListOptions.fromJson(
-            IniManager.config.value?.get(
-                  'list_options',
-                  _globalListOptions.value || _navIndex.value != 0
-                      ? 'navindex_${_navIndex.value}'
-                      : _driveDir.value,
-                ) ??
-                ListOptions().toJson(),
-          );
+        : ListOptions.fromJson(json ?? ListOptions().toJson());
   }
 
   void _cut(Iterable<String>? keys) {
