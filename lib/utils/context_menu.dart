@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:mime/mime.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1343,6 +1344,15 @@ Widget buildFileContextMenu(
   String? mediaType = lookupMimeType(item);
   return FutureBuilder(
     future: () async {
+      final file = File(Main.pathFromKey(item));
+      if (await file.exists()) {
+        final bytes = await file
+            .openRead(0, 64)
+            .fold<BytesBuilder>(BytesBuilder(), (b, d) => b..add(d));
+        mediaType =
+            lookupMimeType(item, headerBytes: bytes.takeBytes()) ??
+            'application/octet-stream';
+      }
       FileContextActionHandler handler = FileContextActionHandler(
         file: item,
         getLink: getLink,

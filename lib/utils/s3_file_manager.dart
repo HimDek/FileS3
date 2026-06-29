@@ -480,6 +480,7 @@ class S3FileManager {
     String? contentMD5,
     String? contentType,
     String? copySource,
+    String? ifMatch,
     Map<String, String?>? metadata,
   }) {
     final service = 's3';
@@ -494,6 +495,7 @@ class S3FileManager {
       'x-amz-copy-source': ?copySource,
       'Content-MD5': ?contentMD5,
       'Content-Type': ?contentType,
+      'If-Match': ?ifMatch,
       ...?metadata?.map((k, v) => MapEntry('x-amz-meta-$k', v ?? '')),
     };
     if (method == 'PUT' && contentType == null) {

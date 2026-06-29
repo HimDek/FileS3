@@ -6,6 +6,7 @@ import 'package:ini/ini.dart';
 import 'package:mime/mime.dart';
 import 'package:exif/exif.dart';
 import 'package:crypto/crypto.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:uri_content/uri_content.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:file_magic_number/file_magic_number.dart';
@@ -336,6 +337,7 @@ String timeToReadable(DateTime time) {
 
 Future<Map<String, String?>> getFileMetadata(String path) async {
   final file = File(path);
+  final fileStat = await file.stat();
   final bytes = await file
       .openRead(0, 64)
       .fold<BytesBuilder>(BytesBuilder(), (b, d) => b..add(d));
@@ -343,11 +345,27 @@ Future<Map<String, String?>> getFileMetadata(String path) async {
   final mime = lookupMimeType(path, headerBytes: bytes.takeBytes());
 
   final metadata = <String, String?>{};
+  metadata['created'] = fileStat.changed.toUtc().toIso8601String();
+  metadata['original'] = fileStat.changed.toUtc().toIso8601String();
 
   // Dispatch to format-specific parser...
   switch (mime?.split('/').first) {
     case 'image':
       metadata.addEntries((await _imageMetadata(file)).entries);
+      metadata['original'] =
+          metadata['DateTimeOriginal'] ??
+          metadata['DateTimeDigitized'] ??
+          metadata['DateTime'];
+      final offsetTime =
+          metadata['OffsetTimeOriginal'] ??
+          metadata['OffsetTimeDigitized'] ??
+          metadata['OffsetTime'];
+      metadata['original'] = metadata['original'] != null && offsetTime != null
+          ? '${metadata['original']}$offsetTime'
+          : metadata['original'];
+      metadata['original'] = metadata['original'] != null
+          ? DateTime.parse(metadata['original']!).toUtc().toIso8601String()
+          : metadata['original'];
       break;
 
     // case 'video':
@@ -1190,11 +1208,7 @@ abstract class ConfigManager {
 class DeletionRegistrar {
   final Profile profile;
   late final File _file = File(
-    p.context.joinAll([
-      Main.documentsDir,
-      'deletion-registers',
-      ...p.s3.split(_key),
-    ]),
+    p.context.joinAll([Main.documentsDir, 'profiles', _key]),
   );
   late final String _key = p.s3.join(profile.name, 'deletion-register.ini');
   Config? _config;
@@ -1267,6 +1281,7 @@ class DeletionRegistrar {
     );
 
     await job.start();
+    job.dispose();
     Job.jobs.remove(job);
 
     if (_file.existsSync()) {
@@ -1298,6 +1313,282 @@ class DeletionRegistrar {
     _config!.addSection('register');
     save();
     await pushDeletions();
+  }
+}
+
+Future<void> _lastOperation = Future.value();
+
+Future<T> _enqueue<T>(Future<T> Function() action) {
+  final completer = Completer<T>();
+
+  _lastOperation = _lastOperation.catchError((_) {}).then((_) async {
+    try {
+      completer.complete(await action());
+    } catch (e, s) {
+      completer.completeError(e, s);
+    }
+  });
+
+  return completer.future;
+}
+
+typedef Metadata = ({
+  String key,
+  String etag,
+  int size,
+  DateTime lastModified,
+  DateTime created,
+  DateTime original,
+  String contentType,
+  Map<String, dynamic> metadata,
+});
+
+class MetaDB {
+  Database? db;
+  final Profile profile;
+  late final String _key = p.s3.join(profile.name, 'metadata.db');
+  late final File _file = File(
+    p.context.joinAll([
+      Main.documentsDir,
+      'profiles',
+      profile.name,
+      'metadata',
+      'metadata.db',
+    ]),
+  );
+  late final Directory _opDir = Directory(
+    p.context.joinAll([
+      Main.documentsDir,
+      'profiles',
+      profile.name,
+      'metadata',
+      'operations',
+    ]),
+  );
+  final Set<String> _appliedOperations = {};
+  bool isInitialized = false;
+
+  MetaDB({required this.profile});
+
+  Future<void> init() => _enqueue(() async {
+    if (isInitialized) {
+      return;
+    }
+    if (!_file.existsSync()) {
+      if (await _pullDb() == false) {
+        // No remote DB exists, so we can proceed
+        await _openDb();
+      }
+    } else {
+      // Local DB exists, so we can open it
+      await _openDb();
+    }
+    if (db != null) {
+      isInitialized = true;
+    }
+  });
+
+  Future<void> sync() => _enqueue(_sync);
+
+  Future<void> _openDb() async {
+    db?.isOpen ?? false ? await db!.close() : null;
+    _appliedOperations.clear();
+    if (!(await _opDir.exists())) {
+      await _opDir.create(recursive: true);
+    }
+    db = await openDatabase(
+      _file.path,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+            CREATE TABLE metadata (
+              key TEXT PRIMARY KEY,
+              metadata TEXT
+            )
+          ''');
+      },
+    );
+  }
+
+  String? get etag => Main.remoteFileByKey(_key)?.etag;
+
+  Future<void> addOrUpdateFile(RemoteFile file) => _enqueue(() async {
+    final metadata = ({
+      'key': file.key,
+      'etag': file.etag,
+      'size': file.size,
+      'lastModified': file.lastModified?.toUtc().toIso8601String() ?? '',
+      'created': file.lastModified?.toUtc().toIso8601String() ?? '',
+      'original': file.lastModified?.toUtc().toIso8601String() ?? '',
+      'contentType': lookupMimeType(file.key) ?? 'application/octet-stream',
+      'metadata': {},
+    });
+    await db?.transaction((txn) async {
+      await txn.execute(
+        'INSERT OR REPLACE INTO metadata (key, metadata) VALUES (?, ?)',
+        [file.key, jsonEncode(metadata)],
+      );
+    });
+  });
+
+  Future<void> updateMeta(String key, Metadata metadata) => _enqueue(() async {
+    final opFile = File(
+      p.context.join(
+        _opDir.path,
+        '${sha1.convert(utf8.encode(key)).toString()}.json',
+      ),
+    );
+    if (!(await _opDir.exists())) {
+      await _opDir.create(recursive: true);
+    }
+    await opFile.writeAsString(jsonEncode(metadata));
+    await db?.transaction((txn) async {
+      await txn.execute(
+        'INSERT OR REPLACE INTO metadata (key, metadata) VALUES (?, ?)',
+        [key, jsonEncode(metadata)],
+      );
+    });
+    _appliedOperations.add(opFile.path);
+  });
+
+  Future<void> removeMeta(String key) => _enqueue(() async {
+    final opFile = File(
+      p.context.join(
+        _opDir.path,
+        '${sha1.convert(utf8.encode(key)).toString()}.json',
+      ),
+    );
+    if (!(await _opDir.exists())) {
+      await _opDir.create(recursive: true);
+    }
+    await opFile.writeAsString(jsonEncode({'key': key, 'etag': ''}));
+    await db?.transaction((txn) async {
+      await txn.execute('DELETE FROM metadata WHERE key = ?', [key]);
+    });
+    _appliedOperations.add(opFile.path);
+  });
+
+  Future<void> _sync() async {
+    while (_opDir.listSync().isNotEmpty) {
+      await _applyOperations();
+      final success = await _pushDb();
+
+      if (success == true) {
+        // Push successful, clear applied operations
+        await _deleteAppliedOperations();
+        break;
+      } else if (success == false) {
+        // Push failed due to etag mismatch, pull the latest database and retry
+        await _pullDb();
+        continue;
+      }
+      // If success is null, it means there was an error during push, so we can break the loop
+      break;
+    }
+  }
+
+  Future<void> _applyOperations() async {
+    await db?.transaction((txn) async {
+      for (final file in _opDir.listSync().whereType<File>()) {
+        final opText = await file.readAsString();
+        if (opText.isNotEmpty &&
+            _appliedOperations.contains(file.path) == false) {
+          final op = jsonDecode(opText);
+          if (op is Map<String, dynamic> && op.containsKey('key')) {
+            final key = op['key'] as String;
+            if (op['etag'] == '' && Main.remoteFileByKey(key) == null) {
+              await txn.execute('DELETE FROM metadata WHERE key = ?', [key]);
+            } else if (op['etag'] != '' &&
+                Main.remoteFileByKey(key)?.etag == op['etag']) {
+              await txn.execute(
+                'INSERT OR REPLACE INTO metadata (key, metadata) VALUES (?, ?)',
+                [key, jsonEncode(op)],
+              );
+            }
+          }
+        }
+        _appliedOperations.add(file.path);
+      }
+    });
+  }
+
+  Future<void> _deleteAppliedOperations() async {
+    for (final path in _appliedOperations) {
+      try {
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (e) {
+        // Handle error if needed
+      }
+    }
+    _appliedOperations.clear();
+  }
+
+  Future<bool?> _pullDb() async {
+    try {
+      final headers = await profile.fileManager?.headObject(_key);
+
+      if (headers?['key'] == null) {
+        return false;
+      }
+
+      Job job = DownloadJob(
+        localFile: _file,
+        remoteKey: _key,
+        bytes: int.tryParse(headers!['content-length'] ?? '0') ?? 0,
+        md5: () {
+          final hex = headers['etag']!.replaceAll('"', '');
+
+          if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
+            throw StateError('ETag is not a single-part MD5 digest');
+          }
+
+          final bytes = List<int>.generate(
+            16,
+            (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16),
+          );
+
+          return Digest(bytes);
+        }(),
+        profile: profile,
+      );
+
+      await job.start();
+      Job.jobs.remove(job);
+      job.dispose();
+
+      await _openDb();
+
+      return true;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<bool?> _pushDb() async {
+    Job job = UploadJob(
+      localFile: _file,
+      remoteKey: _key,
+      bytes: _file.lengthSync(),
+      md5: await HashUtil(_file).md5Hash(),
+      profile: profile,
+      ifMatch: etag,
+    );
+    final result = await job.start();
+    Job.jobs.remove(job);
+    job.dispose();
+    if (result == null) {
+      return null;
+    }
+    if (result.statusCode >= 200 && result.statusCode < 300) {
+      return true;
+    } else if (result.statusCode == 412 || result.statusCode == 409) {
+      return false;
+    } else {
+      return null;
+    }
   }
 }
 

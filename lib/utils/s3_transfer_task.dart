@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:mime/mime.dart';
 import 'package:crypto/crypto.dart';
 import 'package:files3/utils/s3_file_manager.dart';
@@ -49,7 +50,7 @@ class S3TransferTask {
   });
 
   /// Starts upload or download
-  Future<dynamic> start() async {
+  Future<HttpClientResponse?> start() async {
     onStatus?.call(
       task == TransferTask.upload
           ? 'Starting upload...'
@@ -67,9 +68,10 @@ class S3TransferTask {
       httpClient.connectionTimeout = const Duration(seconds: 30);
       httpClient.badCertificateCallback = null;
 
-      return task == TransferTask.upload
+      final res = task == TransferTask.upload
           ? await retry(() => _upload(httpClient))
           : await retry(() => _download(httpClient));
+      return res;
     } catch (e) {
       if (e is TransferPaused) {
       } else if (e is TransferAborted) {
@@ -84,6 +86,7 @@ class S3TransferTask {
     } finally {
       httpClient.close();
     }
+    return null;
   }
 
   /// Cancel transfer
@@ -102,7 +105,7 @@ class S3TransferTask {
   // UPLOAD
   // ---------------------------------------------------------------------------
 
-  Future<dynamic> _upload(HttpClient httpClient) async {
+  Future<HttpClientResponse> _upload(HttpClient httpClient) async {
     onStatus?.call('Starting upload...');
     final totalBytes = await localFile.length();
 
@@ -111,6 +114,13 @@ class S3TransferTask {
     if (totalBytes > 5 * 1024 * 1024 * 1024) {
       throw Exception('Multipart upload required for files > 5GB');
     }
+
+    final bytes = await localFile
+        .openRead(0, 64)
+        .fold<BytesBuilder>(BytesBuilder(), (b, d) => b..add(d));
+    final mediaType =
+        lookupMimeType(localFile.path, headerBytes: bytes.takeBytes()) ??
+        'application/octet-stream';
 
     // final contentHash = _cachedSha256 ??= await _sha256OfFile(localFile);
     final contentHash = 'UNSIGNED-PAYLOAD';
@@ -124,7 +134,7 @@ class S3TransferTask {
       shortDate: S3FileManager.formatDate(now),
       contentHash: contentHash,
       contentMD5: contentMD5,
-      contentType: lookupMimeType(localFile.path),
+      contentType: mediaType,
       metadata: await getFileMetadata(localFile.path),
     );
     final req = await httpClient.openUrl('PUT', encodedUri);
@@ -173,19 +183,14 @@ class S3TransferTask {
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
       onStatus?.call('Upload complete');
-
-      final responseHeaders = <String, String>{};
-      res.headers.forEach((k, v) {
-        responseHeaders[k] = v.join(',');
-      });
-
-      return responseHeaders;
+      return res;
     } else {
       if (_isCancelled) {
         throw TransferAborted();
       }
       final body = await utf8.decodeStream(res);
-      throw Exception('Upload failed: ${res.statusCode} - $body');
+      onStatus?.call('Upload failed: ${res.statusCode} - $body');
+      return res;
     }
   }
 
@@ -193,15 +198,16 @@ class S3TransferTask {
   // DOWNLOAD
   // ---------------------------------------------------------------------------
 
-  Future<dynamic> _download(HttpClient httpClient) async {
+  Future<HttpClientResponse> _download(HttpClient httpClient) async {
     onStatus?.call('Starting download...');
     final now = DateTime.now().toUtc();
 
-    final head = await profile!.fileManager!.headObject(key);
-    final remoteEtag = head['etag']?.replaceAll('"', '') ?? '';
-    final total = int.tryParse(head['content-length'] ?? '0') ?? 0;
+    final headers = await profile!.fileManager!.headObject(key);
+    Main.updateMetadata(key, headers);
+    final remoteEtag = headers['etag']?.replaceAll('"', '') ?? '';
+    final total = int.tryParse(headers['content-length'] ?? '0') ?? 0;
     final lastModified =
-        DateTime.tryParse(head['last-modified'] ?? '') ??
+        DateTime.tryParse(headers['last-modified'] ?? '') ??
         DateTime.fromMillisecondsSinceEpoch(0);
     // final metadata = Map.fromEntries(
     //   head.entries
@@ -246,7 +252,7 @@ class S3TransferTask {
     }
 
     final encodedUri = profile!.fileManager!.getEncodedUri(key: key);
-    final headers = profile!.fileManager!.buildSignedHeaders(
+    final signedHeaders = profile!.fileManager!.buildSignedHeaders(
       encodedUri: encodedUri,
       method: 'GET',
       amzDate: S3FileManager.formatAmzDate(now),
@@ -259,7 +265,7 @@ class S3TransferTask {
       req.headers.set('Range', 'bytes=$offset-');
     }
 
-    headers.forEach(req.headers.set);
+    signedHeaders.forEach(req.headers.set);
     req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
 
     if (_isCancelled) {
@@ -338,9 +344,7 @@ class S3TransferTask {
 
     if (fileMd5 != md5) {
       await tempFile.delete();
-      throw Exception(
-        'Download failed: MD5 mismatch! expected $md5, got $fileMd5',
-      );
+      throw Exception('MD5 mismatch! expected $md5, got $fileMd5');
     }
 
     if (await localFile.exists()) {
@@ -366,6 +370,7 @@ class S3TransferTask {
         throw Exception('Storage write failed: $e');
       }
     }
+    return res;
   }
 
   // ---------------------------------------------------------------------------

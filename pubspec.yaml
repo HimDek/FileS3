@@ -42,6 +42,7 @@ dependencies:
   pdfrx:
   crypto:
   chewie:
+  sqflite:
   open_file:
   share_plus:
   pasteboard:

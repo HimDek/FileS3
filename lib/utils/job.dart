@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:pool/pool.dart';
 import 'package:crypto/crypto.dart';
 import 'package:collection/collection.dart';
@@ -393,6 +392,31 @@ abstract class Main {
     return totalSize;
   }
 
+  static void updateMetadata(String key, Map<String, String> headers) {
+    profileFromKey(key)?.metaDB.updateMeta(key, (
+      key: key,
+      etag: headers['etag'] ?? '',
+      size: int.tryParse(headers['content-length'] ?? '0') ?? 0,
+      lastModified:
+          DateTime.tryParse(headers['last-modified'] ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      created:
+          DateTime.tryParse(headers['x-amz-meta-created'] ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      original:
+          DateTime.tryParse(headers['x-amz-meta-original'] ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      contentType: headers['content-type'] ?? '',
+      metadata: Map.fromEntries(
+        headers.entries
+            .where((e) => e.key.startsWith('x-amz-meta-'))
+            .map(
+              (e) => MapEntry(e.key.replaceFirst('x-amz-meta-', ''), e.value),
+            ),
+      ),
+    ));
+  }
+
   static void remoteFilesSet(List<RemoteFile> files) {
     remoteFilesClear(notify: false);
     remoteFilesAddAll(files);
@@ -639,11 +663,15 @@ abstract class Main {
     job.add();
   }
 
-  static Future<void> uploadFile(String key, File file) async {
+  static Future<void> uploadFile(
+    String key,
+    File file, {
+    VoidCallback? onComplete,
+  }) async {
     if (!file.existsSync()) {
       return;
     }
-
+    Job? job;
     if (p.context.equals(pathFromKey(key), file.path)) {
       final deleteionLog = await profileFromKey(
         key,
@@ -654,13 +682,13 @@ abstract class Main {
           )) {
         file.deleteSync();
       } else {
-        UploadJob(
+        job = UploadJob(
           localFile: file,
           remoteKey: key,
           bytes: file.lengthSync(),
           md5: await HashUtil(file).md5Hash(),
           profile: profileFromKey(key),
-        ).add();
+        );
       }
     } else if (p.context.isAbsolute(pathFromKey(key))) {
       final newKey = () {
@@ -678,13 +706,13 @@ abstract class Main {
         File(pathFromKey(newKey)).parent.createSync(recursive: true);
       }
       file.copySync(pathFromKey(newKey));
-      UploadJob(
+      job = UploadJob(
         localFile: File(pathFromKey(newKey)),
         remoteKey: key,
         bytes: file.lengthSync(),
         md5: await HashUtil(file).md5Hash(),
         profile: profileFromKey(key),
-      ).add();
+      );
     } else {
       final newKey = () {
         String base = p.s3.basenameWithoutExtension(key);
@@ -697,14 +725,20 @@ abstract class Main {
         }
         return candidateKey;
       }();
-      UploadJob(
+      job = UploadJob(
         localFile: file,
         remoteKey: newKey,
         bytes: file.lengthSync(),
         md5: await HashUtil(file).md5Hash(),
         profile: profileFromKey(newKey),
-      ).add();
+      );
     }
+    job?.status.addListener(() {
+      if (job?.status.value == JobStatus.completed) {
+        onComplete?.call();
+      }
+    });
+    job?.add();
   }
 
   static Future<void> copyFile(
@@ -1096,6 +1130,7 @@ abstract class Job {
   final Digest md5;
   final int bytes;
   final Profile? profile;
+  late final int responseCode;
 
   S3TransferTask? task;
 
@@ -1156,8 +1191,8 @@ abstract class Job {
         (profile?.accessible.value ?? false);
   }
 
-  Future<void> start() async {
-    if (!startable()) return;
+  Future<HttpClientResponse?> start() async {
+    if (!startable()) return null;
     try {
       if (runtimeType == UploadJob) {
         status.value = JobStatus.running;
@@ -1178,25 +1213,20 @@ abstract class Job {
         final result = await task!.start();
         status.value = JobStatus.stopped;
         if (bytesCompleted.value >= bytes && result != null) {
-          int size = bytes;
-          DateTime? lastModified;
-          try {
-            final head = await profile!.fileManager!.headObject(remoteKey);
-            lastModified =
-                DateTime.tryParse(head["last-modified"] ?? '') ??
-                localFile.lastModifiedSync();
-            size = int.tryParse(head["content-length"] ?? '') ?? bytes;
-          } catch (e) {
-            debugPrint("Error parsing result: $e");
-          }
           status.value = JobStatus.completed;
+          final headers = await Main.profileFromKey(
+            remoteKey,
+          )?.fileManager?.headObject(remoteKey);
+          if (headers != null) {
+            Main.updateMetadata(remoteKey, headers);
+          }
           final resultFile = RemoteFile(
             key: remoteKey,
-            size: size,
-            etag: result['etag'] != null && result['etag']!.isNotEmpty
-                ? result['etag']!.substring(1, result['etag']!.length - 1)
-                : '',
-            lastModified: lastModified,
+            size: int.tryParse(headers?['content-length'] ?? '') ?? bytes,
+            etag: headers?['etag']?.replaceAll('"', '') ?? '',
+            lastModified:
+                DateTime.tryParse(headers?['last-modified'] ?? '') ??
+                localFile.lastModifiedSync(),
           );
           resultFile.downloaded = true;
           Main.remoteFilesAdd(resultFile);
@@ -1204,6 +1234,7 @@ abstract class Job {
           status.value = JobStatus.failed;
           bytesCompleted.value = 0;
         }
+        return result;
       }
       if (runtimeType == DownloadJob) {
         status.value = JobStatus.running;
@@ -1228,20 +1259,24 @@ abstract class Job {
             statusMsg.value = value;
           },
         );
-        await task!.start();
+        final result = await task!.start();
         status.value = JobStatus.stopped;
         if (bytesCompleted.value >= bytes) {
           status.value = JobStatus.completed;
           bytesCompleted.value = bytes;
         }
+        return result;
       }
+      return null;
     } catch (e) {
       status.value = JobStatus.failed;
       bytesCompleted.value = 0;
       statusMsg.value = "Error: ${e.toString()}";
+    } finally {
+      onProgressUpdate.notifyListeners();
+      startall();
     }
-    onProgressUpdate.notifyListeners();
-    startall();
+    return null;
   }
 
   bool stoppable() {
@@ -1345,12 +1380,15 @@ abstract class Job {
 }
 
 class UploadJob extends Job {
+  String? ifMatch;
+
   UploadJob({
     required super.localFile,
     required super.remoteKey,
     required super.bytes,
     required super.md5,
     required super.profile,
+    this.ifMatch,
   });
 }
 

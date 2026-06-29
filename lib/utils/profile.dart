@@ -14,6 +14,7 @@ class Profile {
 
   late S3Config cfg;
   late S3FileManager? fileManager;
+  late MetaDB metaDB;
   late DeletionRegistrar deletionRegistrar;
 
   Profile({required this.name, required this.cfg}) {
@@ -22,6 +23,8 @@ class Profile {
       accessible.value = false;
     }
     deletionRegistrar = DeletionRegistrar(profile: this);
+    metaDB = MetaDB(profile: this);
+    metaDB.init();
   }
 
   void updateConfig(S3Config newCfg) {

@@ -2,8 +2,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:mime/mime.dart';
-import 'package:file_magic_number/file_magic_number.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:photo_view/photo_view.dart';
@@ -869,15 +869,16 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
     }
     try {
       if (widget.path != null || widget.cachePath != null) {
+        final file = File(widget.path ?? widget.cachePath!);
+        final bytes = await file
+            .openRead(0, 64)
+            .fold<BytesBuilder>(BytesBuilder(), (b, d) => b..add(d));
         mediaType =
-            lookupMimeType(widget.path ?? widget.cachePath!) ??
-            await FileMagicNumber.detectFileTypeFromPathOrBlob(
+            lookupMimeType(
               widget.path ?? widget.cachePath!,
-            ).then(
-              (type) => type != FileMagicNumberType.unknown
-                  ? mimeTypeFromMagic(type)
-                  : 'application/octet-stream',
-            );
+              headerBytes: bytes.takeBytes(),
+            ) ??
+            'application/octet-stream';
       } else if (widget.url != null) {
         _path = (await uriToFile(
           widget.url!,
@@ -885,12 +886,16 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
           client: widget.httpClient,
         ))?.path;
         widget.onPathChanged?.call(_path!);
-        mediaType = await FileMagicNumber.detectFileTypeFromPathOrBlob(_path!)
-            .then(
-              (type) => type != FileMagicNumberType.unknown
-                  ? mimeTypeFromMagic(type)
-                  : 'application/octet-stream',
-            );
+        final file = File(_path!);
+        final bytes = await file
+            .openRead(0, 64)
+            .fold<BytesBuilder>(BytesBuilder(), (b, d) => b..add(d));
+        mediaType =
+            lookupMimeType(
+              widget.path ?? widget.cachePath!,
+              headerBytes: bytes.takeBytes(),
+            ) ??
+            'application/octet-stream';
       }
     } catch (e) {
       mediaType = 'application/octet-stream';
@@ -1027,11 +1032,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
                       },
                     ),
                   )
-                : Icon(
-                    mediaTypeIcon(
-                      lookupMimeType(widget.path ?? widget.cachePath!),
-                    ),
-                  ),
+                : Icon(mediaTypeIcon(mediaType)),
           );
   }
 }
