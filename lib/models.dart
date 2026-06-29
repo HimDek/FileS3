@@ -176,7 +176,7 @@ class RemoteFile implements RemoteFileFields {
       return _size;
     }
     int size = 0;
-    for (final file in Main.remoteFilesByDir(key)) {
+    for (final file in Main.remoteFilesByDir(key, recursive: false)) {
       await file.getSize();
       size += file.size;
     }
@@ -189,7 +189,7 @@ class RemoteFile implements RemoteFileFields {
       return _lastModified;
     }
     DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
-    for (final file in Main.remoteFilesByDir(key)) {
+    for (final file in Main.remoteFilesByDir(key, recursive: false)) {
       await file.getLastModified();
       if (file.lastModified?.isAfter(latest) ?? false) {
         latest = file.lastModified!;
@@ -207,7 +207,7 @@ class RemoteFile implements RemoteFileFields {
     }
     int dirCount = 0;
     int fileCount = 0;
-    for (final file in Main.remoteFilesByDir(key)) {
+    for (final file in Main.remoteFilesByDir(key, recursive: false)) {
       if (p.isDir(file.key)) {
         if (recursive) {
           final subCount = await file.getCount(recursive: true);
@@ -226,7 +226,7 @@ class RemoteFile implements RemoteFileFields {
   bool? getDownloaded({bool refresh = false}) {
     if (p.isDir(key)) {
       bool? downloaded = true;
-      for (var file in Main.remoteFilesByDir(key)) {
+      for (var file in Main.remoteFilesByDir(key, recursive: false)) {
         file.getDownloaded(refresh: refresh);
         if (file.downloaded == false) {
           downloaded = false;
@@ -247,7 +247,7 @@ class RemoteFile implements RemoteFileFields {
   Future<bool> getCached() async {
     if (p.isDir(key)) {
       bool cached = true;
-      for (var file in Main.remoteFilesByDir(key)) {
+      for (var file in Main.remoteFilesByDir(key, recursive: false)) {
         final fileCached = await file.getCached();
         if (!fileCached) {
           cached = false;

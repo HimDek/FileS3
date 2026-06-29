@@ -1719,7 +1719,7 @@ class BrowserState extends State<Browser> {
                                     !_searching.value
                               ? Text(
                                   _dirCount.value > 0 || _fileCount.value > 0
-                                      ? "${_dirCount.value > 0 ? '${_dirCount.value} Folders ' : ''}${_fileCount.value > 0 ? '${_fileCount.value} Files' : ''}"
+                                      ? "${_dirCount.value > 0 ? '${_dirCount.value} ${_driveDir.value == Main.root.key ? 'Profiles' : 'Folders'} ' : ''}${_fileCount.value > 0 ? '${_fileCount.value} Files' : ''}"
                                       : "Empty",
                                   style: Theme.of(context).textTheme.bodySmall,
                                 )
