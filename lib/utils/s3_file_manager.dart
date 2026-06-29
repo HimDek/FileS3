@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:xml/xml.dart';
@@ -6,6 +7,15 @@ import 'package:http/http.dart' as http;
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/profile.dart';
 import 'package:files3/models.dart';
+
+class S3Exception extends HttpException {
+  final int? code;
+
+  const S3Exception(super.message, {this.code, super.uri});
+
+  @override
+  String toString() => 'S3Exception($code): $message';
+}
 
 class S3FileManager {
   late final Profile _profile;
@@ -75,9 +85,13 @@ class S3FileManager {
           },
         );
 
-    if (response.statusCode != 200) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       final body = await response.stream.bytesToString();
-      throw Exception('mkdir failed: ${response.statusCode} - $body');
+      throw S3Exception(
+        'Create Directory Failed with response: $body',
+        code: response.statusCode,
+        uri: encodedUri,
+      );
     }
 
     return response.headers;
@@ -124,8 +138,12 @@ class S3FileManager {
 
       final body = await response.stream.bytesToString();
 
-      if (response.statusCode != 200) {
-        throw Exception('ListObjectsV2 failed: ${response.statusCode} - $body');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        throw S3Exception(
+          'ListObjectsV2 Failed with response: $body',
+          code: response.statusCode,
+          uri: encodedUri,
+        );
       }
 
       final xml = XmlDocument.parse(body);
@@ -168,11 +186,13 @@ class S3FileManager {
 
   Future<Map<String, String>> copyFile(
     String sourceKey,
-    String destinationKey,
-  ) async {
-    final encodedUri = getEncodedUri(key: destinationKey);
+    String destinationKey, {
+    Profile? sourceProfile,
+  }) async {
+    sourceProfile ??= _profile;
     final copySource =
-        '/$_bucket/${p.s3.join(_prefix, p.s3.relative(sourceKey, from: _profile.name)).split('/').map(awsEncode).join('/')}';
+        '/${sourceProfile.cfg.bucket}/${p.s3.join(sourceProfile.cfg.prefix, p.s3.relative(sourceKey, from: sourceProfile.name)).split('/').map(awsEncode).join('/')}';
+    final encodedUri = getEncodedUri(key: destinationKey);
 
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
@@ -199,9 +219,22 @@ class S3FileManager {
           },
         );
 
-    if (response.statusCode != 200) {
+    if (response.statusCode == 403) {
       final body = await response.stream.bytesToString();
-      throw Exception('copy failed: ${response.statusCode} - $body');
+      throw S3Exception(
+        'Copy Failed with response: $body',
+        code: response.statusCode,
+        uri: encodedUri,
+      );
+    }
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final body = await response.stream.bytesToString();
+      throw S3Exception(
+        'Copy Failed with response: $body',
+        code: response.statusCode,
+        uri: encodedUri,
+      );
     }
 
     return response.headers;
@@ -235,7 +268,11 @@ class S3FileManager {
 
     if (response.statusCode != 204) {
       final body = await response.stream.bytesToString();
-      throw Exception('delete failed: ${response.statusCode} - $body');
+      throw S3Exception(
+        'Delete Failed with response: $body',
+        code: response.statusCode,
+        uri: encodedUri,
+      );
     }
 
     return response.headers;
@@ -262,8 +299,12 @@ class S3FileManager {
           },
         );
 
-    if (res.statusCode != 200) {
-      throw Exception('HEAD failed: ${res.statusCode}');
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      throw S3Exception(
+        'HEAD Failed with response: ${res.body}',
+        code: res.statusCode,
+        uri: encodedUri,
+      );
     }
 
     return res.headers;
@@ -300,8 +341,10 @@ class S3FileManager {
     final body = await response.stream.bytesToString();
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'GetObjectTagging failed: ${response.statusCode} - $body',
+      throw S3Exception(
+        'GetObjectTagging Failed with response: $body',
+        code: response.statusCode,
+        uri: encodedUri,
       );
     }
 
@@ -375,8 +418,10 @@ class S3FileManager {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final body = await response.stream.bytesToString();
-      throw Exception(
-        'PutObjectTagging failed: ${response.statusCode} - $body',
+      throw S3Exception(
+        'PutObjectTagging Failed with response: $body',
+        code: response.statusCode,
+        uri: encodedUri,
       );
     }
   }

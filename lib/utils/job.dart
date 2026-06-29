@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:pool/pool.dart';
 import 'package:crypto/crypto.dart';
 import 'package:collection/collection.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:files3/utils/s3_transfer_task.dart';
+import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
@@ -600,12 +602,16 @@ abstract class Main {
     loading.value = false;
   }
 
-  static void downloadFile(String key, {String? localPath}) {
+  static void downloadFile(
+    String key, {
+    String? localPath,
+    VoidCallback? onComplete,
+  }) {
     final file = remoteFileByKey(key);
     if (file == null) {
       return;
     }
-    DownloadJob(
+    final job = DownloadJob(
       localFile: File(localPath ?? pathFromKey(key)),
       remoteKey: key,
       bytes: file.size,
@@ -624,7 +630,13 @@ abstract class Main {
         return Digest(bytes);
       }(),
       profile: profileFromKey(key),
-    ).add();
+    );
+    job.status.addListener(() {
+      if (job.status.value == JobStatus.completed) {
+        onComplete?.call();
+      }
+    });
+    job.add();
   }
 
   static Future<void> uploadFile(String key, File file) async {
@@ -712,23 +724,39 @@ abstract class Main {
       final Profile? newProfile = profileFromKey(newKey);
 
       if (profile != newProfile) {
-        String downloadTo = pathFromKey(key);
-        downloadTo = p.context.isAbsolute(downloadTo)
-            ? downloadTo
-            : cachePathFromKey(key);
-        File file = File(downloadTo);
-        if (!file.parent.existsSync()) {
-          file.parent.createSync(recursive: true);
+        try {
+          await newProfile?.fileManager?.copyFile(
+            key,
+            newKey,
+            sourceProfile: profile,
+          );
+        } catch (e) {
+          if (e is S3Exception && e.code == 403) {
+            File file = File(pathFromKey(key));
+            if (file.existsSync()) {
+              uploadFile(newKey, file);
+            } else {
+              file = File(cachePathFromKey(key));
+              if (file.existsSync()) {
+                uploadFile(newKey, file);
+              } else {
+                downloadFile(
+                  key,
+                  localPath: file.path,
+                  onComplete: () {
+                    uploadFile(newKey, file);
+                  },
+                );
+              }
+            }
+            return;
+          } else {
+            rethrow;
+          }
         }
-        // TODO: Download wait and Upload
-        // downloadFile(oldFile, localPath: downloadTo);
-        // uploadFile(newKey, File(downloadTo));
-        return;
       }
 
-      final headers = await profileFromKey(
-        key,
-      )!.fileManager!.copyFile(key, newKey);
+      final headers = await profile!.fileManager!.copyFile(key, newKey);
 
       RemoteFile newFile = RemoteFile(
         key: newKey,
