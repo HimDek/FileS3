@@ -445,7 +445,10 @@ class ListFilesState extends State<ListFiles> {
                         if (uiConfigNotifier.dirListInfo)
                           SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
-                            child: InfoRow(remoteKey: item.key),
+                            child: InfoRow(
+                              remoteKey: item.key,
+                              uiConfig: uiConfigNotifier.uiConfig,
+                            ),
                           ),
                         if (p.s3.dirname(item.key).isEmpty)
                           Row(
@@ -553,7 +556,10 @@ class ListFilesState extends State<ListFiles> {
               subtitle: uiConfigNotifier.fileListInfo
                   ? SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: InfoRow(remoteKey: item.key),
+                      child: InfoRow(
+                        remoteKey: item.key,
+                        uiConfig: uiConfigNotifier.uiConfig,
+                      ),
                     )
                   : null,
               trailing:
@@ -672,7 +678,9 @@ class ListFilesState extends State<ListFiles> {
                   ? () => widget.changeDirectory(item.key)
                   : null,
               onLongPress: widget.getSelectAction(item.key),
-              topLeftBadge: uiConfigNotifier.showDownloadStatus.value
+              topLeftBadge:
+                  uiConfigNotifier.showDownloadStatus.value == DirOrFile.both ||
+                      uiConfigNotifier.showDownloadStatus.value == DirOrFile.dir
                   ? Padding(
                       padding: EdgeInsets.all(16),
                       child: DownloadStatusIcon(remoteKey: item.key),
@@ -778,7 +786,11 @@ class ListFilesState extends State<ListFiles> {
                     : null,
                 onLongPress: widget.getSelectAction(item.key),
                 enabled: enabled,
-                topLeftBadge: uiConfigNotifier.showDownloadStatus.value
+                topLeftBadge:
+                    uiConfigNotifier.showDownloadStatus.value ==
+                            DirOrFile.both ||
+                        uiConfigNotifier.showDownloadStatus.value ==
+                            DirOrFile.file
                     ? Padding(
                         padding: EdgeInsets.all(16),
                         child: Theme(

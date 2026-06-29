@@ -678,9 +678,11 @@ class UiConfigNotifier extends ChangeNotifier {
   final ValueNotifier<bool> ultraDark = ValueNotifier(false);
   final ValueNotifier<bool> showDirectorySummary = ValueNotifier(true);
   final ValueNotifier<bool> showDirectoryBackupConfig = ValueNotifier(true);
-  final ValueNotifier<bool> showTime = ValueNotifier(true);
-  final ValueNotifier<bool> showSize = ValueNotifier(true);
-  final ValueNotifier<bool> showDownloadStatus = ValueNotifier(true);
+  final ValueNotifier<DirOrFile> showTime = ValueNotifier(DirOrFile.both);
+  final ValueNotifier<DirOrFile> showSize = ValueNotifier(DirOrFile.both);
+  final ValueNotifier<DirOrFile> showDownloadStatus = ValueNotifier(
+    DirOrFile.both,
+  );
   final ValueNotifier<bool> showType = ValueNotifier(true);
   final ValueNotifier<bool> showContent = ValueNotifier(true);
 
@@ -701,15 +703,34 @@ class UiConfigNotifier extends ChangeNotifier {
     setValues(config);
   }
 
+  UiConfig get uiConfig => UiConfig(
+    colorMode: colorMode.value,
+    accentColor: accentColor.value,
+    ultraDark: ultraDark.value,
+    showDirectorySummary: showDirectorySummary.value,
+    showDirectoryBackupConfig: showDirectoryBackupConfig.value,
+    showTime: showTime.value,
+    showSize: showSize.value,
+    showDownloadStatus: showDownloadStatus.value,
+    showType: showType.value,
+    showContent: showContent.value,
+  );
+
   bool get fileListInfo =>
-      showTime.value ||
-      showSize.value ||
-      showDownloadStatus.value ||
+      showTime.value == DirOrFile.both ||
+      showTime.value == DirOrFile.file ||
+      showSize.value == DirOrFile.both ||
+      showSize.value == DirOrFile.file ||
+      showDownloadStatus.value == DirOrFile.both ||
+      showDownloadStatus.value == DirOrFile.file ||
       showType.value;
   bool get dirListInfo =>
-      showTime.value ||
-      showSize.value ||
-      showDownloadStatus.value ||
+      showTime.value == DirOrFile.both ||
+      showTime.value == DirOrFile.dir ||
+      showSize.value == DirOrFile.both ||
+      showSize.value == DirOrFile.dir ||
+      showDownloadStatus.value == DirOrFile.both ||
+      showDownloadStatus.value == DirOrFile.dir ||
       showContent.value;
 
   void setValues(UiConfig? config) {
@@ -719,9 +740,9 @@ class UiConfigNotifier extends ChangeNotifier {
     ultraDark.value = config?.ultraDark ?? false;
     showDirectorySummary.value = config?.showDirectorySummary ?? true;
     showDirectoryBackupConfig.value = config?.showDirectoryBackupConfig ?? true;
-    showTime.value = config?.showTime ?? true;
-    showSize.value = config?.showSize ?? true;
-    showDownloadStatus.value = config?.showDownloadStatus ?? true;
+    showTime.value = config?.showTime ?? DirOrFile.both;
+    showSize.value = config?.showSize ?? DirOrFile.both;
+    showDownloadStatus.value = config?.showDownloadStatus ?? DirOrFile.both;
     showType.value = config?.showType ?? true;
     showContent.value = config?.showContent ?? true;
     listenable.addListener(notifyListeners);
@@ -946,23 +967,40 @@ abstract class ConfigManager {
             ?.get("ui", "show_directory_backup_config")
             ?.toLowerCase() !=
         'false';
-    final showTime =
-        IniManager.config.value?.get("ui", "show_time")?.toLowerCase() !=
-        'false';
-    final showSize =
-        IniManager.config.value?.get("ui", "show_size")?.toLowerCase() !=
-        'false';
-    final showDownloadStatus =
-        IniManager.config.value
-            ?.get("ui", "show_download_status")
-            ?.toLowerCase() !=
-        'false';
+    final showTimeStr = IniManager.config.value
+        ?.get("ui", "show_time")
+        ?.toLowerCase();
+    final showSizeStr = IniManager.config.value
+        ?.get("ui", "show_size")
+        ?.toLowerCase();
+    final showDownloadStatusStr = IniManager.config.value?.get(
+      "ui",
+      "show_download_status",
+    );
     final showType =
         IniManager.config.value?.get("ui", "show_type")?.toLowerCase() !=
         'false';
     final showContent =
         IniManager.config.value?.get("ui", "show_content")?.toLowerCase() !=
         'false';
+
+    final showTime = switch (showTimeStr) {
+      'dir' => DirOrFile.dir,
+      'file' => DirOrFile.file,
+      _ => DirOrFile.both,
+    };
+
+    final showSize = switch (showSizeStr) {
+      'dir' => DirOrFile.dir,
+      'file' => DirOrFile.file,
+      _ => DirOrFile.both,
+    };
+
+    final showDownloadStatus = switch (showDownloadStatusStr?.toLowerCase()) {
+      'dir' => DirOrFile.dir,
+      'file' => DirOrFile.file,
+      _ => DirOrFile.both,
+    };
 
     return UiConfig(
       colorMode: colorMode,
@@ -1009,12 +1047,12 @@ abstract class ConfigManager {
       "show_directory_backup_config",
       config.showDirectoryBackupConfig.toString(),
     );
-    IniManager.config.value!.set("ui", "show_time", config.showTime.toString());
-    IniManager.config.value!.set("ui", "show_size", config.showSize.toString());
+    IniManager.config.value!.set("ui", "show_time", config.showTime.name);
+    IniManager.config.value!.set("ui", "show_size", config.showSize.name);
     IniManager.config.value!.set(
       "ui",
       "show_download_status",
-      config.showDownloadStatus.toString(),
+      config.showDownloadStatus.name,
     );
     IniManager.config.value!.set("ui", "show_type", config.showType.toString());
     IniManager.config.value!.set(
@@ -1029,10 +1067,20 @@ abstract class ConfigManager {
     final maxConcurrentTransfersStr =
         IniManager.config.value?.get("transfer", "max_concurrent_transfers") ??
         '5';
+    final hashIgnoreStr =
+        IniManager.config.value?.get("transfer", "hash_ignore_mode") ??
+        'sizeChanged';
 
     final maxConcurrentTransfers = int.tryParse(maxConcurrentTransfersStr) ?? 5;
 
-    return TransferConfig(maxConcurrentTransfers: maxConcurrentTransfers);
+    return TransferConfig(
+      maxConcurrentTransfers: maxConcurrentTransfers,
+      hashIgnoreMode: switch (hashIgnoreStr.toLowerCase()) {
+        'always' => HashIgnoreMode.always,
+        'optimistic' => HashIgnoreMode.optimistic,
+        _ => HashIgnoreMode.sizeChanged,
+      },
+    );
   }
 
   static void saveTransferConfig(TransferConfig config) {
@@ -1043,6 +1091,11 @@ abstract class ConfigManager {
       "transfer",
       "max_concurrent_transfers",
       config.maxConcurrentTransfers.toString(),
+    );
+    IniManager.config.value!.set(
+      "transfer",
+      "hash_ignore_mode",
+      config.hashIgnoreMode.name,
     );
     IniManager.save();
   }
@@ -1389,4 +1442,232 @@ class MyPopupMenuItem<T> {
     this.selectedBackgroundColor,
     this.selectedForegroundColor,
   });
+}
+
+class PopupMenuListTile<T> extends StatefulWidget {
+  final Iterable<MyPopupMenuItem<T>> Function(BuildContext) itemBuilder;
+  final T? initialValue;
+  final VoidCallback? onOpened;
+  final PopupMenuItemSelected<T>? onSelected;
+  final PopupMenuCanceled? onCanceled;
+  final String? tooltip;
+  final double? elevation;
+  final Color? shadowColor;
+  final Color? surfaceTintColor;
+  final EdgeInsetsGeometry? menuPadding;
+  final double? splashRadius;
+  final BorderRadius? borderRadius;
+  final Offset offset;
+  final BoxConstraints? constraints;
+  final PopupMenuPosition? position;
+  final Clip clipBehavior;
+  final bool useRootNavigator;
+  final AnimationStyle? popUpAnimationStyle;
+  final RouteSettings? routeSettings;
+  final bool? requestFocus;
+  final Widget? leading;
+  final Widget? title;
+  final Widget? subtitle;
+  final Widget? trailing;
+  final bool? isThreeLine;
+  final bool? dense;
+  final VisualDensity? visualDensity;
+  final ShapeBorder? shape;
+  final Color? selectedColor;
+  final Color? iconColor;
+  final Color? textColor;
+  final TextStyle? titleTextStyle;
+  final TextStyle? subtitleTextStyle;
+  final TextStyle? leadingAndTrailingTextStyle;
+  final ListTileStyle? style;
+  final EdgeInsetsGeometry? contentPadding;
+  final bool enabled;
+  final GestureTapCallback? onTap;
+  final GestureLongPressCallback? onLongPress;
+  final ValueChanged<bool>? onFocusChange;
+  final MouseCursor? mouseCursor;
+  final bool selected;
+  final Color? focusColor;
+  final Color? hoverColor;
+  final Color? splashColor;
+  final FocusNode? focusNode;
+  final bool autofocus;
+  final Color? tileColor;
+  final Color? selectedTileColor;
+  final double menuItemsSpacing;
+  final bool? enableFeedback;
+  final double? horizontalTitleGap;
+  final double? minVerticalPadding;
+  final double? minLeadingWidth;
+  final double? minTileHeight;
+  final ListTileTitleAlignment? titleAlignment;
+  final bool internalAddSemanticForOnTap;
+
+  const PopupMenuListTile({
+    super.key,
+    required this.itemBuilder,
+    this.initialValue,
+    this.onOpened,
+    this.onSelected,
+    this.onCanceled,
+    this.tooltip,
+    this.elevation,
+    this.shadowColor,
+    this.surfaceTintColor,
+    this.menuItemsSpacing = 8.0,
+    this.menuPadding,
+    this.borderRadius,
+    this.splashRadius,
+    this.offset = Offset.zero,
+    this.constraints,
+    this.position,
+    this.clipBehavior = Clip.none,
+    this.useRootNavigator = false,
+    this.popUpAnimationStyle,
+    this.routeSettings,
+    this.requestFocus,
+
+    this.leading,
+    this.title,
+    this.subtitle,
+    this.trailing,
+    this.isThreeLine,
+    this.dense,
+    this.visualDensity,
+    this.shape,
+    this.style,
+    this.selectedColor,
+    this.iconColor,
+    this.textColor,
+    this.titleTextStyle,
+    this.subtitleTextStyle,
+    this.leadingAndTrailingTextStyle,
+    this.contentPadding,
+    this.enabled = true,
+    this.onTap,
+    this.onLongPress,
+    this.onFocusChange,
+    this.mouseCursor,
+    this.selected = false,
+    this.focusColor,
+    this.hoverColor,
+    this.splashColor,
+    this.focusNode,
+    this.autofocus = false,
+    this.tileColor,
+    this.selectedTileColor,
+    this.enableFeedback,
+    this.horizontalTitleGap,
+    this.minVerticalPadding,
+    this.minLeadingWidth,
+    this.minTileHeight,
+    this.titleAlignment,
+    this.internalAddSemanticForOnTap = true,
+  }) : assert(
+         isThreeLine != true || subtitle != null,
+         'isThreeLine can only be true if [subtitle] is provided.',
+       );
+
+  @override
+  State<PopupMenuListTile<T>> createState() => PopupMenuListTileState<T>();
+}
+
+class PopupMenuListTileState<T> extends State<PopupMenuListTile<T>> {
+  bool _popupVisible = false;
+  final GlobalKey<PopupMenuButtonState<T>> _popupMenuKey =
+      GlobalKey<PopupMenuButtonState<T>>();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: widget.leading,
+      title: widget.title,
+      subtitle: widget.subtitle,
+      trailing: MyPopupMenuButton<T>(
+        key: _popupMenuKey,
+        itemBuilder: widget.itemBuilder,
+        initialValue: widget.initialValue,
+        onOpened: () => setState(() {
+          _popupVisible = true;
+        }),
+        onSelected: (T value) async {
+          setState(() {
+            _popupVisible = false;
+            widget.onSelected?.call(value);
+          });
+        },
+        onCanceled: () => setState(() {
+          _popupVisible = false;
+          widget.onCanceled?.call();
+        }),
+        tooltip: widget.tooltip,
+        elevation: widget.elevation,
+        shadowColor: widget.shadowColor,
+        surfaceTintColor: widget.surfaceTintColor,
+        padding: EdgeInsets.zero,
+        menuItemsSpacing: widget.menuItemsSpacing,
+        menuPadding: widget.menuPadding,
+        borderRadius: widget.borderRadius,
+        splashRadius: widget.splashRadius,
+        icon:
+            widget.trailing ??
+            Icon(
+              _popupVisible
+                  ? Icons.arrow_drop_up_rounded
+                  : Icons.arrow_drop_down_rounded,
+            ),
+        offset: widget.offset,
+        enabled: widget.enabled,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        enableFeedback: widget.enableFeedback,
+        constraints: widget.constraints,
+        position: PopupMenuPosition.under,
+        clipBehavior: widget.clipBehavior,
+        useRootNavigator: widget.useRootNavigator,
+        popUpAnimationStyle: widget.popUpAnimationStyle,
+        routeSettings: widget.routeSettings,
+        requestFocus: widget.requestFocus,
+      ),
+      isThreeLine: widget.isThreeLine,
+      dense: widget.dense,
+      visualDensity: widget.visualDensity,
+      shape: widget.shape,
+      style: widget.style,
+      selectedColor: widget.selectedColor,
+      iconColor: widget.iconColor,
+      textColor: widget.textColor,
+      titleTextStyle: widget.titleTextStyle,
+      subtitleTextStyle: widget.subtitleTextStyle,
+      leadingAndTrailingTextStyle: widget.leadingAndTrailingTextStyle,
+      contentPadding: widget.contentPadding,
+      enabled: widget.enabled,
+      onTap: () {
+        setState(() {
+          _popupVisible = !_popupVisible;
+        });
+        if (_popupVisible) {
+          _popupMenuKey.currentState?.showButtonMenu();
+        }
+        widget.onTap?.call();
+      },
+      onLongPress: widget.onLongPress,
+      onFocusChange: widget.onFocusChange,
+      mouseCursor: widget.mouseCursor,
+      selected: widget.selected,
+      focusColor: widget.focusColor,
+      hoverColor: widget.hoverColor,
+      splashColor: widget.splashColor,
+      focusNode: widget.focusNode,
+      autofocus: widget.autofocus,
+      tileColor: widget.tileColor,
+      selectedTileColor: widget.selectedTileColor,
+      enableFeedback: widget.enableFeedback,
+      horizontalTitleGap: widget.horizontalTitleGap,
+      minVerticalPadding: widget.minVerticalPadding,
+      minLeadingWidth: widget.minLeadingWidth,
+      minTileHeight: widget.minTileHeight,
+      titleAlignment: widget.titleAlignment,
+      internalAddSemanticForOnTap: widget.internalAddSemanticForOnTap,
+    );
+  }
 }

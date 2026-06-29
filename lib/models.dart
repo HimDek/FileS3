@@ -312,15 +312,17 @@ class S3Config {
   });
 }
 
+enum DirOrFile { none, file, dir, both }
+
 class UiConfig {
   ThemeMode colorMode;
   Color? accentColor;
   bool ultraDark;
   bool showDirectorySummary;
   bool showDirectoryBackupConfig;
-  bool showTime;
-  bool showSize;
-  bool showDownloadStatus;
+  DirOrFile showTime;
+  DirOrFile showSize;
+  DirOrFile showDownloadStatus;
   bool showType;
   bool showContent;
 
@@ -330,16 +332,33 @@ class UiConfig {
     this.ultraDark = false,
     this.showDirectorySummary = true,
     this.showDirectoryBackupConfig = true,
-    this.showTime = true,
-    this.showSize = true,
-    this.showDownloadStatus = true,
+    this.showTime = DirOrFile.both,
+    this.showSize = DirOrFile.both,
+    this.showDownloadStatus = DirOrFile.both,
     this.showType = true,
     this.showContent = true,
   });
 }
 
-class TransferConfig {
-  final int maxConcurrentTransfers;
+enum HashIgnoreMode { sizeChanged, optimistic, always }
 
-  TransferConfig({this.maxConcurrentTransfers = 5});
+class TransferConfig {
+  int maxConcurrentTransfers;
+  HashIgnoreMode hashIgnoreMode;
+
+  TransferConfig({
+    this.maxConcurrentTransfers = 5,
+    this.hashIgnoreMode = HashIgnoreMode.sizeChanged,
+  });
+
+  TransferConfig copyWith({
+    int? maxConcurrentTransfers,
+    HashIgnoreMode? hashIgnoreMode,
+  }) {
+    return TransferConfig(
+      maxConcurrentTransfers:
+          maxConcurrentTransfers ?? this.maxConcurrentTransfers,
+      hashIgnoreMode: hashIgnoreMode ?? this.hashIgnoreMode,
+    );
+  }
 }

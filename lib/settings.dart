@@ -1221,14 +1221,7 @@ class SettingsPageState extends State<SettingsPage> {
   int _thumbCacheSize = Main.thumbCacheSize();
   int _downloadCacheSize = Main.downloadCacheSize();
 
-  bool _colorModePopupVisible = false;
-  bool _maxTransfersPopupVisible = false;
-  late final PackageInfo packageInfo;
-
-  final GlobalKey<PopupMenuButtonState<ThemeMode>> _colorModepopupKey =
-      GlobalKey();
-  final GlobalKey<PopupMenuButtonState<int>> _maxTransfersPopupKey =
-      GlobalKey();
+  PackageInfo? packageInfo;
 
   Future<void> _getPackageInfo() async {
     packageInfo = await PackageInfo.fromPlatform();
@@ -1242,7 +1235,6 @@ class SettingsPageState extends State<SettingsPage> {
       // Update the dialogPickerColor using the callback.
       onColorChanged: (Color color) async {
         setState(() {
-          _colorModePopupVisible = false;
           _uiConfig.accentColor = color;
         });
         _saveConfig();
@@ -1380,7 +1372,7 @@ class SettingsPageState extends State<SettingsPage> {
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
-                      return ListTile(
+                      return PopupMenuListTile<ThemeMode>(
                         title: Text('Color Mode'),
                         subtitle: Text(
                           _uiConfig.colorMode == ThemeMode.system
@@ -1396,108 +1388,82 @@ class SettingsPageState extends State<SettingsPage> {
                               ? Icons.light_mode_rounded
                               : Icons.dark_mode_rounded,
                         ),
-                        trailing: MyPopupMenuButton<ThemeMode>(
-                          key: _colorModepopupKey,
-                          initialValue: _uiConfig.colorMode,
-                          onOpened: () => setState(() {
-                            _colorModePopupVisible = true;
-                          }),
-                          onSelected: (ThemeMode value) async {
-                            setState(() {
-                              _colorModePopupVisible = false;
-                              _uiConfig.colorMode = value;
-                            });
-                            _saveConfig();
-                            uiConfigNotifier.colorMode.value =
-                                _uiConfig.colorMode;
-                          },
-                          onCanceled: () => setState(() {
-                            _colorModePopupVisible = false;
-                          }),
-                          menuPadding: EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          icon: Icon(
-                            _colorModePopupVisible
-                                ? Icons.arrow_drop_up_rounded
-                                : Icons.arrow_drop_down_rounded,
-                          ),
-                          position: PopupMenuPosition.under,
-                          itemBuilder: (context) => [
-                            MyPopupMenuItem(
-                              value: ThemeMode.system,
-                              child: Text('System Default'),
-                              backgroundColor: Colors.transparent,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              foregroundColor: Theme.of(
-                                context,
-                              ).colorScheme.onSurface,
-                              selectedBackgroundColor: Theme.of(
-                                context,
-                              ).colorScheme.primary,
-                              selectedForegroundColor: Theme.of(
-                                context,
-                              ).colorScheme.onPrimary,
-                            ),
-                            MyPopupMenuItem(
-                              value: ThemeMode.light,
-                              child: Text('Light Mode'),
-                              backgroundColor: Colors.transparent,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              foregroundColor: Theme.of(
-                                context,
-                              ).colorScheme.onSurface,
-                              selectedBackgroundColor: Theme.of(
-                                context,
-                              ).colorScheme.primary,
-                              selectedForegroundColor: Theme.of(
-                                context,
-                              ).colorScheme.onPrimary,
-                            ),
-                            MyPopupMenuItem(
-                              value: ThemeMode.dark,
-                              child: Text('Dark Mode'),
-                              backgroundColor: Colors.transparent,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              foregroundColor: Theme.of(
-                                context,
-                              ).colorScheme.onSurface,
-                              selectedBackgroundColor: Theme.of(
-                                context,
-                              ).colorScheme.primary,
-                              selectedForegroundColor: Theme.of(
-                                context,
-                              ).colorScheme.onPrimary,
-                            ),
-                          ],
-                        ),
-                        onTap: () {
+                        initialValue: _uiConfig.colorMode,
+                        onSelected: (ThemeMode value) async {
                           setState(() {
-                            _colorModePopupVisible = !_colorModePopupVisible;
+                            _uiConfig.colorMode = value;
                           });
-                          if (_colorModePopupVisible) {
-                            _colorModepopupKey.currentState?.showButtonMenu();
-                          }
+                          _saveConfig();
+                          uiConfigNotifier.colorMode.value =
+                              _uiConfig.colorMode;
                         },
+                        menuPadding: EdgeInsets.symmetric(vertical: 12),
+                        position: PopupMenuPosition.under,
+                        itemBuilder: (context) => [
+                          MyPopupMenuItem(
+                            value: ThemeMode.system,
+                            child: Text('System Default'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: ThemeMode.light,
+                            child: Text('Light Mode'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: ThemeMode.dark,
+                            child: Text('Dark Mode'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                        ],
                       );
                     case 1:
                       return ListTile(
@@ -1658,46 +1624,336 @@ class SettingsPageState extends State<SettingsPage> {
                         },
                       );
                     case 3:
-                      return SwitchListTile(
-                        title: Text('Show Time'),
-                        subtitle: Text("List View"),
-                        secondary: Icon(Icons.access_time_rounded),
-                        value: _uiConfig.showTime,
-                        onChanged: (value) async {
+                      return PopupMenuListTile<DirOrFile>(
+                        title: Text('Show Time in List View'),
+                        subtitle: Text(
+                          _uiConfig.showTime == DirOrFile.both
+                              ? 'Show for Both Files and Directories'
+                              : _uiConfig.showTime == DirOrFile.dir
+                              ? 'Show for Directories Only'
+                              : _uiConfig.showTime == DirOrFile.file
+                              ? 'Show for Files Only'
+                              : 'Do not show',
+                        ),
+                        leading: Icon(Icons.access_time_rounded),
+                        initialValue: _uiConfig.showTime,
+                        onSelected: (value) async {
                           setState(() {
                             _uiConfig.showTime = value;
                           });
                           _saveConfig();
                           uiConfigNotifier.showTime.value = value;
                         },
+                        position: PopupMenuPosition.under,
+                        menuPadding: EdgeInsets.symmetric(vertical: 12),
+                        itemBuilder: (context) => [
+                          MyPopupMenuItem(
+                            value: DirOrFile.both,
+                            child: Text('Show Time for Both'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: DirOrFile.dir,
+                            child: Text('Show Time for Directories Only'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: DirOrFile.file,
+                            child: Text('Show Time for Files Only'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: DirOrFile.none,
+                            child: Text('Show Time for None'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                        ],
                       );
                     case 4:
-                      return SwitchListTile(
-                        title: Text('Show Size'),
-                        subtitle: Text("List View"),
-                        secondary: Icon(Icons.storage_rounded),
-                        value: _uiConfig.showSize,
-                        onChanged: (value) async {
+                      return PopupMenuListTile<DirOrFile>(
+                        title: Text('Show Size in List View'),
+                        subtitle: Text(
+                          _uiConfig.showSize == DirOrFile.both
+                              ? 'Show for Both Files and Directories'
+                              : _uiConfig.showSize == DirOrFile.dir
+                              ? 'Show for Directories Only'
+                              : _uiConfig.showSize == DirOrFile.file
+                              ? 'Show for Files Only'
+                              : 'Do not show',
+                        ),
+                        leading: Icon(Icons.storage_rounded),
+                        initialValue: _uiConfig.showSize,
+                        onSelected: (value) async {
                           setState(() {
                             _uiConfig.showSize = value;
                           });
                           _saveConfig();
                           uiConfigNotifier.showSize.value = value;
                         },
+                        position: PopupMenuPosition.under,
+                        menuPadding: EdgeInsets.symmetric(vertical: 12),
+                        itemBuilder: (context) => [
+                          MyPopupMenuItem(
+                            value: DirOrFile.both,
+                            child: Text('Show Size for Both'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: DirOrFile.dir,
+                            child: Text('Show Size for Directories Only'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: DirOrFile.file,
+                            child: Text('Show Size for Files Only'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: DirOrFile.none,
+                            child: Text('Show Size for None'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                        ],
                       );
                     case 5:
-                      return SwitchListTile(
+                      return PopupMenuListTile<DirOrFile>(
                         title: Text('Show Download Status'),
-                        subtitle: Text("List & Grid View"),
-                        secondary: Icon(Icons.download_rounded),
-                        value: _uiConfig.showDownloadStatus,
-                        onChanged: (value) async {
+                        subtitle: Text(
+                          _uiConfig.showDownloadStatus == DirOrFile.both
+                              ? 'Show for Both Files and Directories'
+                              : _uiConfig.showDownloadStatus == DirOrFile.dir
+                              ? 'Show for Directories Only'
+                              : _uiConfig.showDownloadStatus == DirOrFile.file
+                              ? 'Show for Files Only'
+                              : 'Do not show',
+                        ),
+                        leading: Icon(Icons.download_rounded),
+                        initialValue: _uiConfig.showDownloadStatus,
+                        onSelected: (value) async {
                           setState(() {
                             _uiConfig.showDownloadStatus = value;
                           });
                           _saveConfig();
                           uiConfigNotifier.showDownloadStatus.value = value;
                         },
+                        position: PopupMenuPosition.under,
+                        menuPadding: EdgeInsets.symmetric(vertical: 12),
+                        itemBuilder: (context) => [
+                          MyPopupMenuItem(
+                            value: DirOrFile.both,
+                            child: Text('Show Download Status for Both'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: DirOrFile.dir,
+                            child: Text(
+                              'Show Download Status for Directories Only',
+                            ),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: DirOrFile.file,
+                            child: Text('Show Download Status for Files Only'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                          MyPopupMenuItem(
+                            value: DirOrFile.none,
+                            child: Text('Show Download Status for None'),
+                            backgroundColor: Colors.transparent,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurface,
+                            selectedBackgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            selectedForegroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onPrimary,
+                          ),
+                        ],
                       );
                     case 6:
                       return SwitchListTile(
@@ -1754,86 +2010,161 @@ class SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ),
-
               SliverM3ECardList(
-                itemCount: 4,
+                itemCount: 5,
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 padding: EdgeInsets.zero,
                 color: Colors.transparent,
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
-                      return ListTile(
+                      return PopupMenuListTile<int>(
                         title: Text('Max Concurrent Transfers'),
                         subtitle: Text(
                           _downloadConfig.maxConcurrentTransfers.toString(),
                         ),
                         leading: Icon(Icons.swap_vertical_circle),
-                        trailing: MyPopupMenuButton<int>(
-                          key: _maxTransfersPopupKey,
-                          initialValue: _downloadConfig.maxConcurrentTransfers,
-                          position: PopupMenuPosition.under,
-                          itemBuilder: (context) =>
-                              List.generate(10, (i) => i + 1).map(
-                                (index) => MyPopupMenuItem<int>(
-                                  value: index,
-                                  child: Text(index.toString()),
-                                  backgroundColor: Colors.transparent,
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 12,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  foregroundColor: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface,
-                                  selectedBackgroundColor: Theme.of(
-                                    context,
-                                  ).colorScheme.primary,
-                                  selectedForegroundColor: Theme.of(
-                                    context,
-                                  ).colorScheme.onPrimary,
+                        initialValue: _downloadConfig.maxConcurrentTransfers,
+                        position: PopupMenuPosition.under,
+                        itemBuilder: (context) =>
+                            List.generate(10, (i) => i + 1).map(
+                              (index) => MyPopupMenuItem<int>(
+                                value: index,
+                                child: Text(index.toString()),
+                                backgroundColor: Colors.transparent,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
                                 ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface,
+                                selectedBackgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary,
+                                selectedForegroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onPrimary,
                               ),
-                          onOpened: () => setState(() {
-                            _maxTransfersPopupVisible = true;
-                          }),
-                          menuPadding: EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          icon: Icon(
-                            _maxTransfersPopupVisible
-                                ? Icons.arrow_drop_up_rounded
-                                : Icons.arrow_drop_down_rounded,
-                          ),
-                          onSelected: (int value) async {
-                            setState(() {
-                              _maxTransfersPopupVisible = false;
-                              _downloadConfig = TransferConfig(
-                                maxConcurrentTransfers: value,
-                              );
-                            });
-                            _saveConfig();
-                          },
-                          onCanceled: () => setState(() {
-                            _maxTransfersPopupVisible = false;
-                          }),
-                        ),
-                        onTap: () {
+                            ),
+                        menuPadding: EdgeInsets.symmetric(vertical: 12),
+                        onSelected: (int value) async {
                           setState(() {
-                            _maxTransfersPopupVisible =
-                                !_maxTransfersPopupVisible;
+                            _downloadConfig = _downloadConfig.copyWith(
+                              maxConcurrentTransfers: value,
+                            );
                           });
-                          if (_maxTransfersPopupVisible) {
-                            _maxTransfersPopupKey.currentState
-                                ?.showButtonMenu();
-                          }
+                          _saveConfig();
                         },
                       );
                     case 1:
+                      return PopupMenuListTile<HashIgnoreMode>(
+                        title: Text('Ignore MD5 Hash'),
+                        subtitle: Text(switch (_downloadConfig.hashIgnoreMode) {
+                          HashIgnoreMode.sizeChanged =>
+                            'If change in size (Default)',
+                          HashIgnoreMode.optimistic =>
+                            'If same size and older than remote',
+                          HashIgnoreMode.always => 'Always ignore hash',
+                        }),
+                        leading: Icon(Icons.tag_rounded),
+                        initialValue: _downloadConfig.hashIgnoreMode,
+                        position: PopupMenuPosition.under,
+                        itemBuilder: (context) =>
+                            List.generate(
+                              HashIgnoreMode.values.length,
+                              (i) => HashIgnoreMode.values[i],
+                            ).map(
+                              (value) => MyPopupMenuItem<HashIgnoreMode>(
+                                value: value,
+                                child: switch (value) {
+                                  HashIgnoreMode.sizeChanged => ListTile(
+                                    dense: true,
+                                    visualDensity: VisualDensity.compact,
+                                    title: Text('If change in size (Default)'),
+                                    subtitle: Text(
+                                      'Hash check is unnecessary. Recommended to periodically refresh with this option.',
+                                    ),
+                                    selected:
+                                        _downloadConfig.hashIgnoreMode ==
+                                        HashIgnoreMode.sizeChanged,
+                                    textColor: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
+                                    selectedColor: Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimary,
+                                  ),
+                                  HashIgnoreMode.optimistic => ListTile(
+                                    dense: true,
+                                    visualDensity: VisualDensity.compact,
+                                    title: Text(
+                                      'If same size and older than remote',
+                                    ),
+                                    subtitle: Text(
+                                      'A good option if you want to avoid unnecessary hash checks for files that are likely the same.',
+                                    ),
+                                    selected:
+                                        _downloadConfig.hashIgnoreMode ==
+                                        HashIgnoreMode.optimistic,
+                                    textColor: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
+                                    selectedColor: Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimary,
+                                  ),
+                                  HashIgnoreMode.always => ListTile(
+                                    dense: true,
+                                    visualDensity: VisualDensity.compact,
+                                    title: Text('Always ignore hash'),
+                                    subtitle: Text(
+                                      'Assume files are same if size is same. Fast but ignores changes if size unchanged. Use with caution.',
+                                    ),
+                                    selected:
+                                        _downloadConfig.hashIgnoreMode ==
+                                        HashIgnoreMode.always,
+                                    textColor: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
+                                    selectedColor: Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimary,
+                                  ),
+                                },
+                                backgroundColor: Colors.transparent,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface,
+                                selectedBackgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary,
+                                selectedForegroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onPrimary,
+                              ),
+                            ),
+                        menuPadding: EdgeInsets.symmetric(vertical: 12),
+                        onSelected: (HashIgnoreMode value) async {
+                          setState(() {
+                            _downloadConfig = _downloadConfig.copyWith(
+                              hashIgnoreMode: value,
+                            );
+                          });
+                          _saveConfig();
+                        },
+                      );
+                    case 2:
                       return ListTile(
                         title: Text('Temporary Files'),
                         subtitle: Text(bytesToReadable(_cacheSize)),
@@ -1867,7 +2198,7 @@ class SettingsPageState extends State<SettingsPage> {
                           child: Text('Clear'),
                         ),
                       );
-                    case 2:
+                    case 3:
                       return ListTile(
                         title: Text('Thumbnail Cache'),
                         subtitle: Text(bytesToReadable(_thumbCacheSize)),
@@ -1901,7 +2232,7 @@ class SettingsPageState extends State<SettingsPage> {
                           child: Text('Clear'),
                         ),
                       );
-                    case 3:
+                    case 4:
                       return ListTile(
                         title: Text('Downloads Cache'),
                         subtitle: Text(bytesToReadable(_downloadCacheSize)),
@@ -1973,9 +2304,11 @@ class SettingsPageState extends State<SettingsPage> {
                     case 0:
                       return ListTile(
                         leading: Icon(Icons.info_rounded),
-                        title: Text('${packageInfo.appName} Details'),
+                        title: Text(
+                          '${packageInfo?.appName ?? "Loading"} Details',
+                        ),
                         subtitle: Text(
-                          '${packageInfo.packageName} ${packageInfo.version} ${packageInfo.buildNumber}',
+                          '${packageInfo?.packageName} ${packageInfo?.version} ${packageInfo?.buildNumber}',
                         ),
                         onTap: () => AppSettings.openAppSettings(
                           type: AppSettingsType.settings,

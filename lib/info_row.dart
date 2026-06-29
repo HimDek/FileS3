@@ -65,7 +65,9 @@ class _InfoRowState extends State<InfoRow> {
       verticalDirection: widget.verticalDirection,
       spacing: widget.spacing,
       children: [
-        if (_uiConfig.showTime)
+        if (_uiConfig.showTime == DirOrFile.both ||
+            (_uiConfig.showTime == DirOrFile.file &&
+                !p.isDir(widget.remoteKey)))
           FutureBuilder<DateTime?>(
             future: _file.getLastModified(),
             builder: (context, snapshot) {
@@ -82,7 +84,9 @@ class _InfoRowState extends State<InfoRow> {
               );
             },
           ),
-        if (_uiConfig.showSize)
+        if (_uiConfig.showSize == DirOrFile.both ||
+            (_uiConfig.showSize == DirOrFile.file &&
+                !p.isDir(widget.remoteKey)))
           FutureBuilder<int>(
             future: _file.getSize(),
             builder: (context, snapshot) {
@@ -99,7 +103,9 @@ class _InfoRowState extends State<InfoRow> {
               );
             },
           ),
-        if (_uiConfig.showDownloadStatus)
+        if (_uiConfig.showDownloadStatus == DirOrFile.both ||
+            (_uiConfig.showDownloadStatus == DirOrFile.file &&
+                !p.isDir(widget.remoteKey)))
           DownloadStatusIcon(
             remoteKey: widget.remoteKey,
             size: widget.iconSize,

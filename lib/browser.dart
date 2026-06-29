@@ -2105,21 +2105,26 @@ class BrowserState extends State<Browser> {
                                         child: SingleChildScrollView(
                                           scrollDirection: Axis.horizontal,
                                           child: GestureDetector(
+                                            onTap:
+                                                (Platform.isWindows ||
+                                                    Platform.isLinux ||
+                                                    Platform.isMacOS)
+                                                ? () {
+                                                    launchUrl(
+                                                      Uri.file(
+                                                        Main.pathFromKey(
+                                                          _driveDir.value,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+                                                : null,
                                             child: Text(
                                               Main.pathFromKey(_driveDir.value),
                                               style: Theme.of(
                                                 context,
                                               ).textTheme.labelSmall,
                                             ),
-                                            onTap: () {
-                                              launchUrl(
-                                                Uri.file(
-                                                  Main.pathFromKey(
-                                                    _driveDir.value,
-                                                  ),
-                                                ),
-                                              );
-                                            },
                                           ),
                                         ),
                                       ),
@@ -2168,9 +2173,9 @@ class BrowserState extends State<Browser> {
                           return InfoRow(
                             remoteKey: _driveDir.value,
                             uiConfig: UiConfig(
-                              showTime: true,
-                              showSize: true,
-                              showDownloadStatus: true,
+                              showTime: DirOrFile.both,
+                              showSize: DirOrFile.both,
+                              showDownloadStatus: DirOrFile.both,
                               showContent: true,
                             ),
                             spacing: 6,

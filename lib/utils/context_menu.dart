@@ -1397,9 +1397,9 @@ Widget buildFileContextMenu(
                   child: InfoRow(
                     remoteKey: item,
                     uiConfig: UiConfig(
-                      showTime: true,
-                      showSize: true,
-                      showDownloadStatus: false,
+                      showTime: DirOrFile.both,
+                      showSize: DirOrFile.both,
+                      showDownloadStatus: DirOrFile.both,
                       showType: true,
                     ),
                   ),
@@ -1565,9 +1565,9 @@ Widget buildDirectoryContextMenu(
                     child: InfoRow(
                       remoteKey: file,
                       uiConfig: UiConfig(
-                        showTime: true,
-                        showSize: true,
-                        showDownloadStatus: false,
+                        showTime: DirOrFile.both,
+                        showSize: DirOrFile.both,
+                        showDownloadStatus: DirOrFile.none,
                         showContent: true,
                       ),
                     ),

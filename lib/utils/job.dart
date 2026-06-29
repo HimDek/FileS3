@@ -24,6 +24,7 @@ enum _FileSyncStatus {
 
 typedef _RemoteFileForComparator = ({
   String key,
+  int size,
   String localPath,
   String etag,
   DateTime? lastModified,
@@ -56,8 +57,11 @@ Pool _syncPool = Pool(1);
 Future<_FileSyncStatus?> _fileSyncCompare({
   required File localFile,
   required _RemoteFileForComparator? remote,
+  bool fullyIgnoreHash = false,
+  bool optimisticIgnoreHash = false,
 }) async {
-  final localExists = await localFile.exists();
+  final localStat = await localFile.stat();
+  final localExists = localStat.type == FileSystemEntityType.file;
   if (remote == null) {
     if (localExists) {
       return _FileSyncStatus.newFile;
@@ -67,19 +71,46 @@ Future<_FileSyncStatus?> _fileSyncCompare({
   }
   if (!localExists) return _FileSyncStatus.remoteOnly;
 
-  final localHash = (await HashUtil(localFile).md5Hash()).toString();
+  final localSize = localStat.size;
 
-  return localHash == remote.etag
-      ? _FileSyncStatus.uploaded
-      : remote.lastModified!.isAfter(await localFile.lastModified())
-      ? _FileSyncStatus.modifiedRemotely
-      : _FileSyncStatus.modifiedLocally;
+  DateTime localModified = localStat.modified;
+  if (localStat.changed.isAfter(localModified)) {
+    localModified = localStat.changed;
+  }
+  if (localStat.accessed.isAfter(localModified)) {
+    localModified = localStat.accessed;
+  }
+
+  bool modifiedBeforeRemote = localModified.isBefore(remote.lastModified!);
+
+  if (localSize != remote.size) {
+    return modifiedBeforeRemote
+        ? _FileSyncStatus.modifiedRemotely
+        : _FileSyncStatus.modifiedLocally;
+  } else {
+    if ((optimisticIgnoreHash && modifiedBeforeRemote) || fullyIgnoreHash) {
+      // Guessing that the file is unmodified.
+      return _FileSyncStatus.uploaded;
+    }
+
+    final localHash = (await HashUtil(localFile).md5Hash()).toString();
+
+    return localHash ==
+            remote
+                .etag // Not possible but just in case
+        ? _FileSyncStatus.uploaded
+        : modifiedBeforeRemote
+        ? _FileSyncStatus.modifiedRemotely
+        : _FileSyncStatus.modifiedLocally;
+  }
 }
 
 Future<_SyncAnalysisResult> _analysisCallback(
   ({
     Map<String, String> localFilesMap,
     Map<String, _RemoteFileForComparator> remoteFilesMap,
+    bool fullyIgnoreHash,
+    bool optimisticIgnoreHash,
   })
   args,
 ) async {
@@ -105,6 +136,8 @@ Future<_SyncAnalysisResult> _analysisCallback(
     final status = await _fileSyncCompare(
       localFile: File(path),
       remote: remote,
+      fullyIgnoreHash: args.fullyIgnoreHash,
+      optimisticIgnoreHash: args.optimisticIgnoreHash,
     );
     switch (status) {
       case _FileSyncStatus.newFile:
@@ -160,6 +193,8 @@ Future<_SyncAnalysisResult> _syncAnalyze(
   String localRootPath,
   Map<String, RemoteFile> remoteFiles, {
   bool recursive = true,
+  bool fullyIgnoreHash = false,
+  bool optimisticIgnoreHash = false,
 }) async {
   final files = await _syncPool.withResource<Iterable<String>>(
     () => _listCallback((path: localRootPath, recursive: recursive)),
@@ -169,6 +204,7 @@ Future<_SyncAnalysisResult> _syncAnalyze(
     remoteFiles.values.map((f) {
       final value = (
         key: f.key,
+        size: f.size,
         localPath: p.absolute(Main.pathFromKey(f.key)),
         etag: f.etag,
         lastModified: f.lastModified,
@@ -185,6 +221,8 @@ Future<_SyncAnalysisResult> _syncAnalyze(
     () => compute(_analysisCallback, (
       localFilesMap: localFilesMap,
       remoteFilesMap: remoteFilesMap,
+      fullyIgnoreHash: fullyIgnoreHash,
+      optimisticIgnoreHash: optimisticIgnoreHash,
     )),
   );
 }
@@ -1395,10 +1433,16 @@ class Watcher {
       if (kDebugMode) {
         debugPrint("Analyzing Sync for ${localDir.path}");
       }
+
+      final transferConfig = ConfigManager.loadTransferConfig();
+
       final result = await _syncAnalyze(
         localDir.path,
         remoteFiles,
         recursive: recursive,
+        fullyIgnoreHash: transferConfig.hashIgnoreMode == HashIgnoreMode.always,
+        optimisticIgnoreHash:
+            transferConfig.hashIgnoreMode == HashIgnoreMode.optimistic,
       );
 
       for (String path in [...result.newFile, ...result.modifiedLocally]) {
