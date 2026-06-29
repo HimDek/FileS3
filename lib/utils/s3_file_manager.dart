@@ -85,7 +85,7 @@ class S3FileManager {
           },
         );
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       final body = await response.stream.bytesToString();
       throw S3Exception(
         'Create Directory Failed with response: $body',
@@ -138,7 +138,7 @@ class S3FileManager {
 
       final body = await response.stream.bytesToString();
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw S3Exception(
           'ListObjectsV2 Failed with response: $body',
           code: response.statusCode,
@@ -228,7 +228,7 @@ class S3FileManager {
       );
     }
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       final body = await response.stream.bytesToString();
       throw S3Exception(
         'Copy Failed with response: $body',
@@ -299,7 +299,7 @@ class S3FileManager {
           },
         );
 
-    if (res.statusCode >= 200 && res.statusCode < 300) {
+    if (res.statusCode < 200 || res.statusCode >= 300) {
       throw S3Exception(
         'HEAD Failed with response: ${res.body}',
         code: res.statusCode,

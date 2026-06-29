@@ -160,8 +160,8 @@ class _ExternalFilesState extends State<ExternalFiles> {
                       tag: _files[index].key!,
                       child: MediaPreview(
                         path: _files[index].path,
-                        width: 256,
-                        height: 256,
+                        width: 360,
+                        height: 360,
                       ),
                     ),
                   ),
@@ -249,8 +249,8 @@ class _ExternalFilesState extends State<ExternalFiles> {
                                       tag: prop.key!,
                                       child: MediaPreview(
                                         path: prop.path,
-                                        width: 256,
-                                        height: 256,
+                                        width: 360,
+                                        height: 360,
                                       ),
                                     ),
                                   ),
@@ -287,8 +287,8 @@ class _ExternalFilesState extends State<ExternalFiles> {
                         tag: _files[index].key!,
                         child: MediaPreview(
                           path: _files[index].path,
-                          width: 256,
-                          height: 256,
+                          width: 360,
+                          height: 360,
                         ),
                       ),
                     ),

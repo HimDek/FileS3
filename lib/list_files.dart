@@ -383,9 +383,9 @@ class ListFilesState extends State<ListFiles> {
 
   Widget preview(FileProps item) {
     return SizedBox(
-      height: 256,
-      width: 256,
-      child: MediaPreview(item: item, height: 256, width: 256),
+      height: 360,
+      width: 360,
+      child: MediaPreview(item: item, height: 360, width: 360),
     );
   }
 

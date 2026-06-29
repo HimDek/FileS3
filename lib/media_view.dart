@@ -1418,8 +1418,8 @@ class MediaPreviewState extends State<MediaPreview> {
         ? Icon(mediaTypeIcon(lookupMimeType(widget.item?.key ?? widget.path!)))
         : Image(
             image: thumbnailCache[widget.item?.key ?? widget.path!]!,
-            width: widget.width ?? 256,
-            height: widget.height ?? 256,
+            width: widget.width ?? 360,
+            height: widget.height ?? 360,
             fit: BoxFit.cover,
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
