@@ -602,11 +602,11 @@ abstract class Main {
     loading.value = false;
   }
 
-  static void downloadFile(
+  static Future<void> downloadFile(
     String key, {
     String? localPath,
     VoidCallback? onComplete,
-  }) {
+  }) async {
     final file = remoteFileByKey(key);
     if (file == null) {
       return;
@@ -1105,6 +1105,7 @@ abstract class Job {
   static final List<Job> jobs = <Job>[];
   static final List<Job> completedJobs = <Job>[];
   static final ManualNotifier onJobsChanged = ManualNotifier();
+  static final ManualNotifier onProgressUpdate = ManualNotifier();
   static Iterable<Job> get runningJobs =>
       jobs.where((job) => job.status.value == JobStatus.running);
   static Iterable<Job> get initializedJobs =>
@@ -1114,7 +1115,6 @@ abstract class Job {
         job.status.value == JobStatus.failed ||
         job.status.value == JobStatus.stopped,
   );
-  static final ManualNotifier onProgressUpdate = ManualNotifier();
 
   final ValueNotifier<JobStatus> status = ValueNotifier<JobStatus>(
     JobStatus.initialized,
@@ -1130,7 +1130,7 @@ abstract class Job {
     required this.profile,
   });
 
-  void add() {
+  Future<void> add() async {
     if (jobs.any(
       (job) =>
           job.localFile.path == localFile.path &&
@@ -1289,14 +1289,14 @@ abstract class Job {
     bytesCompleted.dispose();
   }
 
-  static void continueAll() {
+  static Future<void> continueAll() async {
     for (var job in unInitializedJobs) {
       job.status.value = JobStatus.initialized;
     }
     startall();
   }
 
-  static void startall() {
+  static Future<void> startall() async {
     if (scheduled) {
       return;
     }
@@ -1318,20 +1318,20 @@ abstract class Job {
     }
   }
 
-  static void stopall() {
+  static Future<void> stopall() async {
     for (var job in jobs) {
       job.stop();
     }
     onProgressUpdate.notifyListeners();
   }
 
-  static void clearCompleted() {
+  static Future<void> clearCompleted() async {
     for (final job in completedJobs.toList()) {
       job.dismiss();
     }
   }
 
-  static void disposeAll() {
+  static Future<void> disposeAll() async {
     for (final job in jobs.toList()) {
       jobs.remove(job);
       job.dispose();

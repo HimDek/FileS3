@@ -377,21 +377,21 @@ class MyBrowserState extends BrowserState {
 class Browser extends StatefulWidget {
   final Widget title;
   final Widget? subtitle;
-  final Function()? onInit;
+  final FutureOr<void> Function()? onInit;
   final String initialDir;
   final Widget? drawer;
   final Widget? floatingActionButton;
   final Widget? bottomNavigationBar;
-  final Function(Iterable<String>)? downloadFiles;
-  final Function(Iterable<String>)? downloadDirectories;
-  final Function(String, String)? saveFile;
-  final Function(String, String)? saveDirectory;
-  final Function(Iterable<String>)? deleteLocals;
-  final Function(String)? deleteCache;
+  final Future<void> Function(Iterable<String>)? downloadFiles;
+  final Future<void> Function(Iterable<String>)? downloadDirectories;
+  final Future<void> Function(String, String)? saveFile;
+  final Future<void> Function(String, String)? saveDirectory;
+  final Future<void> Function(Iterable<String>)? deleteLocals;
+  final Future<void> Function(String)? deleteCache;
   final Future<void> Function(String)? createDirectory;
-  final void Function(String, Directory)? uploadDirectory;
-  final Function(String)? onPick;
-  final Future<void> Function(List<String>)? onFilesPick;
+  final Future<void> Function(String, Directory)? uploadDirectory;
+  final FutureOr<void> Function(String)? onPick;
+  final FutureOr<void> Function(List<String>)? onFilesPick;
   final List<RegExp>? mimeTypes;
   final bool allowMultiple;
 
@@ -1624,6 +1624,7 @@ class BrowserState extends State<Browser> {
                     _profile.value?.accessible,
                     Main.onRemoteFilesChanged,
                     Job.onJobsChanged,
+                    Job.onProgressUpdate,
                     uiConfigNotifier.showDirectorySummary,
                     uiConfigNotifier.showDirectoryBackupConfig,
                     progress,

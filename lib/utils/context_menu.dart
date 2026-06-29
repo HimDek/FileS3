@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:mime/mime.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,11 +19,11 @@ import 'package:files3/settings.dart';
 sealed class ContextActionHandlerDelegate {
   final Iterable<String> files;
   final String? Function(String, int?) getLink;
-  final Function(Iterable<String>)? downloadFiles;
-  final Function(String, String)? saveFile;
-  final Function(Iterable<String>)? deleteLocalFiles;
-  final Function(String)? deleteCacheFile;
-  final Function(Iterable<String>)? deleteFiles;
+  final Future<void> Function(Iterable<String>)? downloadFiles;
+  final Future<void> Function(String, String)? saveFile;
+  final Future<void> Function(Iterable<String>)? deleteLocalFiles;
+  final Future<void> Function(String)? deleteCacheFile;
+  final Future<void> Function(Iterable<String>)? deleteFiles;
   List<String>? _downloadedFilesCache;
   List<String>? _cachedFilesCache;
   List<String>? _activeFilesCache;
@@ -85,15 +86,15 @@ sealed class ContextActionHandlerDelegate {
     };
   }
 
-  void Function()? download();
+  Future<void> Function()? download();
 
-  String Function()? saveAs(String? path);
+  Future<String> Function()? saveAs(String? path);
 
-  String Function()? deleteUploaded(Iterable<String> removableFiles) {
+  Future<String> Function()? deleteUploaded(Iterable<String> removableFiles) {
     return deleteLocalFiles != null && removableFiles.isNotEmpty
-        ? () {
+        ? () async {
             try {
-              deleteLocalFiles!(removableFiles);
+              await deleteLocalFiles!(removableFiles);
               return 'Deleted local copies of ${removableFiles.length} uploaded files';
             } finally {
               invalidateCache();
@@ -102,11 +103,11 @@ sealed class ContextActionHandlerDelegate {
         : null;
   }
 
-  String Function()? deleteLocal(List<String> downloadedFiles);
+  Future<String> Function()? deleteLocal(List<String> downloadedFiles);
 
   Future<String> Function()? delete();
 
-  String Function()? deleteCache();
+  Future<String> Function()? deleteCache();
 }
 
 sealed class FileContextActionHandlerDelegate
@@ -134,16 +135,16 @@ sealed class FileContextActionHandlerDelegate
   );
 
   @override
-  void Function()? download() {
+  Future<void> Function()? download() {
     return rootExists.every((exists) => !exists) ||
             downloadedFiles.length == files.length ||
             downloadedFiles.toSet().union(activeFiles.toSet()).length ==
                 files.length ||
             downloadFiles == null
         ? null
-        : () {
+        : () async {
             try {
-              downloadFiles!(
+              await downloadFiles!(
                 files.where(
                   (file) => Main.remoteFileByKey(file)?.downloaded != true,
                 ),
@@ -155,9 +156,9 @@ sealed class FileContextActionHandlerDelegate
   }
 
   @override
-  String Function()? saveAs(String? path) {
+  Future<String> Function()? saveAs(String? path) {
     return path != null && saveFile != null
-        ? () {
+        ? () async {
             try {
               for (final file in files) {
                 saveFile!(file, p.s3.join(path, p.s3.basename(file)));
@@ -171,11 +172,11 @@ sealed class FileContextActionHandlerDelegate
   }
 
   @override
-  String Function()? deleteLocal(List<String> downloadedFiles) {
+  Future<String> Function()? deleteLocal(List<String> downloadedFiles) {
     return deleteLocalFiles != null && downloadedFiles.isNotEmpty
-        ? () {
+        ? () async {
             try {
-              deleteLocalFiles!(downloadedFiles);
+              await deleteLocalFiles!(downloadedFiles);
               return 'Deleted local copies of ${downloadedFiles.length} files';
             } finally {
               invalidateCache();
@@ -199,13 +200,13 @@ sealed class FileContextActionHandlerDelegate
   }
 
   @override
-  String Function()? deleteCache() {
+  Future<String> Function()? deleteCache() {
     final cacheFilesList = cachedFiles;
     return deleteCacheFile != null && cacheFilesList.isNotEmpty
-        ? () {
+        ? () async {
             try {
               for (final file in cacheFilesList) {
-                deleteCacheFile!(file);
+                await deleteCacheFile!(file);
               }
               return 'Deleted cached copies of ${cacheFilesList.length} files';
             } finally {
@@ -278,8 +279,8 @@ class FilesContextActionHandler extends FileContextActionHandlerDelegate {
 sealed class DirectoryContextActionHandlerDelegate
     extends ContextActionHandlerDelegate {
   final Iterable<String> directories;
-  final Function(Iterable<String>)? downloadDirectories;
-  final Function(String, String)? saveDirectory;
+  final Future<void> Function(Iterable<String>)? downloadDirectories;
+  final Future<void> Function(String, String)? saveDirectory;
 
   DirectoryContextActionHandlerDelegate({
     required this.directories,
@@ -338,16 +339,16 @@ sealed class DirectoryContextActionHandlerDelegate
       );
 
   @override
-  void Function()? download() {
+  Future<void> Function()? download() {
     return dirRootExists.every((exists) => !exists) ||
             downloadedFiles.length == files.length ||
             downloadedFiles.toSet().union(activeFiles.toSet()).length ==
                 files.length ||
             downloadDirectories == null
         ? null
-        : () {
+        : () async {
             try {
-              downloadDirectories!(directories);
+              await downloadDirectories!(directories);
             } finally {
               invalidateCache();
             }
@@ -355,9 +356,9 @@ sealed class DirectoryContextActionHandlerDelegate
   }
 
   @override
-  String Function()? saveAs(String? path) {
+  Future<String> Function()? saveAs(String? path) {
     return path != null && saveDirectory != null
-        ? () {
+        ? () async {
             try {
               for (final dir in directories) {
                 saveDirectory!(dir, p.s3.join(path, p.s3.basename(dir)));
@@ -371,11 +372,11 @@ sealed class DirectoryContextActionHandlerDelegate
   }
 
   @override
-  String Function()? deleteLocal(List<String> localDirs) {
+  Future<String> Function()? deleteLocal(List<String> localDirs) {
     return deleteLocalFiles != null && localDirs.isNotEmpty
-        ? () {
+        ? () async {
             try {
-              deleteLocalFiles!(localDirs);
+              await deleteLocalFiles!(localDirs);
               return 'Deleted local copies of ${downloadedFiles.length} files in ${localDirs.length} folders';
             } finally {
               invalidateCache();
@@ -399,13 +400,13 @@ sealed class DirectoryContextActionHandlerDelegate
   }
 
   @override
-  String Function()? deleteCache() {
+  Future<String> Function()? deleteCache() {
     final cacheDirs = cachedDirectories;
     return deleteCacheFile != null && cacheDirs.isNotEmpty
-        ? () {
+        ? () async {
             try {
               for (final dir in cacheDirs) {
-                deleteCacheFile!(dir);
+                await deleteCacheFile!(dir);
               }
               return 'Deleted cached copies of ${cachedFiles.length} in ${cacheDirs.length} folders';
             } finally {
@@ -492,43 +493,43 @@ class BulkContextActionHandler extends ContextActionHandlerDelegate {
   }) : super(files: [...directoriesHandler.files, ...filesHandler.files]);
 
   @override
-  void Function()? download() {
+  Future<void> Function()? download() {
     final directoryHandle = directoriesHandler.download();
     final fileHandle = filesHandler.download();
     if (directoryHandle == null && fileHandle == null) {
       return null;
     }
-    return () {
-      directoryHandle?.call();
-      fileHandle?.call();
+    return () async {
+      await directoryHandle?.call();
+      await fileHandle?.call();
     };
   }
 
   @override
-  String Function()? saveAs(String? path) {
+  Future<String> Function()? saveAs(String? path) {
     final directoryHandle = directoriesHandler.saveAs(path);
     final fileHandle = filesHandler.saveAs(path);
     if (directoryHandle == null && fileHandle == null) {
       return null;
     }
-    return () {
-      directoryHandle?.call();
-      fileHandle?.call();
+    return () async {
+      await directoryHandle?.call();
+      await fileHandle?.call();
       return 'Saving ${directoriesHandler.files.length} files from ${directoriesHandler.directories.length} folders and ${filesHandler.files.length} files to $path';
     };
   }
 
   @override
-  String Function()? deleteLocal(List<String> downloadedFiles) {
+  Future<String> Function()? deleteLocal(List<String> downloadedFiles) {
     final handleDirectory = directoriesHandler.deleteLocal(
       directoriesHandler.localDirectories,
     );
     final handleFiles = filesHandler.deleteLocal(filesHandler.downloadedFiles);
     return handleDirectory == null && handleFiles == null
         ? null
-        : () {
-            handleDirectory?.call();
-            handleFiles?.call();
+        : () async {
+            await handleDirectory?.call();
+            await handleFiles?.call();
             return 'Deleted local copies of ${directoriesHandler.files.length} files in ${directoriesHandler.localDirectories.length} folders and ${filesHandler.downloadedFiles.length} files';
           };
   }
@@ -547,14 +548,14 @@ class BulkContextActionHandler extends ContextActionHandlerDelegate {
   }
 
   @override
-  String Function()? deleteCache() {
+  Future<String> Function()? deleteCache() {
     final handleDirectory = directoriesHandler.deleteCache();
     final handleFiles = filesHandler.deleteCache();
     return handleDirectory == null && handleFiles == null
         ? null
-        : () {
-            handleDirectory?.call();
-            handleFiles?.call();
+        : () async {
+            await handleDirectory?.call();
+            await handleFiles?.call();
             return 'Deleted cache of ${directoriesHandler.files.length} files in ${directoriesHandler.directories.length} folders and ${filesHandler.files.length} files';
           };
   }
@@ -564,8 +565,8 @@ class ContextOptionDelegate {
   final String title;
   final IconData icon;
   final String? subtitle;
-  final dynamic Function()? action;
-  final dynamic Function()? secondaryAction;
+  final FutureOr<dynamic> Function()? action;
+  final FutureOr<dynamic> Function()? secondaryAction;
   final IconData? secondaryIcon;
   final bool popOnInvoked;
 
@@ -691,7 +692,7 @@ class ContextOptionDelegate {
                 okText: 'Delete',
               );
               if (yes) {
-                showSnackBar(SnackBar(content: Text(handle.call())));
+                showSnackBar(SnackBar(content: Text(await handle.call())));
               }
             },
     );
@@ -717,7 +718,7 @@ class ContextOptionDelegate {
                 okText: 'Delete',
               );
               if (yes) {
-                showSnackBar(SnackBar(content: Text(handle.call())));
+                showSnackBar(SnackBar(content: Text(await handle.call())));
               }
             },
     );
@@ -774,8 +775,7 @@ class ContextOptionDelegate {
                 okText: 'Delete',
               );
               if (yes) {
-                final result = handle.call();
-                showSnackBar(SnackBar(content: Text(result)));
+                showSnackBar(SnackBar(content: Text(await handle.call())));
               }
             },
     );
@@ -869,7 +869,7 @@ class FileContextOption extends FileContextOptionDelegate {
             }
             final handle = handler.saveAs(saveLocation?.path);
             if (handle != null) {
-              showSnackBar(SnackBar(content: Text(handle())));
+              showSnackBar(SnackBar(content: Text(await handle())));
             }
           },
   );
@@ -956,7 +956,7 @@ class FilesContextOption extends FileContextOptionDelegate {
             );
             final handle = handler.saveAs(directory);
             if (handle != null) {
-              showSnackBar(SnackBar(content: Text(handle())));
+              showSnackBar(SnackBar(content: Text(await handle())));
             }
           },
   );
@@ -1018,7 +1018,7 @@ class DirectoryContextOptionDelegate extends ContextOptionDelegate {
             );
             final handle = handler.saveAs(directory);
             if (handle != null) {
-              showSnackBar(SnackBar(content: Text(handle())));
+              showSnackBar(SnackBar(content: Text(await handle())));
             }
           },
   );
@@ -1198,9 +1198,9 @@ class BulkContextOption extends ContextOptionDelegate {
     icon: Icons.save_as_rounded,
     action: () async {
       final directory = await getDirectoryPath(canCreateDirectories: true);
-      final String Function()? handle = handler.saveAs(directory);
+      final handle = handler.saveAs(directory);
       if (handle != null) {
-        showSnackBar(SnackBar(content: Text(handle())));
+        showSnackBar(SnackBar(content: Text(await handle())));
       }
     },
   );
@@ -1304,10 +1304,7 @@ Iterable<Widget> buildContextOptions(
               trailing: option.secondaryAction != null
                   ? IconButton(
                       onPressed: () async {
-                        await option.secondaryAction!();
-                        for (var handler in handlers) {
-                          handler.invalidateCache();
-                        }
+                        option.secondaryAction!();
                         onInvoked?.call();
                       },
                       icon: Icon(option.secondaryIcon),
@@ -1317,10 +1314,7 @@ Iterable<Widget> buildContextOptions(
                   ? null
                   : () async {
                       if (option.popOnInvoked) globalNavigator?.pop();
-                      await option.action!();
-                      for (var handler in handlers) {
-                        handler.invalidateCache();
-                      }
+                      option.action!();
                       onInvoked?.call();
                     },
               enabled: option.action != null,
@@ -1336,13 +1330,13 @@ Widget buildFileContextMenu(
   String item,
   bool allowModify,
   String? Function(String, int?) getLink,
-  Function(Iterable<String>)? downloadFiles,
-  Function(String, String)? saveFile,
-  Function(Iterable<String>)? cut,
-  Function(Iterable<String>)? copy,
+  Future<void> Function(Iterable<String>)? downloadFiles,
+  Future<void> Function(String, String)? saveFile,
+  void Function(Iterable<String>)? cut,
+  void Function(Iterable<String>)? copy,
   Future<void> Function(List<String>, List<String>)? moveFiles,
-  Function(Iterable<String>)? deleteLocals,
-  Function(String)? deleteCache,
+  Future<void> Function(Iterable<String>)? deleteLocals,
+  Future<void> Function(String)? deleteCache,
   Future<void> Function(Iterable<String>)? deleteFiles,
   void Function()? onInvoked,
 ) {
@@ -1446,12 +1440,12 @@ Widget buildFilesContextMenu(
   BuildContext context,
   Iterable<String> items,
   String? Function(String, int?) getLink,
-  Function(Iterable<String>)? downloadFiles,
-  Function(String, String)? saveFile,
-  Function(Iterable<String>)? cut,
-  Function(Iterable<String>)? copy,
-  Function(Iterable<String>)? deleteLocals,
-  Function(String)? deleteCache,
+  Future<void> Function(Iterable<String>)? downloadFiles,
+  Future<void> Function(String, String)? saveFile,
+  void Function(Iterable<String>)? cut,
+  void Function(Iterable<String>)? copy,
+  Future<void> Function(Iterable<String>)? deleteLocals,
+  Future<void> Function(String)? deleteCache,
   Future<void> Function(Iterable<String>)? deleteFiles,
   Function() clearSelection,
   void Function()? onInvoked,
@@ -1504,14 +1498,14 @@ Widget buildDirectoryContextMenu(
   String file,
   bool allowModify,
   String? Function(String, int?) getLink,
-  Function(Iterable<String>)? downloadDirectories,
-  Function(String, String)? saveDirectory,
-  Function(Iterable<String>)? cut,
-  Function(Iterable<String>)? copy,
+  Future<void> Function(Iterable<String>)? downloadDirectories,
+  Future<void> Function(String, String)? saveDirectory,
+  void Function(Iterable<String>)? cut,
+  void Function(Iterable<String>)? copy,
   Future<void> Function(List<String>, List<String>)? moveDirectories,
-  Function(Iterable<String>)? deleteLocals,
-  Function(String)? deleteCache,
-  Function(Iterable<String>)? deleteDirectories,
+  Future<void> Function(Iterable<String>)? deleteLocals,
+  Future<void> Function(String)? deleteCache,
+  Future<void> Function(Iterable<String>)? deleteDirectories,
   void Function()? onInvoked,
 ) {
   return FutureBuilder(
@@ -1634,12 +1628,12 @@ Widget buildDirectoriesContextMenu(
   BuildContext context,
   Iterable<String> dirs,
   String? Function(String, int?) getLink,
-  Function(Iterable<String>)? downloadDirectories,
-  Function(String, String)? saveDirectory,
-  Function(Iterable<String>)? cut,
-  Function(Iterable<String>)? copy,
-  Function(Iterable<String>)? deleteLocals,
-  Function(String)? deleteCache,
+  Future<void> Function(Iterable<String>)? downloadDirectories,
+  Future<void> Function(String, String)? saveDirectory,
+  void Function(Iterable<String>)? cut,
+  void Function(Iterable<String>)? copy,
+  Future<void> Function(Iterable<String>)? deleteLocals,
+  Future<void> Function(String)? deleteCache,
   Future<void> Function(Iterable<String>)? deleteDirectories,
   Function() clearSelection,
   void Function()? onInvoked,
@@ -1690,14 +1684,14 @@ Widget buildBulkContextMenu(
   BuildContext context,
   Iterable<String> items,
   String? Function(String, int?) getLink,
-  Function(Iterable<String>)? downloadFiles,
-  Function(Iterable<String>)? downloadDirectories,
-  Function(String, String)? saveFile,
-  Function(String, String)? saveDirectory,
-  Function(Iterable<String>)? cut,
-  Function(Iterable<String>)? copy,
-  Function(Iterable<String>)? deleteLocals,
-  Function(String)? deleteCache,
+  Future<void> Function(Iterable<String>)? downloadFiles,
+  Future<void> Function(Iterable<String>)? downloadDirectories,
+  Future<void> Function(String, String)? saveFile,
+  Future<void> Function(String, String)? saveDirectory,
+  void Function(Iterable<String>)? cut,
+  void Function(Iterable<String>)? copy,
+  Future<void> Function(Iterable<String>)? deleteLocals,
+  Future<void> Function(String)? deleteCache,
   Future<void> Function(Iterable<String>)? deleteFiles,
   Future<void> Function(Iterable<String>)? deleteDirectories,
   Function() clearSelection,

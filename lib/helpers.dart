@@ -1671,3 +1671,105 @@ class PopupMenuListTileState<T> extends State<PopupMenuListTile<T>> {
     );
   }
 }
+
+class MyGridTile extends StatelessWidget {
+  final Widget child;
+  final Widget? footer;
+  final bool selected;
+  final Widget? topLeftBadge;
+  final Widget? topRightBadge;
+  final Widget? bottomLeftBadge;
+  final Widget? bottomRightBadge;
+  final EdgeInsets footerPadding;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool enabled;
+
+  const MyGridTile({
+    super.key,
+    required this.child,
+    this.footer,
+    this.selected = false,
+    this.topLeftBadge,
+    this.topRightBadge,
+    this.bottomLeftBadge,
+    this.bottomRightBadge,
+    this.footerPadding = const EdgeInsets.all(8.0),
+    this.onTap,
+    this.onLongPress,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      onLongPress: enabled ? onLongPress : null,
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 250),
+        decoration: BoxDecoration(
+          color: selected
+              ? Theme.of(context).colorScheme.secondaryContainer
+              : Theme.of(context).colorScheme.surface,
+        ),
+        child: GridTile(
+          header: topRightBadge != null || topLeftBadge != null
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    topLeftBadge ?? SizedBox.shrink(),
+                    topRightBadge ?? SizedBox.shrink(),
+                  ],
+                )
+              : null,
+          footer: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (bottomLeftBadge != null || bottomRightBadge != null)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    bottomLeftBadge ?? SizedBox.shrink(),
+                    bottomRightBadge ?? SizedBox.shrink(),
+                  ],
+                ),
+              Padding(padding: footerPadding, child: footer),
+            ],
+          ),
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 250),
+            padding: EdgeInsets.only(
+              left: selected ? 8 : 0,
+              right: selected ? 8 : 0,
+              top: selected ? 8 : 0,
+              bottom: selected ? 40 : 32,
+            ),
+            child: Stack(
+              children: [
+                AnimatedPadding(
+                  duration: Duration(milliseconds: 250),
+                  padding: EdgeInsets.all(selected ? 2 : 0),
+                  child: Center(child: child),
+                ),
+                AnimatedContainer(
+                  duration: Duration(milliseconds: 250),
+                  decoration: BoxDecoration(
+                    border: selected
+                        ? Border.all(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSecondaryContainer,
+                            width: 2,
+                          )
+                        : null,
+                    borderRadius: BorderRadius.circular(selected ? 4 : 0),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
