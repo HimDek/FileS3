@@ -38,17 +38,14 @@ class InfoRow extends StatefulWidget {
 
 class _InfoRowState extends State<InfoRow> {
   late UiConfig _uiConfig = widget.uiConfig ?? UiConfig();
-  late RemoteFile _file =
-      Main.remoteFileByKey(widget.remoteKey) ??
-      RemoteFile(key: widget.remoteKey, etag: '');
 
   @override
   void didUpdateWidget(covariant InfoRow oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.remoteKey != widget.remoteKey) {
-      _file =
-          Main.remoteFileByKey(widget.remoteKey) ??
-          RemoteFile(key: widget.remoteKey, etag: '');
+      // _file =
+      //     (await Main.remoteFileByKey(widget.remoteKey)) ??
+      //     RemoteFile(key: widget.remoteKey, etag: '');
     }
     if (oldWidget.uiConfig != widget.uiConfig) {
       _uiConfig = widget.uiConfig ?? UiConfig();
@@ -57,90 +54,107 @@ class _InfoRowState extends State<InfoRow> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: widget.mainAxisAlignment,
-      mainAxisSize: widget.mainAxisSize,
-      crossAxisAlignment: widget.crossAxisAlignment,
-      textDirection: widget.textDirection,
-      verticalDirection: widget.verticalDirection,
-      spacing: widget.spacing,
-      children: [
-        if (_uiConfig.showTime == DirOrFile.both ||
-            (_uiConfig.showTime == DirOrFile.file &&
-                !p.isDir(widget.remoteKey)))
-          FutureBuilder<DateTime?>(
-            future: _file.getLastModified(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  _file.lastModified == null) {
-                return Text('', style: widget.textStyle);
-              }
-              if (snapshot.hasError || snapshot.data == null) {
-                return Text('', style: widget.textStyle);
-              }
-              return Text(
-                timeToReadable(snapshot.data!),
-                style: widget.textStyle,
-              );
-            },
-          ),
-        if (_uiConfig.showSize == DirOrFile.both ||
-            (_uiConfig.showSize == DirOrFile.file &&
-                !p.isDir(widget.remoteKey)))
-          FutureBuilder<int>(
-            future: _file.getSize(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  _file.size == 0) {
-                return Text('', style: widget.textStyle);
-              }
-              if (snapshot.hasError || snapshot.data == null) {
-                return Text('', style: widget.textStyle);
-              }
-              return Text(
-                bytesToReadable(snapshot.data!),
-                style: widget.textStyle,
-              );
-            },
-          ),
-        if (_uiConfig.showDownloadStatus == DirOrFile.both ||
-            (_uiConfig.showDownloadStatus == DirOrFile.file &&
-                !p.isDir(widget.remoteKey)))
-          DownloadStatusIcon(
-            remoteKey: widget.remoteKey,
-            size: widget.iconSize,
-          ),
-        if (p.isDir(widget.remoteKey)) ...[
-          if (_uiConfig.showContent)
-            FutureBuilder<(int, int)>(
-              future: _file.getCount(recursive: true),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    _file.count == (0, 0)) {
-                  return Text('', style: widget.textStyle);
-                }
-                if (snapshot.hasError || snapshot.data == null) {
-                  return Text('', style: widget.textStyle);
-                }
-                final count = snapshot.data!;
-                if (count.$1 == 0) {
-                  return Text('${count.$2} files', style: widget.textStyle);
-                }
-                if (count.$2 == 0) {
-                  return Text(
-                    '${count.$1} subfolders',
+    return FutureBuilder(
+      future: Main.remoteFileByKey(widget.remoteKey),
+      builder: (context, file) =>
+          file.connectionState == ConnectionState.active ||
+              !file.hasData ||
+              file.data == null
+          ? Row(children: [])
+          : Row(
+              mainAxisAlignment: widget.mainAxisAlignment,
+              mainAxisSize: widget.mainAxisSize,
+              crossAxisAlignment: widget.crossAxisAlignment,
+              textDirection: widget.textDirection,
+              verticalDirection: widget.verticalDirection,
+              spacing: widget.spacing,
+              children: [
+                if (_uiConfig.showTime == DirOrFile.both ||
+                    (_uiConfig.showTime == DirOrFile.file &&
+                        !p.isDir(widget.remoteKey)))
+                  FutureBuilder<DateTime?>(
+                    future: file.data!.getLastModified(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          file.data!.lastModified.isAfter(
+                            DateTime.fromMillisecondsSinceEpoch(0),
+                          )) {
+                        return Text('', style: widget.textStyle);
+                      }
+                      if (snapshot.hasError || snapshot.data == null) {
+                        return Text('', style: widget.textStyle);
+                      }
+                      return Text(
+                        timeToReadable(snapshot.data!),
+                        style: widget.textStyle,
+                      );
+                    },
+                  ),
+                if (_uiConfig.showSize == DirOrFile.both ||
+                    (_uiConfig.showSize == DirOrFile.file &&
+                        !p.isDir(widget.remoteKey)))
+                  FutureBuilder<int>(
+                    future: file.data!.getSize(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          file.data!.size == 0) {
+                        return Text('', style: widget.textStyle);
+                      }
+                      if (snapshot.hasError || snapshot.data == null) {
+                        return Text('', style: widget.textStyle);
+                      }
+                      return Text(
+                        bytesToReadable(snapshot.data!),
+                        style: widget.textStyle,
+                      );
+                    },
+                  ),
+                if (_uiConfig.showDownloadStatus == DirOrFile.both ||
+                    (_uiConfig.showDownloadStatus == DirOrFile.file &&
+                        !p.isDir(widget.remoteKey)))
+                  DownloadStatusIcon(
+                    remoteKey: widget.remoteKey,
+                    size: widget.iconSize,
+                  ),
+                if (p.isDir(widget.remoteKey)) ...[
+                  if (_uiConfig.showContent)
+                    FutureBuilder<(int, int)>(
+                      future: file.data!.getCount(recursive: true),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                                ConnectionState.waiting &&
+                            file.data!.count == (0, 0)) {
+                          return Text('', style: widget.textStyle);
+                        }
+                        if (snapshot.hasError || snapshot.data == null) {
+                          return Text('', style: widget.textStyle);
+                        }
+                        final count = snapshot.data!;
+                        if (count.$1 == 0) {
+                          return Text(
+                            '${count.$2} files',
+                            style: widget.textStyle,
+                          );
+                        }
+                        if (count.$2 == 0) {
+                          return Text(
+                            '${count.$1} subfolders',
+                            style: widget.textStyle,
+                          );
+                        }
+                        return Text(
+                          '${count.$2} files in ${count.$1} subfolders',
+                          style: widget.textStyle,
+                        );
+                      },
+                    ),
+                ] else if (_uiConfig.showType)
+                  Text(
+                    p.s3.extension(widget.remoteKey),
                     style: widget.textStyle,
-                  );
-                }
-                return Text(
-                  '${count.$2} files in ${count.$1} subfolders',
-                  style: widget.textStyle,
-                );
-              },
+                  ),
+              ],
             ),
-        ] else if (_uiConfig.showType)
-          Text(p.s3.extension(widget.remoteKey), style: widget.textStyle),
-      ],
     );
   }
 }
@@ -162,7 +176,7 @@ class DownloadStatusIcon extends StatelessWidget {
     RemoteFile? file;
     return FutureBuilder<void>(
       future: () async {
-        file = Main.remoteFileByKey(remoteKey);
+        file = await Main.remoteFileByKey(remoteKey);
         return file!.getDownloaded();
       }(),
       builder: (context, snapshot) {

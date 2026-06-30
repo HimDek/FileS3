@@ -314,11 +314,13 @@ class MyBrowserState extends BrowserState {
                     },
                   );
                   if (dir != null && dir.isNotEmpty) {
-                    if (Main.remoteFileByKey(p.s3.join(_driveDir.value, dir)) !=
+                    if ((await Main.remoteFileByKey(
+                              p.s3.join(_driveDir.value, dir),
+                            )) !=
                             null ||
-                        Main.remoteFileByKey(
+                        (await Main.remoteFileByKey(
                               p.s3.asDir(p.s3.join(_driveDir.value, dir)),
-                            ) !=
+                            )) !=
                             null) {
                       showSnackBar(
                         SnackBar(
@@ -497,9 +499,9 @@ class BrowserState extends State<Browser> {
     _fileCount.value = 0;
 
     final counts =
-        await Main.remoteFileByKey(
+        await (await Main.remoteFileByKey(
           _driveDir.value,
-        )?.getCount(recursive: false) ??
+        ))?.getCount(recursive: false) ??
         (0, 0);
     _dirCount.value = counts.$1;
     _fileCount.value = counts.$2;
@@ -691,19 +693,19 @@ class BrowserState extends State<Browser> {
     }
   }
 
-  void _setCurrentItems() {
+  Future<void> _setCurrentItems() async {
     if (kDebugMode) {
       debugPrint('Refreshing current items set...');
     }
     _currentItems.value = _searching.value && _navIndex.value == 0
         ? _searchResults.value
         : _driveDir.value == '' && _navIndex.value == 0
-        ? Main.remoteFilesByDir(
+        ? (await Main.remoteFilesByDir(
             '',
             recursive: false,
-          ).where((file) => p.isDir(file.key))
+          )).where((file) => p.isDir(file.key))
         : _driveDir.value != '' && _navIndex.value == 0
-        ? Main.remoteFilesByDir(_driveDir.value, recursive: false)
+        ? (await Main.remoteFilesByDir(_driveDir.value, recursive: false))
               .where(
                 (file) => !Job.jobs.any((job) => job.remoteKey == file.key),
               )
@@ -730,10 +732,10 @@ class BrowserState extends State<Browser> {
     _searchResults.value = extractAllSorted(
       query: _searchController.text.trim().toLowerCase(),
       choices: [
-        ...Main.remoteFilesByDir(
+        ...(await Main.remoteFilesByDir(
           _driveDir.value,
           recursive: true,
-        ).where((file) => !Job.jobs.any((job) => job.remoteKey == file.key)),
+        )).where((file) => !Job.jobs.any((job) => job.remoteKey == file.key)),
         ...Job.jobs.where(
           (job) => p.s3.isWithin(_driveDir.value, job.remoteKey),
         ),
@@ -874,120 +876,123 @@ class BrowserState extends State<Browser> {
 
   Widget _buildContextMenu(BuildContext context, String? key) {
     final file = key == null ? null : Main.remoteFileByKey(key);
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        loading,
-        _rebuildContext,
-        Job.onProgressUpdate,
-      ]),
-      builder: (context, _) => SingleChildScrollView(
-        child: file == null
-            ? buildBulkContextMenu(
-                context,
-                _selection.value,
-                _getLink,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.downloadFiles,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.downloadDirectories,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.saveFile,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.saveDirectory,
-                loading.value || widget.onFilesPick != null ? null : _cut,
-                loading.value || widget.onFilesPick != null ? null : _copy,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.deleteLocals,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.deleteCache,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : (keys) async =>
-                          await Main.deleteFiles(keys, refresh: true),
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : (dirs) async =>
-                          await Main.deleteDirectories(dirs, refresh: true),
-                () {
-                  _selection.value = {};
-                },
-                () {
-                  _rebuildContext.notifyListeners();
-                },
-              )
-            : p.isDir(file.key)
-            ? buildDirectoryContextMenu(
-                context,
-                file.key,
-                _selection.value.isEmpty,
-                _getLink,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.downloadDirectories,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.saveDirectory,
-                loading.value || widget.onFilesPick != null ? null : _cut,
-                loading.value || widget.onFilesPick != null ? null : _copy,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : (List<String> dirs, List<String> newDirs) async =>
-                          await Main.moveDirectories(
-                            dirs,
-                            newDirs,
-                            refresh: true,
-                          ),
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.deleteLocals,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.deleteCache,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : (Iterable<String> dirs) async =>
-                          await Main.deleteDirectories(dirs, refresh: true),
-                () {
-                  _rebuildContext.notifyListeners();
-                },
-              )
-            : buildFileContextMenu(
-                context,
-                file.key,
-                _selection.value.isEmpty,
-                _getLink,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.downloadFiles,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.saveFile,
-                loading.value || widget.onFilesPick != null ? null : _cut,
-                loading.value || widget.onFilesPick != null ? null : _copy,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : (List<String> keys, List<String> newKeys) async =>
-                          await Main.moveFiles(keys, newKeys, refresh: true),
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.deleteLocals,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : widget.deleteCache,
-                loading.value || widget.onFilesPick != null
-                    ? null
-                    : (Iterable<String> keys) async =>
-                          await Main.deleteFiles(keys, refresh: true),
-                () {
-                  _rebuildContext.notifyListeners();
-                },
-              ),
+    return FutureBuilder(
+      future: file,
+      builder: (context, snapshot) => ListenableBuilder(
+        listenable: Listenable.merge([
+          loading,
+          _rebuildContext,
+          Job.onProgressUpdate,
+        ]),
+        builder: (context, _) => SingleChildScrollView(
+          child: snapshot.data == null
+              ? buildBulkContextMenu(
+                  context,
+                  _selection.value,
+                  _getLink,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.downloadFiles,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.downloadDirectories,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.saveFile,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.saveDirectory,
+                  loading.value || widget.onFilesPick != null ? null : _cut,
+                  loading.value || widget.onFilesPick != null ? null : _copy,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.deleteLocals,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.deleteCache,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : (keys) async =>
+                            await Main.deleteFiles(keys, refresh: true),
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : (dirs) async =>
+                            await Main.deleteDirectories(dirs, refresh: true),
+                  () {
+                    _selection.value = {};
+                  },
+                  () {
+                    _rebuildContext.notifyListeners();
+                  },
+                )
+              : p.isDir(snapshot.data!.key)
+              ? buildDirectoryContextMenu(
+                  context,
+                  snapshot.data!.key,
+                  _selection.value.isEmpty,
+                  _getLink,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.downloadDirectories,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.saveDirectory,
+                  loading.value || widget.onFilesPick != null ? null : _cut,
+                  loading.value || widget.onFilesPick != null ? null : _copy,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : (List<String> dirs, List<String> newDirs) async =>
+                            await Main.moveDirectories(
+                              dirs,
+                              newDirs,
+                              refresh: true,
+                            ),
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.deleteLocals,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.deleteCache,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : (Iterable<String> dirs) async =>
+                            await Main.deleteDirectories(dirs, refresh: true),
+                  () {
+                    _rebuildContext.notifyListeners();
+                  },
+                )
+              : buildFileContextMenu(
+                  context,
+                  snapshot.data!.key,
+                  _selection.value.isEmpty,
+                  _getLink,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.downloadFiles,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.saveFile,
+                  loading.value || widget.onFilesPick != null ? null : _cut,
+                  loading.value || widget.onFilesPick != null ? null : _copy,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : (List<String> keys, List<String> newKeys) async =>
+                            await Main.moveFiles(keys, newKeys, refresh: true),
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.deleteLocals,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : widget.deleteCache,
+                  loading.value || widget.onFilesPick != null
+                      ? null
+                      : (Iterable<String> keys) async =>
+                            await Main.deleteFiles(keys, refresh: true),
+                  () {
+                    _rebuildContext.notifyListeners();
+                  },
+                ),
+        ),
       ),
     );
   }

@@ -16,6 +16,7 @@ ValueNotifier<bool> loading = ValueNotifier<bool>(true);
 ValueNotifier<double> progress = ValueNotifier<double>(0.0);
 
 Map<String, ImageProvider> thumbnailCache = <String, ImageProvider>{};
+Map<String, bool?> isDownloaded = <String, bool?>{};
 
 RegExp allMimePattern = RegExp(
   '^${RegExp.escape("*/*").replaceAll(r'\*', '[^/]+')}\$',

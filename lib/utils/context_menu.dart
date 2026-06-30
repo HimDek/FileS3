@@ -29,6 +29,7 @@ sealed class ContextActionHandlerDelegate {
   List<String>? _cachedFilesCache;
   List<String>? _activeFilesCache;
   List<String>? _removableFilesCache;
+  bool initialized = false;
 
   ContextActionHandlerDelegate({
     this.files = const [],
@@ -40,6 +41,21 @@ sealed class ContextActionHandlerDelegate {
     this.deleteFiles,
   });
 
+  /// files must be initialized before calling this method, and should not be changed after calling this method.
+  Future<void> init() async {
+    for (final file in files) {
+      if (!p.isDir(file)) {
+        final remoteFile = await Main.remoteFileByKey(file);
+        if (remoteFile != null &&
+            await remoteFile.getDownloaded(refresh: true) == true) {
+          _downloadedFilesCache ??= [];
+          _downloadedFilesCache!.add(file);
+        }
+      }
+    }
+    initialized = true;
+  }
+
   void invalidateCache() {
     _downloadedFilesCache = null;
     _cachedFilesCache = null;
@@ -48,13 +64,7 @@ sealed class ContextActionHandlerDelegate {
   }
 
   List<String> get downloadedFiles =>
-      _downloadedFilesCache ??= List.unmodifiable(
-        files.where(
-          (f) =>
-              !p.isDir(f) &&
-              Main.remoteFileByKey(f)?.getDownloaded(refresh: true) == true,
-        ),
-      );
+      List.unmodifiable(_downloadedFilesCache ?? []);
 
   List<String> get cachedFiles => _cachedFilesCache ??= List.unmodifiable(
     files.where(
@@ -145,11 +155,13 @@ sealed class FileContextActionHandlerDelegate
         ? null
         : () async {
             try {
-              await downloadFiles!(
-                files.where(
-                  (file) => Main.remoteFileByKey(file)?.downloaded != true,
-                ),
-              );
+              final List<String> notDownloaded = [];
+              for (final remoteFile in await Main.remoteFilesByKeys(files)) {
+                if (remoteFile.downloaded != true) {
+                  notDownloaded.add(remoteFile.key);
+                }
+              }
+              await downloadFiles!(notDownloaded);
             } finally {
               invalidateCache();
             }
@@ -299,6 +311,15 @@ sealed class DirectoryContextActionHandlerDelegate
   List<String>? _cachedDirectoriesCache;
 
   @override
+  Future<void> init() async {
+    _filesCache = (await Main.remoteFilesByDirs(
+      directories,
+      recursive: true,
+    )).where((f) => !p.isDir(f.key)).map((f) => f.key).toList();
+    await super.init();
+  }
+
+  @override
   void invalidateCache() {
     super.invalidateCache();
     _filesCache = null;
@@ -308,18 +329,7 @@ sealed class DirectoryContextActionHandlerDelegate
   }
 
   @override
-  List<String> get files => _filesCache ??= List.unmodifiable(() {
-    List<String> files = [];
-    for (final dir in directories) {
-      files.addAll(
-        Main.remoteFilesByDir(
-          dir,
-          recursive: true,
-        ).where((f) => !p.isDir(f.key)).map((f) => f.key),
-      );
-    }
-    return files;
-  }());
+  List<String> get files => List.unmodifiable(_filesCache ?? []);
 
   List<bool> get dirRootExists => _dirRootsExistsCache ??= List.unmodifiable(
     directories.map((dir) => p.context.isAbsolute(Main.pathFromKey(dir))),
@@ -1353,7 +1363,7 @@ Widget buildFileContextMenu(
             lookupMimeType(item, headerBytes: bytes.takeBytes()) ??
             'application/octet-stream';
       }
-      FileContextActionHandler handler = FileContextActionHandler(
+      final handler = FileContextActionHandler(
         file: item,
         getLink: getLink,
         downloadFiles: downloadFiles,
@@ -1363,6 +1373,7 @@ Widget buildFileContextMenu(
         deleteCacheFile: deleteCache,
         deleteFiles: allowModify ? deleteFiles : null,
       );
+      await handler.init();
       return (
         handler: handler,
         options: FileContextOption.allOptions(
@@ -1422,7 +1433,15 @@ Widget buildFileContextMenu(
                 ),
                 subtitle: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  child: Text('MD5: ${Main.remoteFileByKey(item)?.etag}'),
+                  child: FutureBuilder(
+                    future: Main.remoteFileByKey(item),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData && snapshot.data != null) {
+                        return Text('MD5: ${snapshot.data!.etag}');
+                      }
+                      return Text('MD5: Loading...');
+                    },
+                  ),
                 ),
               ),
             ],
@@ -1462,7 +1481,7 @@ Widget buildFilesContextMenu(
 ) {
   return FutureBuilder(
     future: () async {
-      FilesContextActionHandler handler = FilesContextActionHandler(
+      final handler = FilesContextActionHandler(
         files: items,
         getLink: getLink,
         downloadFiles: downloadFiles,
@@ -1471,6 +1490,7 @@ Widget buildFilesContextMenu(
         deleteCacheFile: deleteCache,
         deleteFiles: deleteFiles,
       );
+      await handler.init();
       return (
         handler: handler,
         options: FilesContextOption.allOptions(
@@ -1520,7 +1540,7 @@ Widget buildDirectoryContextMenu(
 ) {
   return FutureBuilder(
     future: () async {
-      DirectoryContextActionHandler handler = DirectoryContextActionHandler(
+      final handler = DirectoryContextActionHandler(
         directory: file,
         getLink: getLink,
         downloadDirectories: downloadDirectories,
@@ -1530,6 +1550,7 @@ Widget buildDirectoryContextMenu(
         deleteCacheFile: deleteCache,
         deleteFiles: allowModify ? deleteDirectories : null,
       );
+      await handler.init();
       return (
         handler: handler,
         options: DirectoryContextOption.allOptions(
@@ -1650,7 +1671,7 @@ Widget buildDirectoriesContextMenu(
 ) {
   return FutureBuilder(
     future: () async {
-      DirectoriesContextActionHandler handler = DirectoriesContextActionHandler(
+      final handler = DirectoriesContextActionHandler(
         directories: dirs,
         getLink: getLink,
         downloadDirectories: downloadDirectories,
@@ -1659,6 +1680,7 @@ Widget buildDirectoriesContextMenu(
         deleteCacheFile: deleteCache,
         deleteFiles: deleteDirectories,
       );
+      await handler.init();
       return (
         handler: handler,
         options: DirectoriesContextOption.allOptions(
@@ -1740,17 +1762,17 @@ Widget buildBulkContextMenu(
   }
   return FutureBuilder(
     future: () async {
-      DirectoriesContextActionHandler dirHandler =
-          DirectoriesContextActionHandler(
-            directories: items.where((item) => p.isDir(item)),
-            getLink: getLink,
-            downloadDirectories: downloadDirectories,
-            saveDirectory: saveDirectory,
-            deleteLocalFiles: deleteLocals,
-            deleteCacheFile: deleteCache,
-            deleteFiles: deleteDirectories,
-          );
-      FilesContextActionHandler fileHandler = FilesContextActionHandler(
+      final dirHandler = DirectoriesContextActionHandler(
+        directories: items.where((item) => p.isDir(item)),
+        getLink: getLink,
+        downloadDirectories: downloadDirectories,
+        saveDirectory: saveDirectory,
+        deleteLocalFiles: deleteLocals,
+        deleteCacheFile: deleteCache,
+        deleteFiles: deleteDirectories,
+      );
+      await dirHandler.init();
+      final fileHandler = FilesContextActionHandler(
         files: items.where((item) => !p.isDir(item)),
         getLink: getLink,
         downloadFiles: downloadFiles,
@@ -1759,15 +1781,18 @@ Widget buildBulkContextMenu(
         deleteCacheFile: deleteCache,
         deleteFiles: deleteFiles,
       );
+      await fileHandler.init();
+      final bulkHandler = BulkContextActionHandler(
+        directoriesHandler: dirHandler,
+        filesHandler: fileHandler,
+        getLink: getLink,
+      );
+      await bulkHandler.init();
       return (
         dirHandler: dirHandler,
         fileHandler: fileHandler,
         options: BulkContextOption.allOptions(
-          BulkContextActionHandler(
-            directoriesHandler: dirHandler,
-            filesHandler: fileHandler,
-            getLink: getLink,
-          ),
+          bulkHandler,
           cut,
           copy,
           context,

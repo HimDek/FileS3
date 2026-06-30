@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
+import 'package:files3/globals.dart';
 
 class FileProps {
   final String key;
@@ -138,67 +139,91 @@ class BackupMode {
   }
 }
 
-abstract interface class RemoteFileFields {
-  String get key;
-  int get size;
-  String get etag;
-  DateTime? get lastModified;
-}
-
-class RemoteFile implements RemoteFileFields {
-  @override
+sealed class RemoteFileFields {
+  /// The unique key representing the file or directory in the remote storage profile.
   final String key;
-  int _size;
-  @override
-  final String etag;
-  DateTime? _lastModified;
-  (int, int) _count = (0, 1);
-  bool? downloaded;
 
-  RemoteFile({
+  /// The size of the file in bytes.
+  final int size;
+
+  /// The ETag of the file, which is a unique identifier for the file's content.
+  final String etag;
+
+  /// The last modified date of the file.
+  DateTime lastModified;
+
+  /// The creation date of the file.
+  final DateTime created;
+
+  /// The original date of the file.
+  final DateTime original;
+
+  final String contentType;
+
+  final Map<String, dynamic> metadata;
+
+  final DateTime? deletedAt;
+
+  RemoteFileFields({
     required this.key,
-    int size = 0,
+    this.size = 0,
     required this.etag,
     DateTime? lastModified,
-  }) : _size = size,
-       _lastModified = lastModified;
+    DateTime? created,
+    DateTime? original,
+    this.contentType = 'application/octet-stream',
+    this.metadata = const {},
+    this.deletedAt,
+  }) : lastModified = lastModified ?? DateTime.fromMicrosecondsSinceEpoch(0),
+       created = created ?? DateTime.fromMicrosecondsSinceEpoch(0),
+       original = original ?? DateTime.fromMicrosecondsSinceEpoch(0);
+}
 
-  @override
-  int get size => _size;
+class RemoteFile extends RemoteFileFields {
+  (int, int) _count = (0, 1);
+  bool? get downloaded => isDownloaded[key];
 
-  @override
-  DateTime? get lastModified => _lastModified;
+  RemoteFile({
+    required super.key,
+    super.size,
+    required super.etag,
+    super.lastModified,
+    super.created,
+    super.original,
+    super.contentType,
+    super.metadata,
+    super.deletedAt,
+  });
 
   (int, int) get count => _count;
 
   Future<int> getSize() async {
     if (!p.isDir(key)) {
-      return _size;
+      return this.size;
     }
     int size = 0;
-    for (final file in Main.remoteFilesByDir(key, recursive: false)) {
+    for (final file in await Main.remoteFilesByDir(key, recursive: false)) {
       await file.getSize();
       size += file.size;
     }
-    _size = size;
+    size = size;
     return size;
   }
 
   Future<DateTime?> getLastModified() async {
     if (!p.isDir(key)) {
-      return _lastModified;
+      return lastModified;
     }
     DateTime latest = DateTime.fromMillisecondsSinceEpoch(0);
-    for (final file in Main.remoteFilesByDir(key, recursive: false)) {
+    final children = await Main.remoteFilesByDir(key, recursive: false);
+    for (final file in children) {
       await file.getLastModified();
-      if (file.lastModified?.isAfter(latest) ?? false) {
-        latest = file.lastModified!;
+      if (file.lastModified.isAfter(latest)) {
+        latest = file.lastModified;
       }
     }
-    _lastModified = latest == DateTime.fromMillisecondsSinceEpoch(0)
-        ? null
-        : latest;
-    return _lastModified;
+    lastModified = latest;
+    return lastModified;
   }
 
   Future<(int, int)> getCount({bool recursive = false}) async {
@@ -207,7 +232,8 @@ class RemoteFile implements RemoteFileFields {
     }
     int dirCount = 0;
     int fileCount = 0;
-    for (final file in Main.remoteFilesByDir(key, recursive: false)) {
+    final children = await Main.remoteFilesByDir(key, recursive: false);
+    for (final file in children) {
       if (p.isDir(file.key)) {
         if (recursive) {
           final subCount = await file.getCount(recursive: true);
@@ -223,10 +249,10 @@ class RemoteFile implements RemoteFileFields {
     return (dirCount, fileCount);
   }
 
-  bool? getDownloaded({bool refresh = false}) {
+  Future<bool?> getDownloaded({bool refresh = false}) async {
     if (p.isDir(key)) {
       bool? downloaded = true;
-      for (var file in Main.remoteFilesByDir(key, recursive: false)) {
+      for (var file in await Main.remoteFilesByDir(key, recursive: false)) {
         file.getDownloaded(refresh: refresh);
         if (file.downloaded == false) {
           downloaded = false;
@@ -237,17 +263,17 @@ class RemoteFile implements RemoteFileFields {
           break;
         }
       }
-      this.downloaded = downloaded;
+      isDownloaded[key] = downloaded;
     } else if (refresh) {
-      downloaded = File(Main.pathFromKey(key)).existsSync();
+      isDownloaded[key] = File(Main.pathFromKey(key)).existsSync();
     }
-    return downloaded;
+    return isDownloaded[key];
   }
 
   Future<bool> getCached() async {
     if (p.isDir(key)) {
       bool cached = true;
-      for (var file in Main.remoteFilesByDir(key, recursive: false)) {
+      for (var file in await Main.remoteFilesByDir(key, recursive: false)) {
         final fileCached = await file.getCached();
         if (!fileCached) {
           cached = false;
@@ -278,7 +304,7 @@ class RemoteFile implements RemoteFileFields {
       'key': key,
       'size': size,
       'etag': etag,
-      'lastModified': !p.isDir(key) ? lastModified?.toIso8601String() : null,
+      'lastModified': !p.isDir(key) ? lastModified.toIso8601String() : null,
     };
   }
 

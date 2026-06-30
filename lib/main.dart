@@ -252,8 +252,11 @@ class _HomeState extends State<Home> {
               );
             }
             dir.deleteSync(recursive: true);
-            for (final file in Main.remoteFilesByDir(key, recursive: true)) {
-              file.downloaded = false;
+            for (final file in await Main.remoteFilesByDir(
+              key,
+              recursive: true,
+            )) {
+              isDownloaded[file.key] = false;
             }
           }
           final cacheDir = Directory(Main.cachePathFromKey(key));
@@ -272,7 +275,7 @@ class _HomeState extends State<Home> {
               );
             }
             file.deleteSync();
-            Main.remoteFileByKey(key)?.downloaded = false;
+            isDownloaded[key] = false;
           }
           final cacheFile = File(Main.cachePathFromKey(key));
           if (cacheFile.existsSync()) {
@@ -315,7 +318,7 @@ class _HomeState extends State<Home> {
           }
           if (cacheFile.existsSync()) {
             renameOrCopyAndDelete(cacheFile, localFile.path);
-            Main.remoteFileByKey(key)?.downloaded = true;
+            isDownloaded[key] = true;
           } else {
             Main.downloadFile(key);
           }
@@ -341,10 +344,12 @@ class _HomeState extends State<Home> {
                 : BackupMode.sync,
           );
         }
-        final keys = Main.remoteFilesByDir(
-          dir,
-          recursive: true,
-        ).where((file) => !p.isDir(file.key)).map((file) => file.key).toList();
+        final keys = await Main.remoteFilesByDir(dir, recursive: true).then(
+          (files) => files
+              .where((file) => !p.isDir(file.key))
+              .map((file) => file.key)
+              .toList(),
+        );
         await _downloadFiles(keys);
       }
     } catch (e) {
@@ -383,10 +388,10 @@ class _HomeState extends State<Home> {
       return;
     }
 
-    final keys = Main.remoteFilesByDir(
+    final keys = (await Main.remoteFilesByDir(
       key,
       recursive: true,
-    ).where((file) => !p.isDir(file.key)).map((file) => file.key).toList();
+    )).where((file) => !p.isDir(file.key)).map((file) => file.key).toList();
 
     int progressCount = 0;
     final totalFiles = keys.length;

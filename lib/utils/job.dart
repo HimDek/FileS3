@@ -228,92 +228,11 @@ Future<_SyncAnalysisResult> _syncAnalyze(
   );
 }
 
-sealed class Node<T, N extends Node<T, N>> {
-  T value;
-  final Map<String, N> children;
-  Node<T, N>? parent;
-
-  N createNode({required T value, Node<T, N>? parent});
-
-  Node({required this.value, Map<String, N>? children, this.parent})
-    : children = children ?? {};
-
-  N? operator [](String key) {
-    return children[key];
-  }
-
-  void operator []=(String key, T value) {
-    children[key] = createNode(value: value, parent: this);
-  }
-
-  bool get isEmpty => children.isEmpty;
-
-  void clear() {
-    children.clear();
-    parent?.children.removeWhere((key, child) => identical(child, this));
-    parent = null;
-  }
-
-  Iterable<N> getDecendants({bool recursive = false}) sync* {
-    for (final child in children.values) {
-      yield child;
-
-      if (recursive) {
-        yield* child.getDecendants(recursive: true);
-      }
-    }
-  }
-}
-
-class DirectoryTree extends Node<RemoteFile, DirectoryTree> {
-  @override
-  DirectoryTree createNode({
-    required RemoteFile value,
-    Node<RemoteFile, DirectoryTree>? parent,
-  }) {
-    return DirectoryTree(value: value, parent: parent);
-  }
-
-  DirectoryTree({required super.value, super.children, super.parent});
-
-  @override
-  DirectoryTree? operator [](String key) {
-    DirectoryTree? current = this;
-    for (final part in p.s3.split(key)) {
-      if (part.isEmpty) continue;
-      if (!(current?.children.containsKey(part) ?? false)) {
-        return null;
-      }
-      current = current?.children[part];
-    }
-    return current;
-  }
-
-  @override
-  void operator []=(String key, RemoteFile value) {
-    DirectoryTree current = this;
-    String path = '';
-    for (final part in p.s3.split(key)) {
-      if (part.isEmpty) continue;
-      path = p.asDir(p.s3.join(path, part));
-      current = current.children.putIfAbsent(
-        part,
-        () => DirectoryTree(
-          value: RemoteFile(key: path, etag: ''),
-          parent: current,
-        ),
-      );
-    }
-    current.value = value;
-  }
-}
-
 abstract class Main {
   static String _documentsDir = '';
   static String _cacheDir = '';
   static String _thumbCacheDir = '';
   static String _downloadCacheDir = '';
-  static final DirectoryTree _directoryTree = DirectoryTree(value: root);
   static final Map<String, Profile> _profiles = <String, Profile>{};
   static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
   static final ManualNotifier onRemoteFilesChanged = ManualNotifier();
@@ -335,7 +254,7 @@ abstract class Main {
   static List<RegExp> get ignoreKeyRegexps =>
       UnmodifiableListView(_ignoreKeyRegexps);
 
-  static Iterable<RemoteFile> get remoteFiles =>
+  static Future<Iterable<RemoteFile>> get remoteFiles =>
       remoteFilesByDir('', recursive: true);
   static Map<String, Profile> get profiles => _profiles;
 
@@ -392,8 +311,13 @@ abstract class Main {
     return totalSize;
   }
 
-  static void updateMetadata(String key, Map<String, String> headers) {
-    profileFromKey(key)?.metaDB.updateMeta(key, (
+  static Future<void> updateMetadata(
+    String key,
+    Map<String, String> headers,
+  ) async {
+    RemoteFile? file = (await remoteFileByKey(key));
+    final oldEtag = file?.etag;
+    file ??= RemoteFile(
       key: key,
       etag: headers['etag'] ?? '',
       size: int.tryParse(headers['content-length'] ?? '0') ?? 0,
@@ -414,70 +338,168 @@ abstract class Main {
               (e) => MapEntry(e.key.replaceFirst('x-amz-meta-', ''), e.value),
             ),
       ),
-    ));
+      deletedAt: null,
+    );
+
+    await profileFromKey(key)?.metaDB.addOrUpdateFile(file, oldEtag: oldEtag);
   }
 
-  static void remoteFilesSet(List<RemoteFile> files) {
-    remoteFilesClear(notify: false);
-    remoteFilesAddAll(files);
+  static Future<void> remoteFilesSet(List<RemoteFile> files) async {
+    await remoteFilesClear(notify: false);
+    await remoteFilesAddAll(files);
   }
 
-  static void remoteFilesAddAll(List<RemoteFile> files) {
+  static Future<void> remoteFilesAddAll(List<RemoteFile> files) async {
+    final Map<Profile, List<RemoteFile>> groupedFiles = {};
     for (final file in files) {
-      remoteFilesAdd(file, notify: false);
+      final profile = profileFromKey(file.key);
+      if (profile != null) {
+        groupedFiles.putIfAbsent(profile, () => []).add(file);
+      }
     }
+    await Future.wait(
+      groupedFiles.entries.map((entry) async {
+        final profile = entry.key;
+
+        await profile.metaDB.withNestedTransaction((txn, localTxn) async {
+          final addedDirs = <String>{};
+          for (final file in entry.value) {
+            await profile.metaDB.addIntermediateDirectories(
+              file.key,
+              addedDirs,
+              txn: txn,
+              localTxn: localTxn,
+            );
+            await profile.metaDB.addOrUpdateFile(
+              file,
+              txn: txn,
+              localTxn: localTxn,
+            );
+          }
+        });
+      }),
+    );
     onRemoteFilesChanged.notifyListeners();
   }
 
-  static void remoteFilesAdd(RemoteFile file, {bool notify = true}) {
-    _directoryTree[file.key] = file;
+  static Future<void> remoteFilesAdd(
+    RemoteFile file, {
+    bool notify = true,
+  }) async {
+    final profile = profileFromKey(file.key);
+    await profile?.metaDB.withNestedTransaction((txn, localTxn) async {
+      final addedDirs = <String>{};
+      await profile.metaDB.addIntermediateDirectories(
+        file.key,
+        addedDirs,
+        txn: txn,
+        localTxn: localTxn,
+      );
+      await profile.metaDB.addOrUpdateFile(file, txn: txn, localTxn: localTxn);
+    });
     if (notify) {
       onRemoteFilesChanged.notifyListeners();
     }
   }
 
-  static void remoteFilesClear({bool notify = true}) {
-    _directoryTree.clear();
+  static Future<void> remoteFilesClear({bool notify = true}) async {
+    for (final profile in _profiles.values) {
+      await profile.metaDB.clear();
+    }
     if (notify) {
       onRemoteFilesChanged.notifyListeners();
     }
   }
 
-  static void remoteFilesRemoveByKeys(
+  static Future<void> remoteFilesRemoveByKeys(
     Iterable<String> keys, {
     bool notify = true,
-  }) {
+  }) async {
     for (String key in keys) {
-      remoteFileRemoveByKey(key, notify: false);
+      await remoteFileRemoveByKey(key, notify: false);
     }
     if (notify) {
       onRemoteFilesChanged.notifyListeners();
     }
   }
 
-  static void remoteFileRemoveByKey(String key, {bool notify = true}) {
-    _directoryTree[key]?.clear();
+  static Future<void> remoteFileRemoveByKey(
+    String key, {
+    bool notify = true,
+  }) async {
+    await profileFromKey(key)?.metaDB.deleteFile(key);
     if (notify) {
       onRemoteFilesChanged.notifyListeners();
     }
   }
 
-  static RemoteFile? remoteFileByKey(String key) {
-    return _directoryTree[key]?.value;
+  static Future<RemoteFile?> remoteFileByKey(String key) async {
+    if (key.isEmpty) {
+      return root;
+    }
+    return await profileFromKey(key)?.metaDB.getFile(key);
   }
 
-  static Iterable<RemoteFile> remoteFilesByDir(
+  static Future<List<RemoteFile>> remoteFilesByKeys(
+    Iterable<String> keys,
+  ) async {
+    Map<Profile, List<String>> groupedFiles = {};
+    for (String key in keys) {
+      final profile = profileFromKey(key);
+      if (profile != null) {
+        groupedFiles.putIfAbsent(profile, () => []).add(key);
+      }
+    }
+
+    final List<RemoteFile> files = [];
+    for (final profile in groupedFiles.keys) {
+      files.addAll(await profile.metaDB.getFiles(groupedFiles[profile]!));
+    }
+    return files;
+  }
+
+  static Future<Iterable<RemoteFile>> remoteFilesByDir(
     String dir, {
     bool recursive = true,
-  }) {
-    return _directoryTree[dir]
-            ?.getDecendants(recursive: recursive)
-            .map((node) => node.value)
-            .whereType<RemoteFile>()
-            .where(
-              (f) => _ignoreKeyRegexps.any((regexp) => !regexp.hasMatch(f.key)),
-            ) ??
+  }) async {
+    if (dir.isEmpty) {
+      final List<RemoteFile> files = [];
+      for (final profile in _profiles.values) {
+        files.addAll(
+          await profile.metaDB.getFilesByDir('', recursive: recursive),
+        );
+      }
+      return files;
+    }
+    final res =
+        await profileFromKey(
+          dir,
+        )?.metaDB.getFilesByDir(dir, recursive: recursive) ??
         [];
+    return res;
+  }
+
+  static Future<Iterable<RemoteFile>> remoteFilesByDirs(
+    Iterable<String> dirs, {
+    bool recursive = true,
+  }) async {
+    final Map<Profile, List<String>> groupedDirs = {};
+    for (String dir in dirs) {
+      final profile = profileFromKey(dir);
+      if (profile != null) {
+        groupedDirs.putIfAbsent(profile, () => []).add(dir);
+      }
+    }
+    final List<RemoteFile> files = [];
+    for (final profile in groupedDirs.keys) {
+      files.addAll(
+        await profile.metaDB.getFilesByDirs(
+          groupedDirs[profile]!,
+          recursive: recursive,
+        ),
+      );
+    }
+    return files;
   }
 
   static Profile? profileFromKey(String key) {
@@ -600,8 +622,7 @@ abstract class Main {
       if (entries.every((e) => e.key != profile.name)) {
         profile.dispose();
         _profiles.remove(profile.name);
-        remoteFileRemoveByKey(profile.name, notify: false);
-        await ConfigManager.saveRemoteFiles(remoteFiles);
+        await remoteFileRemoveByKey(profile.name, notify: false);
       }
     }
     for (final entry in entries) {
@@ -610,16 +631,13 @@ abstract class Main {
         continue;
       }
       _profiles[entry.key] = Profile(name: entry.key, cfg: entry.value);
+      await _profiles[entry.key]!.init();
     }
     loading.value = false;
   }
 
   static Future<void> listDirectories({bool background = false}) async {
     loading.value = true;
-    if (!background && _directoryTree.isEmpty) {
-      remoteFilesSet(ConfigManager.loadRemoteFiles());
-    }
-
     for (final profile in _profiles.values) {
       await profile.listDirectories(background: background);
     }
@@ -631,7 +649,7 @@ abstract class Main {
     String? localPath,
     VoidCallback? onComplete,
   }) async {
-    final file = remoteFileByKey(key);
+    final file = await remoteFileByKey(key);
     if (file == null) {
       return;
     }
@@ -672,31 +690,33 @@ abstract class Main {
       return;
     }
     Job? job;
+    Digest md5 = await HashUtil(file).md5Hash();
+    String localEtag = base64.encode(md5.bytes);
     if (p.context.equals(pathFromKey(key), file.path)) {
-      final deleteionLog = await profileFromKey(
-        key,
-      )!.deletionRegistrar.pullDeletions();
-      if (deleteionLog.containsKey(key) &&
-          file.lastModifiedSync().toUtc().isBefore(
-            deleteionLog[key]!.toUtc(),
-          )) {
+      final remoteFile = await remoteFileByKey(key);
+      if (remoteFile != null &&
+          remoteFile.deletedAt?.isAfter(
+                DateTime.now().subtract(const Duration(minutes: 5)),
+              ) ==
+              true &&
+          remoteFile.etag == localEtag) {
         file.deleteSync();
       } else {
         job = UploadJob(
           localFile: file,
           remoteKey: key,
           bytes: file.lengthSync(),
-          md5: await HashUtil(file).md5Hash(),
+          md5: md5,
           profile: profileFromKey(key),
         );
       }
     } else if (p.context.isAbsolute(pathFromKey(key))) {
-      final newKey = () {
+      final newKey = await () async {
         String base = p.s3.basenameWithoutExtension(key);
         String ext = p.s3.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (remoteFileByKey(candidateKey) != null) {
+        while ((await remoteFileByKey(candidateKey)) != null) {
           candidateKey = p.s3.join(p.s3.dirname(key), '$base${'($count)'}$ext');
           count++;
         }
@@ -710,16 +730,16 @@ abstract class Main {
         localFile: File(pathFromKey(newKey)),
         remoteKey: key,
         bytes: file.lengthSync(),
-        md5: await HashUtil(file).md5Hash(),
+        md5: md5,
         profile: profileFromKey(key),
       );
     } else {
-      final newKey = () {
+      final newKey = await () async {
         String base = p.s3.basenameWithoutExtension(key);
         String ext = p.s3.extension(key);
         int count = 1;
         String candidateKey = key;
-        while (remoteFileByKey(candidateKey) != null) {
+        while ((await remoteFileByKey(candidateKey)) != null) {
           candidateKey = p.s3.join(p.s3.dirname(key), '$base${'($count)'}$ext');
           count++;
         }
@@ -729,7 +749,7 @@ abstract class Main {
         localFile: file,
         remoteKey: newKey,
         bytes: file.lengthSync(),
-        md5: await HashUtil(file).md5Hash(),
+        md5: md5,
         profile: profileFromKey(newKey),
       );
     }
@@ -749,7 +769,7 @@ abstract class Main {
     loading.value = true;
 
     try {
-      RemoteFile? oldFile = remoteFileByKey(key);
+      RemoteFile? oldFile = await remoteFileByKey(key);
       if (oldFile == null) {
         return;
       }
@@ -810,7 +830,7 @@ abstract class Main {
           newLocalFile.parent.createSync(recursive: true);
         }
         file.copySync(newLocalFile.path);
-        newFile.downloaded = true;
+        isDownloaded[newKey] = true;
       }
 
       if (cacheFile.existsSync() && p.isAbsolute(pathFromKey(newKey))) {
@@ -837,9 +857,9 @@ abstract class Main {
   }) async {
     loading.value = true;
     try {
-      final keys = remoteFilesByDir(
+      final keys = (await remoteFilesByDir(
         dir,
-      ).map((f) => f.key).where((key) => !p.isDir(key));
+      )).map((f) => f.key).where((key) => !p.isDir(key));
       int progressCount = 0;
       final totalFiles = keys.length;
       for (final file in keys) {
@@ -875,31 +895,37 @@ abstract class Main {
       }
 
       int progressCount = 0;
-      for (final entry in profileKeys.entries) {
-        final profile = entry.key;
-        final keysForProfile = entry.value;
-
-        await profile.deletionRegistrar.pullDeletions();
-        profile.deletionRegistrar.logDeletions(keysForProfile);
-        await profile.deletionRegistrar.pushDeletions();
-
-        for (final key in keysForProfile) {
-          progressCount += 1;
-          (preprogress ?? progress).value =
-              progressCount / profileKeys.values.expand((e) => e).length;
-          await profile.fileManager?.deleteFile(key);
-          File file = File(pathFromKey(key));
-          File cacheFile = File(cachePathFromKey(key));
-          if (file.existsSync()) {
-            file.deleteSync();
+      await Future.wait(
+        profileKeys.entries.map((entry) async {
+          final profile = entry.key;
+          final keysForProfile = entry.value;
+          await profile.metaDB.withNestedTransaction((txn, localTxn) async {
+            for (final key in keysForProfile) {
+              await profile.metaDB.deleteFile(
+                key,
+                txn: txn,
+                localTxn: localTxn,
+              );
+            }
+          });
+          for (final key in keysForProfile) {
+            progressCount += 1;
+            (preprogress ?? progress).value =
+                progressCount / profileKeys.values.expand((e) => e).length;
+            await profile.fileManager?.deleteFile(key);
+            File file = File(pathFromKey(key));
+            File cacheFile = File(cachePathFromKey(key));
+            if (file.existsSync()) {
+              file.deleteSync();
+            }
+            if (cacheFile.existsSync()) {
+              cacheFile.deleteSync();
+            }
           }
-          if (cacheFile.existsSync()) {
-            cacheFile.deleteSync();
-          }
-        }
 
-        remoteFilesRemoveByKeys(keysForProfile, notify: true);
-      }
+          remoteFilesRemoveByKeys(keysForProfile, notify: true);
+        }),
+      );
     } finally {
       if (refresh) {
         loading.value = false;
@@ -920,14 +946,14 @@ abstract class Main {
       for (final key in keys) {
         files.add(key);
         if (p.isDir(key)) {
-          files.addAll(remoteFilesByDir(key).map((f) => f.key));
+          files.addAll((await remoteFilesByDir(key)).map((f) => f.key));
         }
       }
 
       final Map<Profile, List<String>> profileFiles = {};
       for (final file in files) {
         final profile = profileFromKey(file);
-        if (profile != null && remoteFileByKey(file) != null) {
+        if (profile != null && (await remoteFileByKey(file)) != null) {
           profileFiles.putIfAbsent(profile, () => []).add(file);
         }
       }
@@ -937,42 +963,48 @@ abstract class Main {
           .expand((e) => e)
           .where((file) => !p.isDir(file))
           .length;
-      for (final entry in profileFiles.entries) {
-        final profile = entry.key;
-        final filesForProfile = entry.value
-            .where((file) => !p.isDir(file))
-            .toList();
+      await Future.wait(
+        profileFiles.entries.map((entry) async {
+          final profile = entry.key;
+          final filesForProfile = entry.value
+              .where((file) => !p.isDir(file))
+              .toList();
+          await profile.metaDB.withNestedTransaction((txn, localTxn) async {
+            for (final key in filesForProfile) {
+              await profile.metaDB.deleteFile(
+                key,
+                txn: txn,
+                localTxn: localTxn,
+              );
+            }
+          });
+          for (final file in filesForProfile.where((file) => !p.isDir(file))) {
+            progressCount += 1;
+            (preprogress ?? progress).value = progressCount / total;
+            await profile.fileManager?.deleteFile(file);
+          }
 
-        await profile.deletionRegistrar.pullDeletions();
-        profile.deletionRegistrar.logDeletions(filesForProfile);
-        await profile.deletionRegistrar.pushDeletions();
+          remoteFilesRemoveByKeys(
+            filesForProfile.where((key) => !p.isDir(key)),
+            notify: true,
+          );
 
-        for (final file in filesForProfile.where((file) => !p.isDir(file))) {
-          progressCount += 1;
-          (preprogress ?? progress).value = progressCount / total;
-          await profile.fileManager?.deleteFile(file);
-        }
+          final dirsForProfile = entry.value
+              .where((file) => p.isDir(file))
+              .toList();
+          dirsForProfile.sort((a, b) => b.length.compareTo(a.length));
 
-        remoteFilesRemoveByKeys(
-          filesForProfile.where((key) => !p.isDir(key)),
-          notify: true,
-        );
+          for (final dir in dirsForProfile) {
+            progressCount += 1;
+            (preprogress ?? progress).value = progressCount / total;
+            await profile.fileManager?.deleteFile(dir);
+          }
 
-        final dirsForProfile = entry.value
-            .where((file) => p.isDir(file))
-            .toList();
-        dirsForProfile.sort((a, b) => b.length.compareTo(a.length));
+          remoteFilesRemoveByKeys(dirsForProfile, notify: true);
 
-        for (final dir in dirsForProfile) {
-          progressCount += 1;
-          (preprogress ?? progress).value = progressCount / total;
-          await profile.fileManager?.deleteFile(dir);
-        }
-
-        remoteFilesRemoveByKeys(dirsForProfile, notify: true);
-
-        await profile.refreshRemote(dir: profile.name);
-      }
+          await profile.refreshRemote(dir: profile.name);
+        }),
+      );
     } finally {
       if (refresh) {
         loading.value = false;
@@ -1228,7 +1260,7 @@ abstract class Job {
                 DateTime.tryParse(headers?['last-modified'] ?? '') ??
                 localFile.lastModifiedSync(),
           );
-          resultFile.downloaded = true;
+          isDownloaded[remoteKey] = true;
           Main.remoteFilesAdd(resultFile);
         } else {
           status.value = JobStatus.failed;
@@ -1483,7 +1515,7 @@ class Watcher {
       }
 
       final remoteFiles = Map.fromEntries(
-        Main.remoteFilesByDir(remoteDir)
+        (await Main.remoteFilesByDir(remoteDir))
             .where((file) => !p.isDir(file.key))
             .map((file) => MapEntry(file.key, file)),
       );
@@ -1539,7 +1571,7 @@ class Watcher {
       }
 
       for (String key in result.remoteOnly) {
-        Main.remoteFileByKey(key)?.downloaded = false;
+        isDownloaded[key] = false;
         if (Job.jobs.any(
           (job) =>
               job.localFile.path == Main.pathFromKey(key) &&
@@ -1553,7 +1585,7 @@ class Watcher {
       }
 
       for (String key in result.uploaded) {
-        Main.remoteFileByKey(key)?.downloaded = true;
+        isDownloaded[key] = true;
       }
 
       if (kDebugMode) {

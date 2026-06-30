@@ -3,9 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
+import 'package:files3/utils/db.dart';
 import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
-import 'package:files3/helpers.dart';
 
 class Profile {
   String name;
@@ -15,16 +15,19 @@ class Profile {
   late S3Config cfg;
   late S3FileManager? fileManager;
   late MetaDB metaDB;
-  late DeletionRegistrar deletionRegistrar;
+  bool isInitialized = false;
 
   Profile({required this.name, required this.cfg}) {
     fileManager = S3FileManager.create(this, http.Client(), cfg);
     if (fileManager == null) {
       accessible.value = false;
     }
-    deletionRegistrar = DeletionRegistrar(profile: this);
     metaDB = MetaDB(profile: this);
-    metaDB.init();
+  }
+
+  Future<void> init() async {
+    await metaDB.init();
+    isInitialized = true;
   }
 
   void updateConfig(S3Config newCfg) {
@@ -49,14 +52,12 @@ class Profile {
     } catch (e) {
       accessible.value = false;
       if (p.s3.equals(name, dir) &&
-          Main.remoteFileByKey(p.s3.asDir(name)) == null) {
+          (await Main.remoteFileByKey(p.s3.asDir(name))) == null) {
         Main.remoteFilesAdd(RemoteFile(key: p.s3.asDir(name), etag: ""));
       }
       if (kDebugMode) {
         debugPrint("Error refreshing remote files: $e");
       }
-    } finally {
-      await ConfigManager.saveRemoteFiles(Main.remoteFiles);
     }
   }
 

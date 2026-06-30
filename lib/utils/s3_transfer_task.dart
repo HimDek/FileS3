@@ -9,6 +9,7 @@ import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/helpers.dart';
+import 'package:files3/globals.dart';
 
 enum TransferTask { upload, download }
 
@@ -355,7 +356,7 @@ class S3TransferTask {
       await tempFile.rename(localFile.path);
       await localFile.setLastModified(lastModified);
       await tagFile.delete();
-      Main.remoteFileByKey(key)?.downloaded = true;
+      isDownloaded[key] = true;
       Main.onRemoteFilesChanged.notifyListeners();
       onStatus?.call('Download complete');
     } on FileSystemException catch (e) {
@@ -363,7 +364,7 @@ class S3TransferTask {
         await tempFile.copy(localFile.path);
         await tempFile.delete();
         await tagFile.delete();
-        Main.remoteFileByKey(key)?.downloaded = true;
+        isDownloaded[key] = true;
         Main.onRemoteFilesChanged.notifyListeners();
         onStatus?.call('Download complete');
       } else {
