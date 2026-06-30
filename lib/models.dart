@@ -23,7 +23,7 @@ class FileProps {
 
 enum SelectionAction { copy, cut, none }
 
-enum JobStatus { initialized, running, completed, failed, stopped }
+enum JobStatus { ready, running, completed, failed, blocked }
 
 enum SortMode {
   nameAsc,

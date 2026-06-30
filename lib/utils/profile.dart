@@ -47,7 +47,7 @@ class Profile {
     try {
       final fetchedRemoteFiles = await fileManager!.listObjects(dir);
       await Main.remoteFileRemoveByKey(p.s3.asDir(dir), notify: false);
-      await Main.remoteFilesAddAll(fetchedRemoteFiles.toList());
+      await Main.remoteFilesAddAll(fetchedRemoteFiles);
       accessible.value = true;
     } catch (e) {
       accessible.value = false;

@@ -37,7 +37,7 @@ Future<void> runJob({
     }
     onProgress(totalProgress / Job.runningJobs.length);
   });
-  if (Job.initializedJobs.isNotEmpty) {
+  if (Job.readyJobs.isNotEmpty) {
     await Future.delayed(const Duration(seconds: 2), () {
       // TODO: Run Jobs?
     });

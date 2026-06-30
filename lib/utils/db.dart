@@ -813,7 +813,6 @@ class MetaDB {
       );
 
       await job.start();
-      Job.jobs.remove(job);
       job.dispose();
 
       await _openDb();
@@ -834,7 +833,6 @@ class MetaDB {
       ifMatch: etag,
     );
     final result = await job.start();
-    Job.jobs.remove(job);
     job.dispose();
     if (result == null) {
       return null;

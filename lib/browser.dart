@@ -707,7 +707,13 @@ class BrowserState extends State<Browser> {
         : _driveDir.value != '' && _navIndex.value == 0
         ? (await Main.remoteFilesByDir(_driveDir.value, recursive: false))
               .where(
-                (file) => !Job.jobs.any((job) => job.remoteKey == file.key),
+                (file) =>
+                    !(Job.remoteKeyToJobKeys[file.key]?.any(
+                          (jobKey) =>
+                              Job.allMap[jobKey]?.status.value !=
+                              JobStatus.completed,
+                        ) ??
+                        false),
               )
               .cast<dynamic>()
               .followedBy(
@@ -718,9 +724,9 @@ class BrowserState extends State<Browser> {
                     .cast<dynamic>(),
               )
         : _navIndex.value == 1
-        ? Job.completedJobs.where((element) => true)
+        ? Job.completedJobs
         : _navIndex.value == 2
-        ? Job.jobs.where((element) => true)
+        ? Job.jobs
         : [];
     if (kDebugMode) {
       debugPrint('Current items set: ${_currentItems.value.length} items');
@@ -735,7 +741,14 @@ class BrowserState extends State<Browser> {
         ...(await Main.remoteFilesByDir(
           _driveDir.value,
           recursive: true,
-        )).where((file) => !Job.jobs.any((job) => job.remoteKey == file.key)),
+        )).where(
+          (file) =>
+              !(Job.remoteKeyToJobKeys[file.key]?.any(
+                    (jobKey) =>
+                        Job.allMap[jobKey]?.status.value != JobStatus.completed,
+                  ) ??
+                  false),
+        ),
         ...Job.jobs.where(
           (job) => p.s3.isWithin(_driveDir.value, job.remoteKey),
         ),

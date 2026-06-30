@@ -73,11 +73,16 @@ sealed class ContextActionHandlerDelegate {
   );
 
   List<String> get activeFiles => _activeFilesCache ??= List.unmodifiable(
-    files.where(
-      (f) => Job.jobs.any(
-        (job) => !p.isDir(f) && job.localFile.path == Main.pathFromKey(f),
-      ),
-    ),
+    files.where((f) {
+      final status = Job
+          .allMap[(remoteKey: f, localPath: Main.pathFromKey(f))]
+          ?.status
+          .value;
+      if (status != JobStatus.completed && status != null) {
+        return true;
+      }
+      return false;
+    }),
   );
 
   List<String> get removableFiles => _removableFilesCache ??= List.unmodifiable(

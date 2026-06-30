@@ -349,7 +349,7 @@ abstract class Main {
     await remoteFilesAddAll(files);
   }
 
-  static Future<void> remoteFilesAddAll(List<RemoteFile> files) async {
+  static Future<void> remoteFilesAddAll(Iterable<RemoteFile> files) async {
     final Map<Profile, List<RemoteFile>> groupedFiles = {};
     for (final file in files) {
       final profile = profileFromKey(file.key);
@@ -1155,6 +1155,9 @@ abstract class Main {
   }
 }
 
+typedef JobKey = ({String remoteKey, String localPath});
+typedef JobQuery = ({String? remoteKey, String? localPath, JobStatus? status});
+
 abstract class Job {
   final File localFile;
   final String remoteKey;
@@ -1168,22 +1171,43 @@ abstract class Job {
   static int maxrun = 5;
   static bool scheduled = false;
 
-  static final List<Job> jobs = <Job>[];
-  static final List<Job> completedJobs = <Job>[];
+  static final Map<String, List<JobKey>> _remoteKeyToJobKeys = {};
+  static final Map<JobKey, Job> _jobs = {};
+  static final Map<JobKey, Job> _readyJobs = {};
+  static final Map<JobKey, Job> _runningJobs = {};
+  static final Map<JobKey, Job> _completedJobs = {};
+  static final Map<JobKey, Job> _failedJobs = {};
+  static final Map<JobKey, Job> _blockedJobs = {};
   static final ManualNotifier onJobsChanged = ManualNotifier();
   static final ManualNotifier onProgressUpdate = ManualNotifier();
-  static Iterable<Job> get runningJobs =>
-      jobs.where((job) => job.status.value == JobStatus.running);
-  static Iterable<Job> get initializedJobs =>
-      jobs.where((job) => job.status.value == JobStatus.initialized);
-  static Iterable<Job> get unInitializedJobs => jobs.where(
-    (job) =>
-        job.status.value == JobStatus.failed ||
-        job.status.value == JobStatus.stopped,
-  );
+
+  static Iterable<Job> get jobs => _jobs.values;
+  static Iterable<Job> get readyJobs => _readyJobs.values;
+  static Iterable<Job> get runningJobs => _runningJobs.values;
+  static Iterable<Job> get completedJobs => _completedJobs.values;
+  static Iterable<Job> get failedJobs => _failedJobs.values;
+  static Iterable<Job> get blockedJobs => _blockedJobs.values;
+
+  static Map<String, List<JobKey>> get remoteKeyToJobKeys =>
+      Map.unmodifiable(_remoteKeyToJobKeys);
+  static Map<JobKey, Job> get allMap => Map.unmodifiable(_jobs);
+  static Map<JobKey, Job> get readyMap => Map.unmodifiable(_readyJobs);
+  static Map<JobKey, Job> get runningMap => Map.unmodifiable(_runningJobs);
+  static Map<JobKey, Job> get completedMap => Map.unmodifiable(_completedJobs);
+  static Map<JobKey, Job> get failedMap => Map.unmodifiable(_failedJobs);
+  static Map<JobKey, Job> get blockedMap => Map.unmodifiable(_blockedJobs);
+
+  JobKey get jobKey => (remoteKey: remoteKey, localPath: localFile.path);
+  Map<JobKey, Job> get _statusMap => switch (status.value) {
+    JobStatus.ready => _readyJobs,
+    JobStatus.running => _runningJobs,
+    JobStatus.completed => _completedJobs,
+    JobStatus.failed => _failedJobs,
+    JobStatus.blocked => _blockedJobs,
+  };
 
   final ValueNotifier<JobStatus> status = ValueNotifier<JobStatus>(
-    JobStatus.initialized,
+    JobStatus.ready,
   );
   final ValueNotifier<String> statusMsg = ValueNotifier<String>('');
   final ValueNotifier<int> bytesCompleted = ValueNotifier<int>(0);
@@ -1196,6 +1220,24 @@ abstract class Job {
     required this.profile,
   });
 
+  void _add() {
+    status.value == JobStatus.ready
+        ? _readyJobs[jobKey] = this
+        : _readyJobs.remove(jobKey);
+    status.value == JobStatus.running
+        ? _runningJobs[jobKey] = this
+        : _runningJobs.remove(jobKey);
+    status.value == JobStatus.completed
+        ? _completedJobs[jobKey] = this
+        : _completedJobs.remove(jobKey);
+    status.value == JobStatus.failed
+        ? _failedJobs[jobKey] = this
+        : _failedJobs.remove(jobKey);
+    status.value == JobStatus.blocked
+        ? _blockedJobs[jobKey] = this
+        : _blockedJobs.remove(jobKey);
+  }
+
   Future<void> add() async {
     if (jobs.any(
       (job) =>
@@ -1205,13 +1247,10 @@ abstract class Job {
     )) {
       return;
     }
-    jobs.add(this);
-    status.addListener(() {
-      if (status.value == JobStatus.completed) {
-        completedJobs.add(this);
-        jobs.remove(this);
-      }
-    });
+    _remoteKeyToJobKeys.putIfAbsent(remoteKey, () => []).add(jobKey);
+    _jobs[jobKey] = this;
+    _add();
+    status.addListener(_add);
     onJobsChanged.notifyListeners();
     startall();
   }
@@ -1242,7 +1281,7 @@ abstract class Job {
           },
         );
         final result = await task!.start();
-        status.value = JobStatus.stopped;
+        status.value = JobStatus.blocked;
         if (bytesCompleted.value >= bytes && result != null) {
           status.value = JobStatus.completed;
           final headers = await Main.profileFromKey(
@@ -1291,7 +1330,7 @@ abstract class Job {
           },
         );
         final result = await task!.start();
-        status.value = JobStatus.stopped;
+        status.value = JobStatus.blocked;
         if (bytesCompleted.value >= bytes) {
           status.value = JobStatus.completed;
           bytesCompleted.value = bytes;
@@ -1311,38 +1350,43 @@ abstract class Job {
   }
 
   bool stoppable() {
-    return status.value == JobStatus.running ||
-        status.value == JobStatus.initialized;
+    return status.value == JobStatus.running || status.value == JobStatus.ready;
   }
 
   void stop() {
     if (stoppable()) {
       task?.cancel.call();
-      status.value = JobStatus.stopped;
+      status.value = JobStatus.blocked;
       onProgressUpdate.notifyListeners();
     }
   }
 
   bool removable() {
-    return status.value != JobStatus.running;
+    return status.value != JobStatus.running &&
+        (_jobs.containsKey(jobKey) || _statusMap.containsKey(jobKey));
   }
 
   void remove() {
     if (removable()) {
-      if (jobs.remove(this)) {
-        onJobsChanged.notifyListeners();
-      }
+      _jobs.remove(jobKey);
+      _remoteKeyToJobKeys[remoteKey]?.remove(jobKey);
+      _statusMap.remove(jobKey);
+      onJobsChanged.notifyListeners();
       dispose();
     }
   }
 
   bool dismissible() {
-    return status.value == JobStatus.completed;
+    return status.value == JobStatus.completed &&
+        (_jobs.containsKey(jobKey) || _statusMap.containsKey(jobKey));
   }
 
-  void dismiss() {
+  void dismiss({bool notify = true}) {
     if (dismissible()) {
-      if (completedJobs.remove(this)) {
+      _jobs.remove(jobKey);
+      _remoteKeyToJobKeys[remoteKey]?.remove(jobKey);
+      _statusMap.remove(jobKey);
+      if (notify) {
         onJobsChanged.notifyListeners();
       }
       dispose();
@@ -1356,8 +1400,11 @@ abstract class Job {
   }
 
   static Future<void> continueAll() async {
-    for (var job in unInitializedJobs) {
-      job.status.value = JobStatus.initialized;
+    while (failedJobs.isNotEmpty) {
+      failedJobs.firstOrNull?.status.value = JobStatus.ready;
+    }
+    while (blockedJobs.isNotEmpty) {
+      blockedJobs.firstOrNull?.status.value = JobStatus.ready;
     }
     startall();
   }
@@ -1370,9 +1417,7 @@ abstract class Job {
     try {
       scheduled = true;
       while (runningJobs.length < maxrun) {
-        Job? job = jobs.firstWhereOrNull(
-          (job) => job.status.value == JobStatus.initialized,
-        );
+        Job? job = readyJobs.firstOrNull;
         if (job == null) {
           break;
         }
@@ -1385,26 +1430,28 @@ abstract class Job {
   }
 
   static Future<void> stopall() async {
-    for (var job in jobs) {
-      job.stop();
+    while (runningJobs.isNotEmpty) {
+      runningJobs.firstOrNull?.stop();
+    }
+    while (readyJobs.isNotEmpty) {
+      readyJobs.firstOrNull?.stop();
     }
     onProgressUpdate.notifyListeners();
   }
 
   static Future<void> clearCompleted() async {
-    for (final job in completedJobs.toList()) {
-      job.dismiss();
+    while (completedJobs.isNotEmpty) {
+      completedJobs.firstOrNull?.dismiss(notify: false);
     }
+    onJobsChanged.notifyListeners();
   }
 
   static Future<void> disposeAll() async {
-    for (final job in jobs.toList()) {
-      jobs.remove(job);
-      job.dispose();
-    }
-    for (final job in completedJobs.toList()) {
-      completedJobs.remove(job);
-      job.dispose();
+    while (jobs.isNotEmpty) {
+      Job? job = _jobs.remove(jobs.first.jobKey);
+      _remoteKeyToJobKeys[job?.remoteKey]?.remove(job?.jobKey);
+      job?._statusMap.remove(jobs.first.jobKey);
+      job?.dispose();
     }
     onJobsChanged.notifyListeners();
   }
@@ -1544,9 +1591,9 @@ class Watcher {
 
       for (String path in [...result.newFile, ...result.modifiedLocally]) {
         final key = Main.keyFromPath(path) ?? '';
-        if (Job.jobs.any(
-          (job) => job.localFile.path == path && job.remoteKey == key,
-        )) {
+        final jobKey = (remoteKey: key, localPath: path);
+        if (Job.allMap.containsKey(jobKey) &&
+            Job.allMap[jobKey]?.status.value != JobStatus.completed) {
           continue;
         }
         // BackupMode mode = Main.backupModeFromKey(Main.keyFromPath(path) ?? '');
@@ -1556,11 +1603,10 @@ class Watcher {
       }
 
       for (String key in result.modifiedRemotely) {
-        if (Job.jobs.any(
-          (job) =>
-              job.localFile.path == Main.pathFromKey(key) &&
-              job.remoteKey == key,
-        )) {
+        final path = Main.pathFromKey(key);
+        final jobKey = (remoteKey: key, localPath: path);
+        if (Job.allMap.containsKey(jobKey) &&
+            Job.allMap[jobKey]?.status.value != JobStatus.completed) {
           continue;
         }
         // BackupMode mode = Main.backupModeFromKey(key);
@@ -1571,11 +1617,10 @@ class Watcher {
 
       for (String key in result.remoteOnly) {
         isDownloaded[key] = false;
-        if (Job.jobs.any(
-          (job) =>
-              job.localFile.path == Main.pathFromKey(key) &&
-              job.remoteKey == key,
-        )) {
+        final path = Main.pathFromKey(key);
+        final jobKey = (remoteKey: key, localPath: path);
+        if (Job.allMap.containsKey(jobKey) &&
+            Job.allMap[jobKey]?.status.value != JobStatus.completed) {
           continue;
         }
         if (Main.backupModeFromKey(key) == BackupMode.sync) {
