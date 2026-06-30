@@ -13,14 +13,14 @@ import 'package:files3/utils/path_utils.dart' as p;
 
 Future<void> _lastOperation = Future.value();
 
-Future<T> _enqueue<T>(String name, Future<T> Function() action) {
-  final future = _lastOperation.then((_) async {
-    final result = await action();
-    return result;
-  });
+Future<T> _enqueue<T>(String name, Future<T> Function() action) async {
+  await _lastOperation;
 
-  _lastOperation = future.then((_) {}, onError: (e) {});
-  return future;
+  final future = action();
+
+  _lastOperation = future.then<void>((_) {}, onError: (_) {});
+
+  return await future;
 }
 
 typedef Metadata = ({
@@ -34,6 +34,7 @@ typedef Metadata = ({
   Map<String, dynamic> metadata,
   bool present,
   DateTime? deletedAt,
+  (int, int) count,
 });
 
 enum OpType { addOrUpdate, remove }
@@ -52,6 +53,7 @@ class MetaDB {
   Database? _db;
   Database? _localDb;
   final Profile profile;
+  String? etag;
   late final String _key = p.s3.join(profile.name, 'metadata.db');
   late final File _file = File(
     p.context.joinAll([
@@ -99,28 +101,45 @@ class MetaDB {
 
   Future<void> sync() => _enqueue("sync", () async => await _sync());
 
-  Future<void> withTransaction(
-    Future<void> Function(Transaction txn) callback,
-  ) => _enqueue("nestedTransaction", () async {
-    await _db?.transaction((txn) async {
-      await callback(txn);
+  /// Only use for Read operations, not for Write operations.
+  Future<T> withDB<T>(Future<T> Function(Database db) callback) =>
+      _db != null && _db!.isOpen
+      ? callback(_db!)
+      : _enqueue<T>("withDB", () async {
+          await _openDb();
+          return callback(_db!);
+        });
+
+  /// Only use for Read operations, not for Write operations.
+  Future<T> withLocalDb<T>(Future<T> Function(Database db) callback) =>
+      _localDb != null && _localDb!.isOpen
+      ? callback(_localDb!)
+      : _enqueue<T>("withLocalDb", () async {
+          await _openLocalDb();
+          return callback(_localDb!);
+        });
+
+  Future<T> withTransaction<T>(Future<T> Function(Transaction txn) callback) =>
+      _enqueue<T>("dbTransaction", () async {
+        return await _db!.transaction((txn) async {
+          return await callback(txn);
+        });
+      });
+
+  Future<T> withLocalTransaction<T>(
+    Future<T> Function(Transaction localTxn) callback,
+  ) => _enqueue<T>("localDbTransaction", () async {
+    return await _localDb!.transaction((localTxn) async {
+      return await callback(localTxn);
     });
   });
 
-  Future<void> withLocalTransaction(
-    Future<void> Function(Transaction localTxn) callback,
-  ) => _enqueue("nestedTransaction", () async {
-    await _localDb?.transaction((localTxn) async {
-      await callback(localTxn);
-    });
-  });
-
-  Future<void> withNestedTransaction(
-    Future<void> Function(Transaction txn, Transaction localTxn) callback,
-  ) => _enqueue("nestedTransaction", () async {
-    await _db?.transaction((txn) async {
-      await _localDb?.transaction((localTxn) async {
-        await callback(txn, localTxn);
+  Future<T> withNestedTransaction<T>(
+    Future<T> Function(Transaction txn, Transaction localTxn) callback,
+  ) => _enqueue<T>("nestedTransaction", () async {
+    return await _db!.transaction((txn) async {
+      return await _localDb!.transaction((localTxn) async {
+        return await callback(txn, localTxn);
       });
     });
   });
@@ -168,6 +187,7 @@ class MetaDB {
         metadata: file.metadata,
         present: true,
         deletedAt: null,
+        count: file.count,
       );
 
       final op = (
@@ -279,11 +299,13 @@ class MetaDB {
     return [];
   }
 
-  Future<Iterable<RemoteFile>> getFilesByDir(
+  ({String where, List<Object?> whereArgs}) filesByDirQueryArgs(
     String dir, {
     bool recursive = true,
     bool ifPresent = true,
-  }) async {
+    bool includeDirs = true,
+    bool includeFiles = true,
+  }) {
     String where;
     List<Object?> whereArgs;
 
@@ -313,19 +335,56 @@ class MetaDB {
       where = ifPresent
           ? '''
           key LIKE ? AND key != ? AND present = 1
-          AND instr(substr(key, length(?) + 1), '/') <= 1
+          AND (
+            instr(substr(key, length(?) + 1), '/') = 0
+            OR
+            instr(substr(key, length(?) + 1), '/') =
+              length(substr(key, length(?) + 1))
+          )
         '''
           : '''
           key LIKE ? AND key != ?
-          AND instr(substr(key, length(?) + 1), '/') <= 1
+          AND (
+            instr(substr(key, length(?) + 1), '/') = 0
+            OR
+            instr(substr(key, length(?) + 1), '/') =
+              length(substr(key, length(?) + 1))
+          )
         ''';
-      whereArgs = ['$dir%', dir, dir];
+      whereArgs = ['$dir%', dir, dir, dir, dir];
     }
+
+    if (!includeDirs && !includeFiles) {
+      where = '0';
+      whereArgs = [];
+    } else if (includeDirs != includeFiles) {
+      where += includeDirs
+          ? " AND substr(key, -1) = '/'"
+          : " AND substr(key, -1) != '/'";
+    }
+
+    return (where: where, whereArgs: whereArgs);
+  }
+
+  Future<Iterable<RemoteFile>> getFilesByDir(
+    String dir, {
+    bool recursive = true,
+    bool ifPresent = true,
+    bool includeDirs = true,
+    bool includeFiles = true,
+  }) async {
+    final args = filesByDirQueryArgs(
+      dir,
+      recursive: recursive,
+      ifPresent: ifPresent,
+      includeDirs: includeDirs,
+      includeFiles: includeFiles,
+    );
 
     final result = await _db?.query(
       'remotefiles',
-      where: where,
-      whereArgs: whereArgs,
+      where: args.where,
+      whereArgs: args.whereArgs,
     );
 
     if (result != null && result.isNotEmpty) {
@@ -420,19 +479,53 @@ class MetaDB {
               metadata TEXT NOT NULL DEFAULT '{}',
               present INT CHECK(present IN (0, 1)) NOT NULL DEFAULT 1,
               deletedAt INT
+              count TEXT NOT NULL DEFAULT '(0, 0)',
               CONSTRAINT present_deletedAt CHECK (present = 1 OR deletedAt IS NOT NULL)
             )
+          ''');
+      },
+      onOpen: (db) async {
+        await db.execute('''
+            CREATE INDEX IF NOT EXISTS idx_remotefiles_present
+            ON remotefiles (present)
+          ''');
+        await db.execute('''
+            CREATE INDEX IF NOT EXISTS idx_remotefiles_deletedAt
+            ON remotefiles (deletedAt)
+          ''');
+        await db.execute('''
+            CREATE INDEX IF NOT EXISTS idx_remotefiles_lastModified
+            ON remotefiles (lastModified)
+          ''');
+        await db.execute('''
+            CREATE INDEX IF NOT EXISTS idx_remotefiles_created
+            ON remotefiles (created)
+          ''');
+        await db.execute('''
+            CREATE INDEX IF NOT EXISTS idx_remotefiles_original
+            ON remotefiles (original)
+          ''');
+        await db.execute('''
+            CREATE INDEX IF NOT EXISTS idx_remotefiles_contentType
+            ON remotefiles (contentType)
+          ''');
+        await db.execute('''
+            CREATE INDEX IF NOT EXISTS idx_remotefiles_size
+            ON remotefiles (size)
           ''');
       },
     );
   }
 
-  String? etag;
-
   RemoteFile _remoteFileFromRow(Map<String, dynamic> row) {
     final Map<String, dynamic> resRow = Map.from(row);
     resRow['metadata'] =
         jsonDecode(row['metadata'] as String) as Map<String, dynamic>;
+    resRow['count'] = (row['count'] as String)
+        .substring(1, (row['count'] as String).length - 1)
+        .split(',')
+        .map((e) => int.parse(e.trim()))
+        .toList();
     final meta = _metadataFromJson(resRow);
     return RemoteFile(
       key: meta.key,
@@ -444,6 +537,7 @@ class MetaDB {
       contentType: meta.contentType,
       metadata: meta.metadata,
       deletedAt: meta.deletedAt,
+      count: meta.count,
     );
   }
 
@@ -459,6 +553,7 @@ class MetaDB {
       jsonEncode(metadata.metadata),
       metadata.present ? 1 : 0,
       metadata.deletedAt?.millisecondsSinceEpoch,
+      '(${metadata.count.$1}, ${metadata.count.$2})',
     ];
   }
 
@@ -474,6 +569,7 @@ class MetaDB {
       'metadata': metadata.metadata,
       'present': metadata.present ? 1 : 0,
       'deletedAt': metadata.deletedAt?.millisecondsSinceEpoch,
+      'count': [metadata.count.$1, metadata.count.$2],
     };
   }
 
@@ -503,6 +599,9 @@ class MetaDB {
               isUtc: true,
             )
           : null,
+      count: (json['count'] as List<dynamic>?) != null
+          ? (json['count'][0] as int, json['count'][1] as int)
+          : (0, 0),
     );
   }
 
@@ -615,9 +714,10 @@ class MetaDB {
             contentType,
             metadata,
             present,
-            deletedAt
+            deletedAt,
+            count
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(key) DO UPDATE SET
             etag = excluded.etag,
             size = excluded.size,
@@ -627,7 +727,8 @@ class MetaDB {
             contentType = excluded.contentType,
             metadata = excluded.metadata,
             present = excluded.present,
-            deletedAt = excluded.deletedAt
+            deletedAt = excluded.deletedAt,
+            count = excluded.count
           WHERE
             ? IS NULL
             OR remotefiles.etag = ?;

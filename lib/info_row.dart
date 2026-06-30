@@ -37,15 +37,14 @@ class InfoRow extends StatefulWidget {
 }
 
 class _InfoRowState extends State<InfoRow> {
+  RemoteFile? _file;
   late UiConfig _uiConfig = widget.uiConfig ?? UiConfig();
 
   @override
   void didUpdateWidget(covariant InfoRow oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.remoteKey != widget.remoteKey) {
-      // _file =
-      //     (await Main.remoteFileByKey(widget.remoteKey)) ??
-      //     RemoteFile(key: widget.remoteKey, etag: '');
+      _file = null;
     }
     if (oldWidget.uiConfig != widget.uiConfig) {
       _uiConfig = widget.uiConfig ?? UiConfig();
@@ -55,11 +54,10 @@ class _InfoRowState extends State<InfoRow> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
-      future: Main.remoteFileByKey(widget.remoteKey),
-      builder: (context, file) =>
-          file.connectionState == ConnectionState.active ||
-              !file.hasData ||
-              file.data == null
+      future: () async {
+        _file = await Main.remoteFileByKey(widget.remoteKey);
+      }(),
+      builder: (context, _) => _file == null
           ? Row(children: [])
           : Row(
               mainAxisAlignment: widget.mainAxisAlignment,
@@ -72,20 +70,18 @@ class _InfoRowState extends State<InfoRow> {
                 if (_uiConfig.showTime == DirOrFile.both ||
                     (_uiConfig.showTime == DirOrFile.file &&
                         !p.isDir(widget.remoteKey)))
-                  FutureBuilder<DateTime?>(
-                    future: file.data!.getLastModified(),
+                  FutureBuilder<void>(
+                    future: () async {
+                      await _file!.getLastModified();
+                      _file = await Main.remoteFileByKey(widget.remoteKey);
+                    }(),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting &&
-                          file.data!.lastModified.isAfter(
-                            DateTime.fromMillisecondsSinceEpoch(0),
-                          )) {
-                        return Text('', style: widget.textStyle);
-                      }
-                      if (snapshot.hasError || snapshot.data == null) {
+                      if (_file!.lastModified ==
+                          DateTime.fromMillisecondsSinceEpoch(0)) {
                         return Text('', style: widget.textStyle);
                       }
                       return Text(
-                        timeToReadable(snapshot.data!),
+                        timeToReadable(_file!.lastModified),
                         style: widget.textStyle,
                       );
                     },
@@ -93,18 +89,17 @@ class _InfoRowState extends State<InfoRow> {
                 if (_uiConfig.showSize == DirOrFile.both ||
                     (_uiConfig.showSize == DirOrFile.file &&
                         !p.isDir(widget.remoteKey)))
-                  FutureBuilder<int>(
-                    future: file.data!.getSize(),
+                  FutureBuilder<void>(
+                    future: () async {
+                      await _file!.getSize();
+                      _file = await Main.remoteFileByKey(widget.remoteKey);
+                    }(),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting &&
-                          file.data!.size == 0) {
-                        return Text('', style: widget.textStyle);
-                      }
-                      if (snapshot.hasError || snapshot.data == null) {
+                      if (_file!.size == 0) {
                         return Text('', style: widget.textStyle);
                       }
                       return Text(
-                        bytesToReadable(snapshot.data!),
+                        bytesToReadable(_file!.size),
                         style: widget.textStyle,
                       );
                     },
@@ -118,18 +113,13 @@ class _InfoRowState extends State<InfoRow> {
                   ),
                 if (p.isDir(widget.remoteKey)) ...[
                   if (_uiConfig.showContent)
-                    FutureBuilder<(int, int)>(
-                      future: file.data!.getCount(recursive: true),
+                    FutureBuilder<void>(
+                      future: _file!.getCount(recursive: true),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                                ConnectionState.waiting &&
-                            file.data!.count == (0, 0)) {
+                        if (_file!.count == (0, 0)) {
                           return Text('', style: widget.textStyle);
                         }
-                        if (snapshot.hasError || snapshot.data == null) {
-                          return Text('', style: widget.textStyle);
-                        }
-                        final count = snapshot.data!;
+                        final count = _file!.count;
                         if (count.$1 == 0) {
                           return Text(
                             '${count.$2} files',
@@ -180,8 +170,8 @@ class DownloadStatusIcon extends StatelessWidget {
         return file!.getDownloaded();
       }(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting ||
-            file?.downloaded == null) {
+        if (file?.downloaded == null ||
+            snapshot.connectionState == ConnectionState.waiting) {
           return Icon(Icons.hourglass_empty, size: size);
         }
         if (file?.downloaded == true) {

@@ -360,7 +360,6 @@ abstract class Main {
     await Future.wait(
       groupedFiles.entries.map((entry) async {
         final profile = entry.key;
-
         await profile.metaDB.withNestedTransaction((txn, localTxn) async {
           final addedDirs = <String>{};
           for (final file in entry.value) {
@@ -1587,20 +1586,17 @@ class Watcher {
       for (String key in result.uploaded) {
         isDownloaded[key] = true;
       }
+      Main.onRemoteFilesChanged.notifyListeners();
 
       if (kDebugMode) {
         debugPrint("Scan completed for ${localDir.path}");
       }
-
+    } finally {
       scanning = false;
-
       if (_rescanQueued) {
         _rescanQueued = false;
         unawaited(scan());
       }
-    } finally {
-      scanning = false;
-      Main.onRemoteFilesChanged.notifyListeners();
     }
   }
 

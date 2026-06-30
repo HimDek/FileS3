@@ -46,14 +46,14 @@ class Profile {
   Future<void> refreshRemote({required String dir}) async {
     try {
       final fetchedRemoteFiles = await fileManager!.listObjects(dir);
-      Main.remoteFileRemoveByKey(p.s3.asDir(dir), notify: false);
-      Main.remoteFilesAddAll(fetchedRemoteFiles.toList());
+      await Main.remoteFileRemoveByKey(p.s3.asDir(dir), notify: false);
+      await Main.remoteFilesAddAll(fetchedRemoteFiles.toList());
       accessible.value = true;
     } catch (e) {
       accessible.value = false;
       if (p.s3.equals(name, dir) &&
           (await Main.remoteFileByKey(p.s3.asDir(name))) == null) {
-        Main.remoteFilesAdd(RemoteFile(key: p.s3.asDir(name), etag: ""));
+        await Main.remoteFilesAdd(RemoteFile(key: p.s3.asDir(name), etag: ""));
       }
       if (kDebugMode) {
         debugPrint("Error refreshing remote files: $e");
