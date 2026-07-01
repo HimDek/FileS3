@@ -225,7 +225,7 @@ class _HomeState extends State<Home> {
     loading.value = true;
     try {
       await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
-      Main.remoteFilesAdd(RemoteFile(key: p.s3.asDir(dir), etag: ''));
+      Main.remoteFilesAdd(RemoteFileMeta(key: p.s3.asDir(dir), etag: ''));
       if (p.s3.split(dir).length == 1) {
         await Main.addWatcher(dir);
       }
@@ -252,11 +252,11 @@ class _HomeState extends State<Home> {
               );
             }
             dir.deleteSync(recursive: true);
-            for (final file in await Main.remoteFilesByDir(
+            for (final file in await RemoteFile.getChildrenByKey<String>(
               key,
               recursive: true,
             )) {
-              isDownloaded[file.key] = false;
+              isDownloaded[file] = false;
             }
           }
           final cacheDir = Directory(Main.cachePathFromKey(key));
@@ -344,11 +344,11 @@ class _HomeState extends State<Home> {
                 : BackupMode.sync,
           );
         }
-        final keys = await Main.remoteFilesByDir(dir, recursive: true).then(
-          (files) => files
-              .where((file) => !p.isDir(file.key))
-              .map((file) => file.key)
-              .toList(),
+        final keys = await RemoteFile.getChildrenByKey<String>(
+          dir,
+          recursive: true,
+          includeDirs: false,
+          includeFiles: true,
         );
         await _downloadFiles(keys);
       }
@@ -388,10 +388,12 @@ class _HomeState extends State<Home> {
       return;
     }
 
-    final keys = (await Main.remoteFilesByDir(
+    final keys = (await RemoteFile.getChildrenByKey<String>(
       key,
       recursive: true,
-    )).where((file) => !p.isDir(file.key)).map((file) => file.key).toList();
+      includeDirs: false,
+      includeFiles: true,
+    ));
 
     int progressCount = 0;
     final totalFiles = keys.length;

@@ -45,7 +45,7 @@ sealed class ContextActionHandlerDelegate {
   Future<void> init() async {
     final remoteFilesDownloaded = await Future.wait(
       files!.map((f) async {
-        final remoteFile = await Main.remoteFileByKey(f);
+        final remoteFile = await RemoteFile.getByKey(f);
         return (
           key: remoteFile?.key,
           downloaded: await remoteFile?.getDownloaded(refresh: true),
@@ -193,7 +193,7 @@ sealed class FileContextActionHandlerDelegate
             try {
               final List<String> notDownloaded = await Future.wait(
                 files!.map((file) async {
-                  final remoteFile = await Main.remoteFileByKey(file);
+                  final remoteFile = await RemoteFile.getByKey(file);
                   final downloaded = await remoteFile?.getDownloaded(
                     refresh: true,
                   );
@@ -356,12 +356,12 @@ sealed class DirectoryContextActionHandlerDelegate
 
   @override
   Future<void> init() async {
-    _filesCache = (await Main.remoteFilesByDirs(
+    _filesCache = (await RemoteFile.getChildrenByKeys<String>(
       directories,
       recursive: true,
       includeDirs: false,
       includeFiles: true,
-    )).map((f) => f.key).toList();
+    )).toList();
 
     _dirRootsExistsCache = List.unmodifiable(
       directories.map((dir) => p.context.isAbsolute(Main.pathFromKey(dir))),
@@ -1503,7 +1503,7 @@ Widget buildFileContextMenu(
                 subtitle: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: FutureBuilder(
-                    future: Main.remoteFileByKey(item),
+                    future: RemoteFile.getByKey(item),
                     builder: (context, snapshot) {
                       if (snapshot.hasData && snapshot.data != null) {
                         return Text('MD5: ${snapshot.data!.etag}');

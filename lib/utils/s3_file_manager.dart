@@ -97,14 +97,14 @@ class S3FileManager {
     return response.headers;
   }
 
-  Future<Iterable<RemoteFile>> listObjects(String dir) async {
+  Future<Iterable<RemoteFileMeta>> listObjects(String dir) async {
     String? prefix = p.s3.join(
       _prefix,
       p.s3.relative(dir, from: _profile.name),
     );
     prefix = prefix.isEmpty ? null : prefix;
 
-    final files = <RemoteFile>[];
+    final files = <RemoteFileMeta>[];
     String? continuationToken;
 
     while (true) {
@@ -153,14 +153,12 @@ class S3FileManager {
         if (key == null) continue;
 
         files.add(
-          RemoteFile(
+          RemoteFileMeta(
             key: p.s3.join(_profile.name, p.s3.relative(key, from: _prefix)),
-            size: int.parse(object.getElement('Size')?.innerText ?? '0'),
-            etag:
-                object.getElement('ETag')?.innerText.replaceAll('"', '') ?? '',
-            lastModified: DateTime.parse(
-              object.getElement('LastModified')?.innerText ??
-                  '1970-01-01T00:00:00Z',
+            size: int.tryParse(object.getElement('Size')?.innerText ?? '') ?? 0,
+            etag: object.getElement('ETag')?.innerText.replaceAll('"', ''),
+            lastModified: DateTime.tryParse(
+              object.getElement('LastModified')?.innerText ?? '',
             ),
           ),
         );

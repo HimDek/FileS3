@@ -314,11 +314,11 @@ class MyBrowserState extends BrowserState {
                     },
                   );
                   if (dir != null && dir.isNotEmpty) {
-                    if ((await Main.remoteFileByKey(
+                    if ((await RemoteFile.getByKey(
                               p.s3.join(_driveDir.value, dir),
                             )) !=
                             null ||
-                        (await Main.remoteFileByKey(
+                        (await RemoteFile.getByKey(
                               p.s3.asDir(p.s3.join(_driveDir.value, dir)),
                             )) !=
                             null) {
@@ -441,7 +441,7 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<bool> _globalListOptions = ValueNotifier(true);
   final ValueNotifier<bool> _thumbVisibility = ValueNotifier(false);
   final ValueNotifier<Profile?> _profile = ValueNotifier(null);
-  final ValueNotifier<String> _driveDir = ValueNotifier(Main.root.key);
+  final ValueNotifier<String> _driveDir = ValueNotifier(RemoteFile.root.key);
   final ValueNotifier<ListOptions> _listOptions = ValueNotifier(ListOptions());
   final ValueNotifier<SortMode> _sortMode = ValueNotifier(
     ListOptions().sortMode,
@@ -499,7 +499,7 @@ class BrowserState extends State<Browser> {
     _fileCount.value = 0;
 
     final counts =
-        await (await Main.remoteFileByKey(
+        await (await RemoteFile.getByKey(
           _driveDir.value,
         ))?.getCount(recursive: false) ??
         (0, 0);
@@ -619,7 +619,7 @@ class BrowserState extends State<Browser> {
         }();
       }
     }
-    _driveDir.value = dir.isEmpty ? Main.root.key : dir;
+    _driveDir.value = dir.isEmpty ? RemoteFile.root.key : dir;
     _profile.value = Main.profileFromKey(_driveDir.value);
     _updateCounts();
     _scrollToFile(oldDir);
@@ -631,11 +631,7 @@ class BrowserState extends State<Browser> {
   void _applyListOptions() {
     _currentProps.value = _currentItems.value.map((file) {
       String url =
-          _getLink(
-            file is Job ? file.remoteKey : (file as RemoteFile).key,
-            null,
-          ) ??
-          '';
+          _getLink(file is Job ? file.remoteKey : file.key, null) ?? '';
       return file is Job
           ? FileProps(
               key: file.remoteKey,
@@ -700,12 +696,17 @@ class BrowserState extends State<Browser> {
     _currentItems.value = _searching.value && _navIndex.value == 0
         ? _searchResults.value
         : _driveDir.value == '' && _navIndex.value == 0
-        ? (await Main.remoteFilesByDir(
+        ? await RemoteFile.getChildrenByKey<RemoteFile>(
             '',
             recursive: false,
-          )).where((file) => p.isDir(file.key))
+            includeDirs: true,
+            includeFiles: false,
+          )
         : _driveDir.value != '' && _navIndex.value == 0
-        ? (await Main.remoteFilesByDir(_driveDir.value, recursive: false))
+        ? (await RemoteFile.getChildrenByKey<RemoteFile>(
+                _driveDir.value,
+                recursive: false,
+              ))
               .where(
                 (file) =>
                     !(Job.remoteKeyToJobKeys[file.key]?.any(
@@ -740,7 +741,7 @@ class BrowserState extends State<Browser> {
     _searchResults.value = extractAllSorted(
       query: _searchController.text.trim().toLowerCase(),
       choices: [
-        ...(await Main.remoteFilesByDir(
+        ...(await RemoteFile.getChildrenByKey<RemoteFile>(
           _driveDir.value,
           recursive: true,
         )).where(
@@ -892,7 +893,7 @@ class BrowserState extends State<Browser> {
         };
 
   Widget _buildContextMenu(BuildContext context, String? key) {
-    final file = key == null ? null : Main.remoteFileByKey(key);
+    final file = key == null ? null : RemoteFile.getByKey(key);
     return FutureBuilder(
       future: file,
       builder: (context, snapshot) => ListenableBuilder(
@@ -1459,7 +1460,7 @@ class BrowserState extends State<Browser> {
                 Navigator.of(context).pop();
                 _navIndex.value = 0;
                 _controlsVisible.value = true;
-                _driveDir.value = Main.root.key;
+                _driveDir.value = RemoteFile.root.key;
               },
             ),
           ),
@@ -1741,7 +1742,7 @@ class BrowserState extends State<Browser> {
                                     !_searching.value
                               ? Text(
                                   _dirCount.value > 0 || _fileCount.value > 0
-                                      ? "${_dirCount.value > 0 ? '${_dirCount.value} ${_driveDir.value == Main.root.key ? 'Profiles' : 'Folders'} ' : ''}${_fileCount.value > 0 ? '${_fileCount.value} Files' : ''}"
+                                      ? "${_dirCount.value > 0 ? '${_dirCount.value} ${_driveDir.value == RemoteFile.root.key ? 'Profiles' : 'Folders'} ' : ''}${_fileCount.value > 0 ? '${_fileCount.value} Files' : ''}"
                                       : "Empty",
                                   style: Theme.of(context).textTheme.bodySmall,
                                 )
@@ -2041,8 +2042,9 @@ class BrowserState extends State<Browser> {
                                     child: Row(
                                       children: <Widget>[
                                         GestureDetector(
-                                          onTap: () =>
-                                              _changeDirectory(Main.root.key),
+                                          onTap: () => _changeDirectory(
+                                            RemoteFile.root.key,
+                                          ),
                                           child: Text(
                                             'FileS3',
                                             style: Theme.of(

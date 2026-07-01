@@ -1,41 +1,41 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'package:files3/utils/s3_file_manager.dart';
-import 'package:mime/mime.dart';
 import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:files3/models.dart';
+import 'package:flutter/foundation.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/path_utils.dart' as p;
+import 'package:files3/utils/s3_file_manager.dart';
 
 Future<void> _lastOperation = Future.value();
 
 Future<T> _enqueue<T>(String name, Future<T> Function() action) async {
+  if (kDebugMode) {
+    debugPrint("Enqueuing operation: $name");
+  }
   await _lastOperation;
 
   final future = action();
 
-  _lastOperation = future.then<void>((_) {}, onError: (_) {});
+  _lastOperation = future.then<void>(
+    (_) {
+      if (kDebugMode) {
+        debugPrint("Operation completed: $name");
+      }
+    },
+    onError: (e) {
+      if (kDebugMode) {
+        debugPrint("Operation failed: $name Error: $e");
+      }
+    },
+  );
 
   return await future;
 }
-
-typedef Metadata = ({
-  String key,
-  String etag,
-  int size,
-  DateTime lastModified,
-  DateTime created,
-  DateTime original,
-  String contentType,
-  Map<String, dynamic> metadata,
-  bool present,
-  DateTime? deletedAt,
-  (int, int) count,
-});
 
 enum OpType { addOrUpdate, remove }
 
@@ -44,9 +44,11 @@ enum OpStatus { pending, applied }
 typedef Operation = ({
   String key,
   OpType type,
-  Metadata? row,
+  Map<String, Object?>? metadata,
   String? oldEtag,
   String? appliedToDBEtag,
+  bool ifPresent,
+  List<String>? fields,
 });
 
 class MetaDB {
@@ -160,68 +162,59 @@ class MetaDB {
 
       if (addedDirs.add(dirKey)) {
         await addOrUpdateFile(
-          RemoteFile(key: dirKey, etag: ''),
+          RemoteFileMeta(key: dirKey, etag: ''),
           txn: txn,
           localTxn: localTxn,
+          fields: ['key', 'etag'],
         );
       }
     }
   }
 
   /// Add or update a file in the database, marking it as present in the remote.
-  Future<void> addOrUpdateFile(
-    RemoteFile file, {
+  Future<RemoteFile?> addOrUpdateFile(
+    RemoteFileMeta file, {
     String? oldEtag,
     Transaction? txn,
     Transaction? localTxn,
+    bool ifPresent = false,
+    List<String>? fields,
   }) async {
-    Future<void> body() async {
-      final Metadata metadata = (
-        key: file.key,
-        etag: file.etag,
-        size: file.size,
-        lastModified: file.lastModified.toUtc(),
-        created: file.created.toUtc(),
-        original: file.original.toUtc(),
-        contentType: lookupMimeType(file.key) ?? 'application/octet-stream',
-        metadata: file.metadata,
-        present: true,
-        deletedAt: null,
-        count: file.count,
-      );
-
+    Future<RemoteFile?> body() async {
       final op = (
         key: file.key,
         type: OpType.addOrUpdate,
-        row: metadata,
+        metadata: file.toRow(),
         oldEtag: oldEtag,
         appliedToDBEtag: null,
+        ifPresent: ifPresent,
+        fields: fields,
       );
 
-      Future<void> callback(
+      Future<RemoteFile?> callback(
         Operation op,
         Transaction? txn,
         Transaction localTxn,
       ) async {
         await _addOrUpdateOp(op, txn: localTxn);
-        await _applyAdd(op, txn: txn);
+        final remoteFile = await _applyAddOrUpdate(op, txn: txn);
         await _applyOp(file.key, txn: localTxn);
+        return remoteFile;
       }
 
       if (localTxn != null) {
-        await callback(op, txn, localTxn);
-        return;
+        return await callback(op, txn, localTxn);
       }
 
-      await _localDb?.transaction((localTxn) async {
-        await callback(op, txn, localTxn);
+      return await _localDb?.transaction((localTxn) async {
+        return await callback(op, txn, localTxn);
       });
     }
 
     if (txn != null && localTxn != null) {
-      await body();
+      return await body();
     } else {
-      await _enqueue('addOrUpdateFile', body);
+      return await _enqueue('addOrUpdateFile', body);
     }
   }
 
@@ -236,9 +229,11 @@ class MetaDB {
       final op = (
         key: key,
         type: OpType.remove,
-        row: null,
+        metadata: null,
         oldEtag: oldEtag,
         appliedToDBEtag: null,
+        ifPresent: true,
+        fields: null,
       );
 
       Future<void> callback(
@@ -268,39 +263,9 @@ class MetaDB {
     }
   }
 
-  Future<RemoteFile?> getFile(String key, {bool ifPresent = true}) async {
-    final result = await _db?.query(
-      'remotefiles',
-      where: ifPresent ? 'key = ? AND present = 1' : 'key = ?',
-      whereArgs: [key],
-    );
-    if (result != null && result.isNotEmpty) {
-      return _remoteFileFromRow(result.first);
-    }
-    return null;
-  }
-
-  Future<Iterable<RemoteFile>> getFiles(
-    List<String> keys, {
-    bool ifPresent = true,
-  }) async {
-    final result = await _db?.query(
-      'remotefiles',
-      where: ifPresent
-          ? 'key IN (${List.filled(keys.length, '?').join(',')}) AND present = 1'
-          : 'key IN (${List.filled(keys.length, '?').join(',')})',
-      whereArgs: keys,
-    );
-    if (result != null && result.isNotEmpty) {
-      return result.map((row) {
-        return _remoteFileFromRow(row);
-      });
-    }
-    return [];
-  }
-
-  ({String where, List<Object?> whereArgs}) filesByDirQueryArgs(
+  static ({String where, List<Object?> whereArgs}) filesByDirQueryArgs(
     String dir, {
+    bool includeSelf = false,
     bool recursive = true,
     bool ifPresent = true,
     bool includeDirs = true,
@@ -312,12 +277,12 @@ class MetaDB {
     if (recursive) {
       where = ifPresent
           ? '''
-          key LIKE ? AND key != ? AND present = 1
+          key LIKE ? AND present = 1
         '''
           : '''
-          key LIKE ? AND key != ?
+          key LIKE ?
         ''';
-      whereArgs = ['$dir%', dir];
+      whereArgs = ['$dir%'];
     } else if (dir.isEmpty) {
       where = ifPresent
           ? '''
@@ -334,7 +299,7 @@ class MetaDB {
     } else {
       where = ifPresent
           ? '''
-          key LIKE ? AND key != ? AND present = 1
+          key LIKE ? AND present = 1
           AND (
             instr(substr(key, length(?) + 1), '/') = 0
             OR
@@ -343,7 +308,7 @@ class MetaDB {
           )
         '''
           : '''
-          key LIKE ? AND key != ?
+          key LIKE ?
           AND (
             instr(substr(key, length(?) + 1), '/') = 0
             OR
@@ -351,7 +316,12 @@ class MetaDB {
               length(substr(key, length(?) + 1))
           )
         ''';
-      whereArgs = ['$dir%', dir, dir, dir, dir];
+      whereArgs = ['$dir%', dir, dir, dir];
+    }
+
+    if (!includeSelf) {
+      where += ' AND key != ?';
+      whereArgs.add(dir);
     }
 
     if (!includeDirs && !includeFiles) {
@@ -366,78 +336,7 @@ class MetaDB {
     return (where: where, whereArgs: whereArgs);
   }
 
-  Future<Iterable<RemoteFile>> getFilesByDir(
-    String dir, {
-    bool recursive = true,
-    bool ifPresent = true,
-    bool includeDirs = true,
-    bool includeFiles = true,
-  }) async {
-    final args = filesByDirQueryArgs(
-      dir,
-      recursive: recursive,
-      ifPresent: ifPresent,
-      includeDirs: includeDirs,
-      includeFiles: includeFiles,
-    );
-
-    final result = await _db?.query(
-      'remotefiles',
-      where: args.where,
-      whereArgs: args.whereArgs,
-    );
-
-    if (result != null && result.isNotEmpty) {
-      return result.map(_remoteFileFromRow);
-    }
-    return [];
-  }
-
-  Future<Iterable<RemoteFile>> getFilesByDirs(
-    List<String> dirs, {
-    bool recursive = true,
-    bool ifPresent = true,
-    bool includeDirs = true,
-    bool includeFiles = true,
-  }) async {
-    final args = dirs.map((dir) {
-      return filesByDirQueryArgs(
-        dir,
-        recursive: recursive,
-        ifPresent: ifPresent,
-        includeDirs: includeDirs,
-        includeFiles: includeFiles,
-      );
-    }).toList();
-    final where = args.map((arg) => '(${arg.where})').join(' OR ');
-    final whereArgs = args.expand((arg) => arg.whereArgs).toList();
-    final result = await _db?.query(
-      'remotefiles',
-      where: where,
-      whereArgs: whereArgs,
-    );
-    if (result != null && result.isNotEmpty) {
-      return result.map((row) {
-        return _remoteFileFromRow(row);
-      });
-    }
-    return [];
-  }
-
-  /// Clear all present files in the database, marking them as deleted, to be added back later if they are still present on the remote.
-  /// This is used when a full refresh of the remote files is needed.
-  Future<void> clear() => _enqueue("clear", () async {
-    await _db?.execute(
-      '''
-          UPDATE remotefiles
-          SET present = 0, deletedAt = ?
-          WHERE present = 1
-      ''',
-      [DateTime.now().toUtc().millisecondsSinceEpoch],
-    );
-  });
-
-  // Clean up old deleted entries that are no longer needed
+  /// Clean up old deleted entries that are no longer needed
   Future<void> clean() => _enqueue("clean", () async {
     await _db?.execute(
       '''
@@ -451,6 +350,15 @@ class MetaDB {
             .millisecondsSinceEpoch,
       ],
     );
+  });
+
+  /// Clear all present files in the database, marking them as deleted, to be added back later if they are still present on the remote.
+  /// This is used when a full refresh of the remote files is needed.
+  Future<void> clear() => _enqueue("clear", () async {
+    await _db?.update('remotefiles', {
+      'present': 0,
+      'deletedAt': DateTime.now().toUtc().millisecondsSinceEpoch,
+    });
   });
 
   Future<void> _openLocalDb() async {
@@ -528,120 +436,19 @@ class MetaDB {
     );
   }
 
-  RemoteFile _remoteFileFromRow(Map<String, dynamic> row) {
-    final Map<String, dynamic> resRow = Map.from(row);
-    resRow['metadata'] =
-        jsonDecode(row['metadata'] as String) as Map<String, dynamic>;
-    resRow['count'] = (row['count'] as String)
-        .substring(1, (row['count'] as String).length - 1)
-        .split(',')
-        .map((e) => int.parse(e.trim()))
-        .toList();
-    final meta = _metadataFromJson(resRow);
-    return RemoteFile(
-      key: meta.key,
-      etag: meta.etag,
-      size: meta.size,
-      lastModified: meta.lastModified,
-      created: meta.created,
-      original: meta.original,
-      contentType: meta.contentType,
-      metadata: meta.metadata,
-      deletedAt: meta.deletedAt,
-      count: meta.count,
-    );
-  }
-
-  List<Object?> _rowFromMetadata(Metadata metadata) {
-    return [
-      metadata.key,
-      metadata.etag,
-      metadata.size,
-      metadata.lastModified.millisecondsSinceEpoch,
-      metadata.created.millisecondsSinceEpoch,
-      metadata.original.millisecondsSinceEpoch,
-      metadata.contentType,
-      jsonEncode(metadata.metadata),
-      metadata.present ? 1 : 0,
-      metadata.deletedAt?.millisecondsSinceEpoch,
-      '(${metadata.count.$1}, ${metadata.count.$2})',
-    ];
-  }
-
-  Map<String, dynamic> _jsonFromMetadata(Metadata metadata) {
-    return {
-      'key': metadata.key,
-      'etag': metadata.etag,
-      'size': metadata.size,
-      'lastModified': metadata.lastModified.millisecondsSinceEpoch,
-      'created': metadata.created.millisecondsSinceEpoch,
-      'original': metadata.original.millisecondsSinceEpoch,
-      'contentType': metadata.contentType,
-      'metadata': metadata.metadata,
-      'present': metadata.present ? 1 : 0,
-      'deletedAt': metadata.deletedAt?.millisecondsSinceEpoch,
-      'count': [metadata.count.$1, metadata.count.$2],
-    };
-  }
-
-  Metadata _metadataFromJson(Map<String, dynamic> json) {
-    return (
-      key: json['key'] as String,
-      etag: json['etag'] as String,
-      size: json['size'] as int,
-      lastModified: DateTime.fromMillisecondsSinceEpoch(
-        json['lastModified'] as int,
-        isUtc: true,
-      ),
-      created: DateTime.fromMillisecondsSinceEpoch(
-        json['created'] as int,
-        isUtc: true,
-      ),
-      original: DateTime.fromMillisecondsSinceEpoch(
-        json['original'] as int,
-        isUtc: true,
-      ),
-      contentType: json['contentType'] as String,
-      metadata: (json['metadata'] as Map<String, dynamic>?) ?? {},
-      present: (json['present'] as int?) == 1,
-      deletedAt: json['deletedAt'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(
-              json['deletedAt'] as int,
-              isUtc: true,
-            )
-          : null,
-      count: (json['count'] as List<dynamic>?) != null
-          ? (json['count'][0] as int, json['count'][1] as int)
-          : (0, 0),
-    );
-  }
-
-  List<Object?> _rowFromOperation(Operation op) {
-    return [
-      op.key,
-      op.type.name,
-      op.row == null ? null : jsonEncode(_jsonFromMetadata(op.row!)),
-      op.oldEtag,
-      op.appliedToDBEtag,
-    ];
-  }
-
-  Operation _operationFromJson(Map<String, dynamic> json) {
-    return (
-      key: json['key'] as String,
-      type: OpType.values.firstWhere((e) => e.name == (json['type'] as String)),
-      row: (json['row'] as Map<String, dynamic>?) != null
-          ? _metadataFromJson(json['row'] as Map<String, dynamic>)
-          : null,
-      oldEtag: json['oldEtag'] as String?,
-      appliedToDBEtag: json['appliedToDBEtag'] as String?,
-    );
-  }
-
   Future<void> _addOrUpdateOp(Operation op, {Transaction? txn}) async {
-    await (txn ?? _localDb)?.execute('''INSERT OR REPLACE INTO operations
+    await (txn ?? _localDb)?.execute(
+      '''INSERT OR REPLACE INTO operations
         (key, type, row, oldEtag, appliedToDBEtag)
-        VALUES (?, ?, ?, ?, ?)''', _rowFromOperation(op));
+        VALUES (?, ?, ?, ?, ?)''',
+      [
+        op.key,
+        op.type.name,
+        op.metadata == null ? null : jsonEncode(op.metadata!),
+        op.oldEtag,
+        op.appliedToDBEtag,
+      ],
+    );
   }
 
   Future<void> _applyOp(String key, {Transaction? txn}) async {
@@ -670,7 +477,19 @@ class MetaDB {
         'oldEtag': row['oldEtag'] as String?,
         'appliedToDBEtag': row['appliedToDBEtag'] as String?,
       };
-      return _operationFromJson(rowJson);
+      return (
+        key: rowJson['key'] as String,
+        type: OpType.values.firstWhere(
+          (e) => e.name == (rowJson['type'] as String),
+        ),
+        metadata: (rowJson['row'] as Map<String, dynamic>?) != null
+            ? jsonDecode(rowJson['row'] as String) as Map<String, dynamic>
+            : null,
+        oldEtag: rowJson['oldEtag'] as String?,
+        appliedToDBEtag: rowJson['appliedToDBEtag'] as String?,
+        ifPresent: rowJson['ifPresent'] as bool? ?? false,
+        fields: (rowJson['fields'] as List<dynamic>?)?.cast<String>(),
+      );
     }).toList();
   }
 
@@ -709,48 +528,75 @@ class MetaDB {
     return false;
   }
 
-  Future<void> _applyAdd(Operation op, {Transaction? txn}) async {
-    if (op.row == null) {
-      throw ArgumentError('Operation row cannot be null for addOrUpdate');
+  static const remoteFileFields = [
+    'key',
+    'etag',
+    'size',
+    'lastModified',
+    'created',
+    'original',
+    'contentType',
+    'metadata',
+    'present',
+    'deletedAt',
+    'count',
+  ];
+
+  Future<RemoteFile?> _applyAddOrUpdate(
+    Operation op, {
+    Transaction? txn,
+  }) async {
+    if (op.metadata == null) {
+      throw ArgumentError('Operation metadata cannot be null for addOrUpdate');
     }
-    await (txn ?? _db)?.execute(
-      '''
+
+    final updateFields = op.fields ?? remoteFileFields;
+    final conflictUpdateClause = updateFields
+        .map((field) => '$field = excluded.$field')
+        .join(', ');
+    final values = {
+      for (final field in updateFields)
+        field: op.metadata![field] ?? (field == 'present' ? 1 : null),
+    };
+
+    if (!op.ifPresent) {
+      await (txn ?? _db)?.execute(
+        '''
           INSERT INTO remotefiles (
-            key,
-            etag,
-            size,
-            lastModified,
-            created,
-            original,
-            contentType,
-            metadata,
-            present,
-            deletedAt,
-            count
+            ${updateFields.join(', ')}
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (
+            ${List.filled(values.length, '?').join(', ')}
+          )
           ON CONFLICT(key) DO UPDATE SET
-            etag = excluded.etag,
-            size = excluded.size,
-            lastModified = excluded.lastModified,
-            created = excluded.created,
-            original = excluded.original,
-            contentType = excluded.contentType,
-            metadata = excluded.metadata,
-            present = excluded.present,
-            deletedAt = excluded.deletedAt,
-            count = excluded.count
+            $conflictUpdateClause
           WHERE
             ? IS NULL
             OR remotefiles.etag = ?;
         ''',
-      [
-        ..._rowFromMetadata(op.row!),
-        // WHERE parameters
-        op.oldEtag,
-        op.oldEtag,
-      ],
-    );
+        [
+          ...values.values,
+          // WHERE parameters
+          op.oldEtag,
+          op.oldEtag,
+        ],
+      );
+    } else {
+      await (txn ?? _db)?.update(
+        'remotefiles',
+        values,
+        where: 'key = ? AND ( ? IS NULL OR etag = ?)',
+        whereArgs: [op.key, op.oldEtag, op.oldEtag],
+      );
+    }
+    return await (txn ?? _db)
+        ?.query('remotefiles', where: 'key = ?', whereArgs: [op.key])
+        .then((rows) {
+          if (rows.isEmpty) {
+            return null;
+          }
+          return RemoteFile.fromRow(rows.first);
+        });
   }
 
   Future<void> _applyRemove(Operation op, {Transaction? txn}) async {
@@ -774,8 +620,8 @@ class MetaDB {
       await _localDb?.transaction((localTxn) async {
         for (final op in ops) {
           if (op.appliedToDBEtag != etag) {
-            if (op.type == OpType.addOrUpdate && op.row != null) {
-              await _applyAdd(op, txn: txn);
+            if (op.type == OpType.addOrUpdate && op.metadata != null) {
+              await _applyAddOrUpdate(op, txn: txn);
             } else if (op.type == OpType.remove) {
               await _applyRemove(op, txn: txn);
             }

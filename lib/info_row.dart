@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
-import 'package:files3/utils/job.dart';
 import 'package:files3/models.dart';
 import 'package:files3/helpers.dart';
 
@@ -55,7 +54,7 @@ class _InfoRowState extends State<InfoRow> {
   Widget build(BuildContext context) {
     return FutureBuilder(
       future: () async {
-        _file = await Main.remoteFileByKey(widget.remoteKey);
+        _file = await RemoteFile.getByKey(widget.remoteKey);
       }(),
       builder: (context, _) => _file == null
           ? Row(children: [])
@@ -73,7 +72,7 @@ class _InfoRowState extends State<InfoRow> {
                   FutureBuilder<void>(
                     future: () async {
                       await _file!.getLastModified();
-                      _file = await Main.remoteFileByKey(widget.remoteKey);
+                      _file = await RemoteFile.getByKey(widget.remoteKey);
                     }(),
                     builder: (context, snapshot) {
                       if (_file!.lastModified ==
@@ -92,7 +91,7 @@ class _InfoRowState extends State<InfoRow> {
                   FutureBuilder<void>(
                     future: () async {
                       await _file!.getSize();
-                      _file = await Main.remoteFileByKey(widget.remoteKey);
+                      _file = await RemoteFile.getByKey(widget.remoteKey);
                     }(),
                     builder: (context, snapshot) {
                       if (_file!.size == 0) {
@@ -166,7 +165,7 @@ class DownloadStatusIcon extends StatelessWidget {
     RemoteFile? file;
     return FutureBuilder<void>(
       future: () async {
-        file = await Main.remoteFileByKey(remoteKey);
+        file = await RemoteFile.getByKey(remoteKey);
         return file!.getDownloaded();
       }(),
       builder: (context, snapshot) {
