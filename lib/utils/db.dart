@@ -397,13 +397,24 @@ class MetaDB {
     List<String> dirs, {
     bool recursive = true,
     bool ifPresent = true,
+    bool includeDirs = true,
+    bool includeFiles = true,
   }) async {
+    final args = dirs.map((dir) {
+      return filesByDirQueryArgs(
+        dir,
+        recursive: recursive,
+        ifPresent: ifPresent,
+        includeDirs: includeDirs,
+        includeFiles: includeFiles,
+      );
+    }).toList();
+    final where = args.map((arg) => '(${arg.where})').join(' OR ');
+    final whereArgs = args.expand((arg) => arg.whereArgs).toList();
     final result = await _db?.query(
       'remotefiles',
-      where: ifPresent
-          ? '(${List.filled(dirs.length, 'key LIKE ?').join(' OR ')}) AND present = 1'
-          : '(${List.filled(dirs.length, 'key LIKE ?').join(' OR ')})${recursive ? '' : ' AND (${List.filled(dirs.length, 'instr(substr(key, length(?) + 1), \'/\') = 0').join(' AND ')})'}',
-      whereArgs: [...dirs, ...dirs],
+      where: where,
+      whereArgs: whereArgs,
     );
     if (result != null && result.isNotEmpty) {
       return result.map((row) {

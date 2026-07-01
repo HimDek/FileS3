@@ -460,12 +460,19 @@ abstract class Main {
   static Future<Iterable<RemoteFile>> remoteFilesByDir(
     String dir, {
     bool recursive = true,
+    bool includeDirs = true,
+    bool includeFiles = true,
   }) async {
     if (dir.isEmpty) {
       final List<RemoteFile> files = [];
       for (final profile in _profiles.values) {
         files.addAll(
-          await profile.metaDB.getFilesByDir('', recursive: recursive),
+          await profile.metaDB.getFilesByDir(
+            '',
+            recursive: recursive,
+            includeDirs: includeDirs,
+            includeFiles: includeFiles,
+          ),
         );
       }
       return files;
@@ -481,6 +488,8 @@ abstract class Main {
   static Future<Iterable<RemoteFile>> remoteFilesByDirs(
     Iterable<String> dirs, {
     bool recursive = true,
+    bool includeDirs = true,
+    bool includeFiles = true,
   }) async {
     final Map<Profile, List<String>> groupedDirs = {};
     for (String dir in dirs) {
@@ -495,6 +504,8 @@ abstract class Main {
         await profile.metaDB.getFilesByDirs(
           groupedDirs[profile]!,
           recursive: recursive,
+          includeDirs: includeDirs,
+          includeFiles: includeFiles,
         ),
       );
     }

@@ -719,7 +719,9 @@ class BrowserState extends State<Browser> {
               .followedBy(
                 Job.jobs
                     .where(
-                      (job) => p.s3.dirname(job.remoteKey) == _driveDir.value,
+                      (job) =>
+                          p.s3.dirname(job.remoteKey) == _driveDir.value &&
+                          job.status.value != JobStatus.completed,
                     )
                     .cast<dynamic>(),
               )
@@ -750,7 +752,9 @@ class BrowserState extends State<Browser> {
                   false),
         ),
         ...Job.jobs.where(
-          (job) => p.s3.isWithin(_driveDir.value, job.remoteKey),
+          (job) =>
+              p.s3.isWithin(_driveDir.value, job.remoteKey) &&
+              job.status.value != JobStatus.completed,
         ),
       ],
       cutoff: 40,
@@ -1016,7 +1020,12 @@ class BrowserState extends State<Browser> {
         context: context,
         enableDrag: true,
         showDragHandle: true,
-        constraints: const BoxConstraints(maxHeight: 1400, maxWidth: 1400),
+        constraints: BoxConstraints(
+          maxHeight: min(1400, MediaQuery.heightOf(context) - kToolbarHeight),
+          minHeight: min(1400, MediaQuery.heightOf(context) - kToolbarHeight),
+          maxWidth: min(1400, MediaQuery.widthOf(context)),
+          minWidth: min(600, MediaQuery.widthOf(context)),
+        ),
         builder: (context) => _buildContextMenu(context, key),
       );
     } catch (e) {
