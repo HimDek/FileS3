@@ -25,15 +25,13 @@ class S3FileManager {
   late final String _bucket;
   late final String _prefix;
   late final String _host;
-  late http.Client _client;
 
   static const emptySha256 =
       'e3b0c44298fc1c149afbf4c8996fb924'
       '27ae41e4649b934ca495991b7852b855';
 
-  S3FileManager._(Profile profile, S3Config cfg, http.Client client) {
+  S3FileManager._(Profile profile, S3Config cfg) {
     _profile = profile;
-    _client = client;
     _bucket = cfg.bucket;
     _prefix = cfg.prefix;
     _host = cfg.host.isEmpty
@@ -44,16 +42,12 @@ class S3FileManager {
     _region = cfg.region;
   }
 
-  static S3FileManager? create(
-    Profile profile,
-    http.Client client,
-    S3Config cfg,
-  ) {
+  static S3FileManager? create(Profile profile, S3Config cfg) {
     if (cfg.accessKey.isNotEmpty &&
         cfg.secretKey.isNotEmpty &&
         cfg.region.isNotEmpty &&
         cfg.bucket.isNotEmpty) {
-      return S3FileManager._(profile, cfg, client);
+      return S3FileManager._(profile, cfg);
     } else {
       return null;
     }
@@ -76,25 +70,32 @@ class S3FileManager {
 
     final request = http.Request('PUT', encodedUri)..headers.addAll(headers);
 
-    final response = await _client
-        .send(request)
-        .timeout(
-          const Duration(seconds: 30),
-          onTimeout: () {
-            throw TimeoutException('Request timed out');
-          },
+    final client = http.Client();
+    try {
+      final response = await client
+          .send(request)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw TimeoutException('Request timed out');
+            },
+          );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final body = await response.stream.bytesToString();
+        throw S3Exception(
+          'Create Directory Failed with response: $body',
+          code: response.statusCode,
+          uri: encodedUri,
         );
+      }
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = await response.stream.bytesToString();
-      throw S3Exception(
-        'Create Directory Failed with response: $body',
-        code: response.statusCode,
-        uri: encodedUri,
-      );
+      return response.headers;
+    } catch (e) {
+      rethrow;
+    } finally {
+      client.close();
     }
-
-    return response.headers;
   }
 
   Future<Iterable<Map<String, dynamic>>> listObjects(String dir) async {
@@ -126,52 +127,60 @@ class S3FileManager {
 
       final request = http.Request('GET', encodedUri)..headers.addAll(headers);
 
-      final response = await _client
-          .send(request)
-          .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () => throw TimeoutException('Request timed out'),
+      final client = http.Client();
+      try {
+        final response = await client
+            .send(request)
+            .timeout(
+              const Duration(seconds: 30),
+              onTimeout: () => throw TimeoutException('Request timed out'),
+            );
+
+        final body = await response.stream.bytesToString();
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw S3Exception(
+            'ListObjectsV2 Failed with response: $body',
+            code: response.statusCode,
+            uri: encodedUri,
           );
+        }
 
-      final body = await response.stream.bytesToString();
+        final xml = XmlDocument.parse(body);
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw S3Exception(
-          'ListObjectsV2 Failed with response: $body',
-          code: response.statusCode,
-          uri: encodedUri,
-        );
+        for (final object in xml.findAllElements('Contents')) {
+          final key = object.getElement('Key')?.innerText;
+          if (key == null) continue;
+
+          files.add({
+            'key': p.s3.relative(key, from: _prefix),
+            'size':
+                int.tryParse(object.getElement('Size')?.innerText ?? '') ?? 0,
+            'etag': object.getElement('ETag')?.innerText.replaceAll('"', ''),
+            'lastModified': DateTime.tryParse(
+              object.getElement('LastModified')?.innerText ?? '',
+            ),
+          });
+        }
+
+        final truncated =
+            xml
+                .getElement('ListBucketResult')
+                ?.getElement('IsTruncated')
+                ?.innerText ==
+            'true';
+
+        if (!truncated) break;
+
+        continuationToken = xml
+            .getElement('ListBucketResult')
+            ?.getElement('NextContinuationToken')
+            ?.innerText;
+      } catch (e) {
+        rethrow;
+      } finally {
+        client.close();
       }
-
-      final xml = XmlDocument.parse(body);
-
-      for (final object in xml.findAllElements('Contents')) {
-        final key = object.getElement('Key')?.innerText;
-        if (key == null) continue;
-
-        files.add({
-          'key': p.s3.relative(key, from: _prefix),
-          'size': int.tryParse(object.getElement('Size')?.innerText ?? '') ?? 0,
-          'etag': object.getElement('ETag')?.innerText.replaceAll('"', ''),
-          'lastModified': DateTime.tryParse(
-            object.getElement('LastModified')?.innerText ?? '',
-          ),
-        });
-      }
-
-      final truncated =
-          xml
-              .getElement('ListBucketResult')
-              ?.getElement('IsTruncated')
-              ?.innerText ==
-          'true';
-
-      if (!truncated) break;
-
-      continuationToken = xml
-          .getElement('ListBucketResult')
-          ?.getElement('NextContinuationToken')
-          ?.innerText;
     }
 
     return files;
@@ -203,34 +212,41 @@ class S3FileManager {
 
     final request = http.Request('PUT', encodedUri)..headers.addAll(headers);
 
-    final response = await _client
-        .send(request)
-        .timeout(
-          const Duration(minutes: 1),
-          onTimeout: () {
-            throw TimeoutException('Request timed out');
-          },
+    final client = http.Client();
+    try {
+      final response = await client
+          .send(request)
+          .timeout(
+            const Duration(minutes: 1),
+            onTimeout: () {
+              throw TimeoutException('Request timed out');
+            },
+          );
+
+      if (response.statusCode == 403) {
+        final body = await response.stream.bytesToString();
+        throw S3Exception(
+          'Copy Failed with response: $body',
+          code: response.statusCode,
+          uri: encodedUri,
         );
+      }
 
-    if (response.statusCode == 403) {
-      final body = await response.stream.bytesToString();
-      throw S3Exception(
-        'Copy Failed with response: $body',
-        code: response.statusCode,
-        uri: encodedUri,
-      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final body = await response.stream.bytesToString();
+        throw S3Exception(
+          'Copy Failed with response: $body',
+          code: response.statusCode,
+          uri: encodedUri,
+        );
+      }
+
+      return response.headers;
+    } catch (e) {
+      rethrow;
+    } finally {
+      client.close();
     }
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = await response.stream.bytesToString();
-      throw S3Exception(
-        'Copy Failed with response: $body',
-        code: response.statusCode,
-        uri: encodedUri,
-      );
-    }
-
-    return response.headers;
   }
 
   Future<Map<String, String>> deleteFile(String key) async {
@@ -249,26 +265,32 @@ class S3FileManager {
     );
 
     final request = http.Request('DELETE', encodedUri)..headers.addAll(headers);
+    final client = http.Client();
+    try {
+      final response = await client
+          .send(request)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw TimeoutException('Request timed out');
+            },
+          );
 
-    final response = await _client
-        .send(request)
-        .timeout(
-          const Duration(seconds: 30),
-          onTimeout: () {
-            throw TimeoutException('Request timed out');
-          },
+      if (response.statusCode != 204) {
+        final body = await response.stream.bytesToString();
+        throw S3Exception(
+          'Delete Failed with response: $body',
+          code: response.statusCode,
+          uri: encodedUri,
         );
+      }
 
-    if (response.statusCode != 204) {
-      final body = await response.stream.bytesToString();
-      throw S3Exception(
-        'Delete Failed with response: $body',
-        code: response.statusCode,
-        uri: encodedUri,
-      );
+      return response.headers;
+    } catch (e) {
+      rethrow;
+    } finally {
+      client.close();
     }
-
-    return response.headers;
   }
 
   Future<Map<String, String>> headObject(String key) async {
@@ -284,25 +306,31 @@ class S3FileManager {
     );
 
     final client = http.Client();
-    final res = await client
-        .head(encodedUri, headers: headers)
-        .timeout(
-          const Duration(minutes: 1),
-          onTimeout: () {
-            throw TimeoutException('Request timed out');
-          },
+    try {
+      final res = await client
+          .head(encodedUri, headers: headers)
+          .timeout(
+            const Duration(minutes: 1),
+            onTimeout: () {
+              throw TimeoutException('Request timed out');
+            },
+          );
+      client.close();
+
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw S3Exception(
+          'HEAD Failed with response: ${res.body}',
+          code: res.statusCode,
+          uri: encodedUri,
         );
-    client.close();
+      }
 
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw S3Exception(
-        'HEAD Failed with response: ${res.body}',
-        code: res.statusCode,
-        uri: encodedUri,
-      );
+      return res.headers;
+    } catch (e) {
+      rethrow;
+    } finally {
+      client.close();
     }
-
-    return res.headers;
   }
 
   // Future<Map<String, String>> getTags(String key) async {
@@ -632,9 +660,5 @@ class S3FileManager {
     }
 
     return buffer.toString();
-  }
-
-  void dispose() {
-    _client.close();
   }
 }

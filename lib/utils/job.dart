@@ -489,7 +489,6 @@ abstract class Main {
     final entries = (await ConfigManager.loadS3Config()).entries;
     for (final profile in _profiles.values) {
       if (entries.every((e) => e.key != profile.name)) {
-        profile.dispose();
         _profiles.remove(profile.name);
         profile.metaDB.clear();
       }

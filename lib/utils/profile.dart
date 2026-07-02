@@ -1,4 +1,3 @@
-import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/path_utils.dart' as p;
@@ -23,7 +22,7 @@ class Profile {
   }
 
   S3FileManager? get fileManager {
-    _fileManager ??= S3FileManager.create(this, http.Client(), cfg);
+    _fileManager ??= S3FileManager.create(this, cfg);
     return _fileManager;
   }
 
@@ -35,15 +34,10 @@ class Profile {
 
   void updateConfig(S3Config newCfg) {
     cfg = newCfg;
-    _fileManager?.dispose();
-    _fileManager = S3FileManager.create(this, http.Client(), cfg);
+    _fileManager = S3FileManager.create(this, cfg);
     if (_fileManager == null) {
       accessible.value = false;
     }
-  }
-
-  void dispose() {
-    _fileManager?.dispose();
   }
 
   Future<void> listDirectories({bool background = false}) async {
