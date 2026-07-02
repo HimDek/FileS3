@@ -61,8 +61,7 @@ class S3TransferTask {
     final HttpClient httpClient = HttpClient();
 
     try {
-      if (profile?.fileManager == null ||
-          !(profile?.accessible.value ?? false)) {
+      if (!(profile?.accessible.value ?? false)) {
         throw Exception('Profile is not accessible');
       }
 
@@ -203,13 +202,10 @@ class S3TransferTask {
     onStatus?.call('Starting download...');
     final now = DateTime.now().toUtc();
 
-    final headers = await profile!.fileManager!.headObject(key);
-    Main.updateMetadata(key, headers);
-    final remoteEtag = headers['etag']?.replaceAll('"', '') ?? '';
-    final total = int.tryParse(headers['content-length'] ?? '0') ?? 0;
-    final lastModified =
-        DateTime.tryParse(headers['last-modified'] ?? '') ??
-        DateTime.fromMillisecondsSinceEpoch(0);
+    final remoteFile = await profile!.headObject(key);
+    final remoteEtag = remoteFile.etag;
+    final total = remoteFile.size;
+    final lastModified = remoteFile.lastModified;
     // final metadata = Map.fromEntries(
     //   head.entries
     //       .where((e) => e.key.startsWith('x-amz-meta-'))

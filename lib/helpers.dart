@@ -626,9 +626,7 @@ Future<List<String>> keysToPaths(
         onMessage?.call('Downloading ${i + 1}/${keys.length}...');
         try {
           final file = await uriToFile(
-            Main.profileFromKey(
-              ikeys.current,
-            )!.fileManager!.getUrl(ikeys.current),
+            Main.profileFromKey(ikeys.current)!.getUrl(ikeys.current),
             onProgress: (bytesRead, totalBytes) {
               double progress = totalBytes > 0 ? bytesRead / totalBytes : 0.0;
               onProgress?.call((i + progress) / keys.length);

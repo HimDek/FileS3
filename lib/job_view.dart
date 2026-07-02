@@ -188,7 +188,7 @@ class JobViewState extends State<JobView> {
         future: () async {
           final url = Main.profileFromKey(
             widget.job.remoteKey,
-          )?.fileManager?.getUrl(widget.job.remoteKey);
+          )?.getUrl(widget.job.remoteKey);
           final file = await RemoteFile.getByKey(widget.job.remoteKey);
           return (file: file, url: url);
         }(),

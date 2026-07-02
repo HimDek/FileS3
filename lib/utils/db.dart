@@ -14,23 +14,23 @@ import 'package:files3/utils/s3_file_manager.dart';
 Future<void> _lastOperation = Future.value();
 
 Future<T> _enqueue<T>(String name, Future<T> Function() action) async {
-  if (kDebugMode) {
-    debugPrint("Enqueuing operation: $name");
-  }
+  // if (kDebugMode) {
+  //   debugPrint("Enqueuing operation: $name");
+  // }
   await _lastOperation;
 
   final future = action();
 
   _lastOperation = future.then<void>(
     (_) {
-      if (kDebugMode) {
-        debugPrint("Operation completed: $name");
-      }
+      // if (kDebugMode) {
+      //   debugPrint("Operation completed: $name");
+      // }
     },
     onError: (e) {
-      if (kDebugMode) {
-        debugPrint("Operation failed: $name Error: $e");
-      }
+      // if (kDebugMode) {
+      //   debugPrint("Operation failed: $name Error: $e");
+      // }
     },
   );
 
@@ -76,29 +76,76 @@ class MetaDB {
     ]),
   );
   bool isInitialized = false;
+  Future<bool>? _initializing;
 
-  MetaDB({required this.profile});
+  MetaDB({required this.profile}) {
+    _init();
+  }
 
-  Future<void> init() => _enqueue("init", () async {
+  static String profileNamePlaceholder = '\$s3_files_profile_name';
+
+  String get keyColumn => "'${profile.name}' || substr(key, 23) AS key";
+
+  List<String> get remoteFileFields => [
+    keyColumn,
+    'key as s3_key',
+    'etag',
+    'size',
+    'lastModified',
+    'created',
+    'original',
+    'contentType',
+    'metadata',
+    'present',
+    'deletedAt',
+    'count',
+  ];
+
+  String s3KeyFromKey(String key) {
+    final s3Key = p.s3.equals(key, profile.name)
+        ? p.asDir(profileNamePlaceholder)
+        : key.isEmpty
+        ? ''
+        : p.s3.join(
+            profileNamePlaceholder,
+            p.s3.relative(key, from: profile.name),
+          );
+    return s3Key;
+  }
+
+  Future<bool> _init() => _enqueue("init", () async {
     if (isInitialized) {
-      return;
+      return true;
     }
-    if (!_file.existsSync()) {
-      bool? pooled = await _pullDb();
-      if (pooled == false) {
-        // No remote DB exists, so we can proceed
+    if (_initializing != null) {
+      return _initializing!;
+    }
+
+    Future<bool> body() async {
+      if (!_file.existsSync()) {
+        bool? pooled = await _pullDb();
+        if (pooled == false) {
+          // No remote DB exists, so we can proceed
+          await _openDb();
+        }
+      } else {
+        // Local DB exists, so we can open it
         await _openDb();
       }
-    } else {
-      // Local DB exists, so we can open it
-      await _openDb();
+      if (_localDb == null) {
+        await _openLocalDb();
+      }
+      if (_db != null && _localDb != null) {
+        isInitialized = true;
+      }
+      return isInitialized;
     }
-    if (_localDb == null) {
-      await _openLocalDb();
-    }
-    if (_db != null && _localDb != null) {
-      isInitialized = true;
-    }
+
+    _initializing = body().whenComplete(() {
+      _initializing = null;
+    });
+
+    return _initializing!;
   });
 
   Future<void> sync() => _enqueue("sync", () async => await _sync());
@@ -107,44 +154,77 @@ class MetaDB {
   Future<T> withDB<T>(Future<T> Function(Database db) callback) =>
       _db != null && _db!.isOpen
       ? callback(_db!)
-      : _enqueue<T>("withDB", () async {
-          await _openDb();
-          return callback(_db!);
-        });
+      : () async {
+          await _init();
+          return _enqueue<T>("withDB", () async {
+            return callback(_db!);
+          });
+        }();
 
   /// Only use for Read operations, not for Write operations.
   Future<T> withLocalDb<T>(Future<T> Function(Database db) callback) =>
       _localDb != null && _localDb!.isOpen
       ? callback(_localDb!)
-      : _enqueue<T>("withLocalDb", () async {
-          await _openLocalDb();
-          return callback(_localDb!);
-        });
+      : () async {
+          await _init();
+          return _enqueue<T>("withLocalDb", () async {
+            return callback(_localDb!);
+          });
+        }();
 
   Future<T> withTransaction<T>(Future<T> Function(Transaction txn) callback) =>
-      _enqueue<T>("dbTransaction", () async {
-        return await _db!.transaction((txn) async {
-          return await callback(txn);
-        });
-      });
+      _db != null && _db!.isOpen
+      ? _enqueue<T>("dbTransaction", () async {
+          return await _db!.transaction((txn) async {
+            return await callback(txn);
+          });
+        })
+      : () async {
+          await _init();
+          return _enqueue<T>("withTransaction", () async {
+            return await _db!.transaction((txn) async {
+              return await callback(txn);
+            });
+          });
+        }();
 
   Future<T> withLocalTransaction<T>(
     Future<T> Function(Transaction localTxn) callback,
-  ) => _enqueue<T>("localDbTransaction", () async {
-    return await _localDb!.transaction((localTxn) async {
-      return await callback(localTxn);
-    });
-  });
+  ) => _localDb != null && _localDb!.isOpen
+      ? _enqueue<T>("localDbTransaction", () async {
+          return await _localDb!.transaction((localTxn) async {
+            return await callback(localTxn);
+          });
+        })
+      : () async {
+          await _init();
+          return _enqueue<T>("withLocalTransaction", () async {
+            return await _localDb!.transaction((localTxn) async {
+              return await callback(localTxn);
+            });
+          });
+        }();
 
   Future<T> withNestedTransaction<T>(
     Future<T> Function(Transaction txn, Transaction localTxn) callback,
-  ) => _enqueue<T>("nestedTransaction", () async {
-    return await _db!.transaction((txn) async {
-      return await _localDb!.transaction((localTxn) async {
-        return await callback(txn, localTxn);
-      });
-    });
-  });
+  ) => _db != null && _db!.isOpen && _localDb != null && _localDb!.isOpen
+      ? _enqueue<T>("nestedTransaction", () async {
+          return await _db!.transaction((txn) async {
+            return await _localDb!.transaction((localTxn) async {
+              return await callback(txn, localTxn);
+            });
+          });
+        })
+      : () async {
+          await _init();
+          return _enqueue<T>("withNestedTransaction", () async {
+            return await _db!.transaction((txn) async {
+              return await _localDb!.transaction((localTxn) async {
+                return await callback(txn, localTxn);
+              });
+            });
+          });
+        }();
 
   Future<void> addIntermediateDirectories(
     String key,
@@ -175,16 +255,18 @@ class MetaDB {
   Future<RemoteFile?> addOrUpdateFile(
     RemoteFileMeta file, {
     String? oldEtag,
-    Transaction? txn,
-    Transaction? localTxn,
+    required Transaction txn,
+    required Transaction localTxn,
     bool ifPresent = false,
     List<String>? fields,
   }) async {
     Future<RemoteFile?> body() async {
+      final data = file.toRow();
+      data['present'] = 1;
       final op = (
         key: file.key,
         type: OpType.addOrUpdate,
-        metadata: file.toRow(),
+        metadata: data,
         oldEtag: oldEtag,
         appliedToDBEtag: null,
         ifPresent: ifPresent,
@@ -202,28 +284,18 @@ class MetaDB {
         return remoteFile;
       }
 
-      if (localTxn != null) {
-        return await callback(op, txn, localTxn);
-      }
-
-      return await _localDb?.transaction((localTxn) async {
-        return await callback(op, txn, localTxn);
-      });
+      return await callback(op, txn, localTxn);
     }
 
-    if (txn != null && localTxn != null) {
-      return await body();
-    } else {
-      return await _enqueue('addOrUpdateFile', body);
-    }
+    return await body();
   }
 
   /// Delete a file from the database, marking it as not present in the remote.
   Future<void> deleteFile(
     String key, {
     String? oldEtag,
-    Transaction? txn,
-    Transaction? localTxn,
+    required Transaction txn,
+    required Transaction localTxn,
   }) async {
     Future<void> body() async {
       final op = (
@@ -238,7 +310,7 @@ class MetaDB {
 
       Future<void> callback(
         Operation op,
-        Transaction? txn,
+        Transaction txn,
         Transaction localTxn,
       ) async {
         await _addOrUpdateOp(op, txn: localTxn);
@@ -246,24 +318,13 @@ class MetaDB {
         await _applyOp(key, txn: localTxn);
       }
 
-      if (localTxn != null) {
-        await callback(op, txn, localTxn);
-        return;
-      }
-
-      await _localDb?.transaction((localTxn) async {
-        await callback(op, txn, localTxn);
-      });
+      return await callback(op, txn, localTxn);
     }
 
-    if (txn != null && localTxn != null) {
-      await body();
-    } else {
-      await _enqueue('deleteFile', body);
-    }
+    return await body();
   }
 
-  static ({String where, List<Object?> whereArgs}) filesByDirQueryArgs(
+  ({String where, List<Object?> whereArgs}) filesByDirQueryArgs(
     String dir, {
     bool includeSelf = false,
     bool recursive = true,
@@ -274,60 +335,64 @@ class MetaDB {
     String where;
     List<Object?> whereArgs;
 
+    final actualDir = s3KeyFromKey(dir);
+
     if (recursive) {
-      where = ifPresent
-          ? '''
-          key LIKE ? AND present = 1
-        '''
-          : '''
-          key LIKE ?
-        ''';
-      whereArgs = ['$dir%'];
-    } else if (dir.isEmpty) {
-      where = ifPresent
-          ? '''
-          present = 1 AND (
-            instr(key, '/') = 0 OR
-            instr(key, '/') = length(key)
-          )
-        '''
-          : '''
-          instr(key, '/') = 0 OR
-          instr(key, '/') = length(key)
-        ''';
-      whereArgs = [];
+      if (dir.isEmpty) {
+        // Recursive, root
+        where = '(1)';
+        whereArgs = [];
+      } else {
+        // Recursive, non-root
+        where = '(key LIKE ?)';
+        whereArgs = ['$actualDir%'];
+      }
     } else {
-      where = ifPresent
-          ? '''
-          key LIKE ? AND present = 1
-          AND (
-            instr(substr(key, length(?) + 1), '/') = 0
-            OR
-            instr(substr(key, length(?) + 1), '/') =
-              length(substr(key, length(?) + 1))
+      if (dir.isEmpty) {
+        // Non-recursive, root
+        where = '''
+          (
+            instr(key, '/') = 0
+            OR (
+              substr(key, -1) = '/'
+              AND length(key) - length(replace(key, '/', '')) = 1
+            )
           )
-        '''
-          : '''
-          key LIKE ?
-          AND (
-            instr(substr(key, length(?) + 1), '/') = 0
-            OR
-            instr(substr(key, length(?) + 1), '/') =
-              length(substr(key, length(?) + 1))
+          ''';
+        whereArgs = [];
+      } else {
+        // Non-recursive, non-root
+        where = '''
+          (
+            key LIKE ?
+            AND (
+              instr(substr(key, length(?) + 1), '/') = 0
+              OR
+              instr(substr(key, length(?) + 1), '/') =
+                length(substr(key, length(?) + 1))
+            )
           )
-        ''';
-      whereArgs = ['$dir%', dir, dir, dir];
+          ''';
+        whereArgs = ['$actualDir%', actualDir, actualDir, actualDir];
+      }
+    }
+
+    // Additional filters
+
+    if (ifPresent) {
+      where += ' AND present = 1';
     }
 
     if (!includeSelf) {
       where += ' AND key != ?';
-      whereArgs.add(dir);
+      whereArgs.add(actualDir);
     }
 
     if (!includeDirs && !includeFiles) {
-      where = '0';
-      whereArgs = [];
-    } else if (includeDirs != includeFiles) {
+      return (where: '0', whereArgs: []);
+    }
+
+    if (includeDirs != includeFiles) {
       where += includeDirs
           ? " AND substr(key, -1) = '/'"
           : " AND substr(key, -1) != '/'";
@@ -404,6 +469,10 @@ class MetaDB {
           ''');
       },
       onOpen: (db) async {
+        await db.execute('''
+            CREATE INDEX IF NOT EXISTS idx_remotefiles_key
+            ON remotefiles (key)
+          ''');
         await db.execute('''
             CREATE INDEX IF NOT EXISTS idx_remotefiles_present
             ON remotefiles (present)
@@ -528,20 +597,6 @@ class MetaDB {
     return false;
   }
 
-  static const remoteFileFields = [
-    'key',
-    'etag',
-    'size',
-    'lastModified',
-    'created',
-    'original',
-    'contentType',
-    'metadata',
-    'present',
-    'deletedAt',
-    'count',
-  ];
-
   Future<RemoteFile?> _applyAddOrUpdate(
     Operation op, {
     Transaction? txn,
@@ -550,14 +605,22 @@ class MetaDB {
       throw ArgumentError('Operation metadata cannot be null for addOrUpdate');
     }
 
-    final updateFields = op.fields ?? remoteFileFields;
+    String key = p.s3.join(
+      profileNamePlaceholder,
+      p.s3.relative(op.metadata!['key'] as String, from: profile.name),
+    );
+    key = key == profileNamePlaceholder ? p.asDir(profileNamePlaceholder) : key;
+    final values = {
+      for (final field in remoteFileFields)
+        if (field == keyColumn)
+          'key': key
+        else if (op.metadata!.containsKey(field) && op.metadata![field] != null)
+          field: op.metadata![field] ?? (field == 'present' ? 1 : null),
+    };
+    final updateFields = values.keys.toList();
     final conflictUpdateClause = updateFields
         .map((field) => '$field = excluded.$field')
         .join(', ');
-    final values = {
-      for (final field in updateFields)
-        field: op.metadata![field] ?? (field == 'present' ? 1 : null),
-    };
 
     if (!op.ifPresent) {
       await (txn ?? _db)?.execute(
@@ -586,11 +649,28 @@ class MetaDB {
         'remotefiles',
         values,
         where: 'key = ? AND ( ? IS NULL OR etag = ?)',
-        whereArgs: [op.key, op.oldEtag, op.oldEtag],
+        whereArgs: [
+          p.s3.join(
+            profileNamePlaceholder,
+            p.s3.relative(op.key, from: profile.name),
+          ),
+          op.oldEtag,
+          op.oldEtag,
+        ],
       );
     }
     return await (txn ?? _db)
-        ?.query('remotefiles', where: 'key = ?', whereArgs: [op.key])
+        ?.query(
+          'remotefiles',
+          where: 'key = ?',
+          whereArgs: [
+            p.s3.join(
+              profileNamePlaceholder,
+              p.s3.relative(op.key, from: profile.name),
+            ),
+          ],
+          columns: remoteFileFields,
+        )
         .then((rows) {
           if (rows.isEmpty) {
             return null;
@@ -608,7 +688,7 @@ class MetaDB {
         ''',
       [
         DateTime.now().toUtc().millisecondsSinceEpoch,
-        '${op.key}%',
+        '${p.s3.join(profileNamePlaceholder, p.s3.relative(op.key, from: profile.name))}%',
         op.oldEtag,
         op.oldEtag,
       ],
@@ -634,9 +714,9 @@ class MetaDB {
 
   Future<bool?> _pullDb() async {
     try {
-      Map<String, String>? headers;
+      RemoteFile remote;
       try {
-        headers = await profile.fileManager?.headObject(_key);
+        remote = await profile.headObject(_key);
       } catch (e) {
         if (e is S3Exception && e.code == 404) {
           return false;
@@ -644,16 +724,12 @@ class MetaDB {
         rethrow;
       }
 
-      if (headers?['key'] == null) {
-        return false;
-      }
-
       Job job = DownloadJob(
         localFile: _file,
         remoteKey: _key,
-        bytes: int.tryParse(headers!['content-length'] ?? '0') ?? 0,
+        bytes: remote.size,
         md5: () {
-          final hex = headers!['etag']!.replaceAll('"', '');
+          final hex = remote.etag;
 
           if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
             throw StateError('ETag is not a single-part MD5 digest');

@@ -224,8 +224,7 @@ class _HomeState extends State<Home> {
   Future<void> _createDirectory(String dir) async {
     loading.value = true;
     try {
-      await Main.profileFromKey(dir)!.fileManager!.createDirectory(dir);
-      Main.remoteFilesAdd(RemoteFileMeta(key: p.s3.asDir(dir), etag: ''));
+      await Main.profileFromKey(dir)!.createDirectory(dir);
       if (p.s3.split(dir).length == 1) {
         await Main.addWatcher(dir);
       }

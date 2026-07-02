@@ -307,39 +307,6 @@ abstract class Main {
     return totalSize;
   }
 
-  static Future<void> updateMetadata(
-    String key,
-    Map<String, String> headers,
-  ) async {
-    RemoteFile? file = (await RemoteFile.getByKey(key));
-    final oldEtag = file?.etag;
-    file ??= RemoteFile(
-      key: key,
-      etag: headers['etag'] ?? '',
-      size: int.tryParse(headers['content-length'] ?? '0') ?? 0,
-      lastModified:
-          DateTime.tryParse(headers['last-modified'] ?? '') ??
-          DateTime.fromMillisecondsSinceEpoch(0),
-      created:
-          DateTime.tryParse(headers['x-amz-meta-created'] ?? '') ??
-          DateTime.fromMillisecondsSinceEpoch(0),
-      original:
-          DateTime.tryParse(headers['x-amz-meta-original'] ?? '') ??
-          DateTime.fromMillisecondsSinceEpoch(0),
-      contentType: headers['content-type'] ?? '',
-      metadata: Map.fromEntries(
-        headers.entries
-            .where((e) => e.key.startsWith('x-amz-meta-'))
-            .map(
-              (e) => MapEntry(e.key.replaceFirst('x-amz-meta-', ''), e.value),
-            ),
-      ),
-      deletedAt: null,
-    );
-
-    await profileFromKey(key)?.metaDB.addOrUpdateFile(file, oldEtag: oldEtag);
-  }
-
   static Future<void> remoteFilesSet(List<RemoteFileMeta> files) async {
     await remoteFilesClear(notify: false);
     await remoteFilesAddAll(files);
@@ -382,7 +349,7 @@ abstract class Main {
     bool notify = true,
   }) async {
     final profile = profileFromKey(file.key);
-    await profile?.metaDB.withNestedTransaction((txn, localTxn) async {
+    await profile!.metaDB.withNestedTransaction((txn, localTxn) async {
       final addedDirs = <String>{};
       await profile.metaDB.addIntermediateDirectories(
         file.key,
@@ -533,7 +500,6 @@ abstract class Main {
         continue;
       }
       _profiles[entry.key] = Profile(name: entry.key, cfg: entry.value);
-      await _profiles[entry.key]!.init();
     }
     loading.value = false;
   }
@@ -681,11 +647,7 @@ abstract class Main {
 
       if (profile != newProfile) {
         try {
-          await newProfile?.fileManager?.copyFile(
-            key,
-            newKey,
-            sourceProfile: profile,
-          );
+          await newProfile?.copyFile(key, newKey, sourceProfile: profile);
         } catch (e) {
           if (e is S3Exception && e.code == 403) {
             File file = File(pathFromKey(key));
@@ -712,13 +674,7 @@ abstract class Main {
         }
       }
 
-      final headers = await profile!.fileManager!.copyFile(key, newKey);
-
-      RemoteFile newFile = oldFile.copyWith(
-        key: newKey,
-        lastModified:
-            DateTime.tryParse(headers['last-modified'] ?? '') ?? DateTime.now(),
-      );
+      await profile!.copyFile(key, newKey);
 
       final file = File(pathFromKey(key));
       final cacheFile = File(cachePathFromKey(key));
@@ -739,7 +695,6 @@ abstract class Main {
         }
         cacheFile.copySync(newCacheFile.path);
       }
-      remoteFilesAdd(newFile, notify: false);
     } finally {
       if (refresh) {
         loading.value = false;
@@ -813,7 +768,7 @@ abstract class Main {
               progressCount += 1;
               (preprogress ?? progress).value =
                   progressCount / profileKeys.values.expand((e) => e).length;
-              await profile.fileManager?.deleteFile(key);
+              await profile.deleteFile(key);
               File file = File(pathFromKey(key));
               File cacheFile = File(cachePathFromKey(key));
               if (file.existsSync()) {
@@ -882,7 +837,7 @@ abstract class Main {
             )) {
               progressCount += 1;
               (preprogress ?? progress).value = progressCount / total;
-              await profile.fileManager?.deleteFile(file);
+              await profile.deleteFile(file);
             }
 
             final dirsForProfile = entry.value
@@ -893,11 +848,11 @@ abstract class Main {
             for (final dir in dirsForProfile) {
               progressCount += 1;
               (preprogress ?? progress).value = progressCount / total;
-              await profile.fileManager?.deleteFile(dir);
+              await profile.deleteFile(dir);
             }
           });
 
-          await profile.refreshRemote(dir: profile.name);
+          await profile.listObjects(profile.name);
         }),
       );
     } finally {
@@ -1180,41 +1135,8 @@ abstract class Job {
         status.value = JobStatus.blocked;
         if (bytesCompleted.value >= bytes && result != null) {
           status.value = JobStatus.completed;
-          final headers = await Main.profileFromKey(
-            remoteKey,
-          )?.fileManager?.headObject(remoteKey);
-          if (headers != null) {
-            Main.updateMetadata(remoteKey, headers);
-          }
-          final resultFile = RemoteFile(
-            key: remoteKey,
-            size: int.tryParse(headers?['content-length'] ?? '') ?? bytes,
-            etag: headers?['etag']?.replaceAll('"', '') ?? '',
-            lastModified:
-                DateTime.tryParse(headers?['last-modified'] ?? '') ??
-                localFile.lastModifiedSync(),
-            created:
-                DateTime.tryParse(headers?['x-amz-meta-created'] ?? '') ??
-                localFile.lastModifiedSync(),
-            original:
-                DateTime.tryParse(headers?['x-amz-meta-original'] ?? '') ??
-                localFile.lastModifiedSync(),
-            contentType: headers?['content-type'] ?? 'application/octet-stream',
-            metadata: Map.fromEntries(
-              headers?.entries
-                      .where((e) => e.key.startsWith('x-amz-meta-'))
-                      .map(
-                        (e) => MapEntry(
-                          e.key.replaceFirst('x-amz-meta-', ''),
-                          e.value,
-                        ),
-                      ) ??
-                  [],
-            ),
-            deletedAt: null,
-          );
+          await Main.profileFromKey(remoteKey)?.headObject(remoteKey);
           isDownloaded[remoteKey] = true;
-          Main.remoteFilesAdd(resultFile);
         } else {
           status.value = JobStatus.failed;
           bytesCompleted.value = 0;

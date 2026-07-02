@@ -546,9 +546,7 @@ class BrowserState extends State<Browser> {
 
   String? _getLink(String key, int? seconds) {
     try {
-      return Main.profileFromKey(
-        key,
-      )?.fileManager?.getUrl(key, validForSeconds: seconds);
+      return Main.profileFromKey(key)?.getUrl(key, validForSeconds: seconds);
     } catch (e) {
       return null;
     }

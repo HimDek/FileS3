@@ -183,43 +183,6 @@ class RemoteFileMeta {
     this.count,
   });
 
-  Future<RemoteFile?> getFile() async {
-    final file = await RemoteFile.getByKey(key);
-    if (file == null) {
-      return null;
-    }
-    return file;
-  }
-
-  /// Save or update the RemoteFile in the appropriate profile's metaDB.
-  Future<RemoteFile?> save({String? oldEtag}) async {
-    final addedDirs = <String>{};
-    return await profile?.metaDB.withNestedTransaction((txn, localTxn) async {
-      await profile?.metaDB.addIntermediateDirectories(
-        key,
-        addedDirs,
-        txn: txn,
-        localTxn: localTxn,
-      );
-      return await profile?.metaDB.addOrUpdateFile(
-        this,
-        oldEtag: oldEtag,
-        txn: txn,
-        localTxn: localTxn,
-      );
-    });
-  }
-
-  /// Update specific fields of the RemoteFile in the appropriate profile's metaDB.
-  Future<RemoteFile?> update({String? oldEtag, List<String>? fields}) async {
-    return await profile?.metaDB.addOrUpdateFile(
-      this,
-      oldEtag: oldEtag,
-      ifPresent: true,
-      fields: fields,
-    );
-  }
-
   @override
   String toString() {
     return key;
@@ -357,70 +320,22 @@ class RemoteFile extends RemoteFileMeta {
     if (key.isEmpty) {
       return RemoteFile.root;
     }
-    final result = await Main.profileFromKey(key)?.metaDB.withDB((db) async {
-      return await db.query(
+    final profile = Main.profileFromKey(key);
+    final result = await profile?.metaDB.withDB((db) async {
+      final result = await db.query(
         'remotefiles',
         where: ifPresent ? 'key = ? AND present = 1' : 'key = ?',
-        whereArgs: [key],
+        columns: profile.metaDB.remoteFileFields,
+        whereArgs: [profile.metaDB.s3KeyFromKey(key)],
       );
+      if (key == 'dev/') {
+        return result;
+      }
+      return result;
     });
     return result == null || result.isEmpty
         ? null
         : RemoteFile.fromRow(result.first);
-  }
-
-  static Future<Iterable<T>> getByKeys<T>(
-    List<String> keys, {
-    bool ifPresent = true,
-    bool? distinct,
-    List<String>? columns,
-    String andWhere = '',
-    List<Object> andWhereArgs = const [],
-    String? groupBy,
-    String? having,
-    String? orderBy,
-    int? limit,
-    int? offset,
-  }) async {
-    final Map<Profile, List<String>> groupedKeys = {};
-    for (String dir in keys) {
-      final profile = Main.profileFromKey(dir);
-      if (profile != null) {
-        groupedKeys.putIfAbsent(profile, () => []).add(dir);
-      }
-    }
-
-    final results = await Future.wait(
-      groupedKeys.keys.map((profile) async {
-        final result = await profile.metaDB.withDB((db) async {
-          String whereClause = ifPresent
-              ? 'key IN (${List.filled(groupedKeys[profile]!.length, '?').join(',')}) AND present = 1'
-              : 'key IN (${List.filled(groupedKeys[profile]!.length, '?').join(',')})';
-          List<Object?> whereArgs = groupedKeys[profile]!;
-
-          whereClause += andWhere.isNotEmpty ? ' AND ($andWhere)' : '';
-          whereArgs.addAll(andWhereArgs);
-
-          return await db.query(
-            'remotefiles',
-            where: whereClause,
-            whereArgs: whereArgs,
-            columns: T == RemoteFile ? null : columns,
-            groupBy: groupBy,
-            having: having,
-            orderBy: orderBy,
-            limit: limit,
-            offset: offset,
-          );
-        });
-        return result.map(
-              (row) => T == RemoteFile ? RemoteFile.fromRow(row) : row as T,
-            )
-            as Iterable<T>;
-      }),
-    );
-
-    return results.expand((x) => x);
   }
 
   static Future<Iterable<T>> getChildrenByKey<T>(
@@ -447,22 +362,23 @@ class RemoteFile extends RemoteFileMeta {
       List<T> allChildren = [];
       for (var profile in Main.profiles.values) {
         final children = await profile.metaDB.withDB<Iterable<T>>((db) async {
-          final args = MetaDB.filesByDirQueryArgs(
+          final args = profile.metaDB.filesByDirQueryArgs(
             key,
             recursive: recursive,
             ifPresent: ifPresent,
             includeDirs: includeDirs,
             includeFiles: includeFiles,
           );
+          final columnsToSelect = T == RemoteFile
+              ? profile.metaDB.remoteFileFields
+              : T == String
+              ? [profile.metaDB.keyColumn]
+              : columns ?? profile.metaDB.remoteFileFields;
           final res = await db.query(
             'remotefiles',
             where: args.where + (andWhere.isNotEmpty ? ' AND ($andWhere)' : ''),
             whereArgs: [...args.whereArgs, ...andWhereArgs],
-            columns: T == RemoteFile
-                ? null
-                : T == String
-                ? ['key']
-                : columns,
+            columns: columnsToSelect,
             groupBy: groupBy,
             having: having,
             orderBy: orderBy,
@@ -489,22 +405,28 @@ class RemoteFile extends RemoteFileMeta {
     }
 
     final children = await profile.metaDB.withDB<Iterable<T>>((db) async {
-      final args = MetaDB.filesByDirQueryArgs(
+      final args = profile.metaDB.filesByDirQueryArgs(
         key,
         recursive: recursive,
         ifPresent: ifPresent,
         includeDirs: includeDirs,
         includeFiles: includeFiles,
       );
+      final columnsToSelect = T == RemoteFile
+          ? profile.metaDB.remoteFileFields
+          : T == String
+          ? [profile.metaDB.keyColumn]
+          : columns ?? profile.metaDB.remoteFileFields;
       final res = await db.query(
         'remotefiles',
         where: args.where + (andWhere.isNotEmpty ? ' AND ($andWhere)' : ''),
         whereArgs: [...args.whereArgs, ...andWhereArgs],
-        columns: T == RemoteFile
-            ? null
-            : T == String
-            ? ['key']
-            : columns,
+        columns: columnsToSelect,
+        groupBy: groupBy,
+        having: having,
+        orderBy: orderBy,
+        limit: limit,
+        offset: offset,
       );
       final result = res.map(
         (row) => T == RemoteFile
@@ -546,7 +468,7 @@ class RemoteFile extends RemoteFileMeta {
     final results = await Future.wait(
       groupedDirs.keys.map((profile) async {
         final args = groupedDirs[profile]!.map((dir) {
-          return MetaDB.filesByDirQueryArgs(
+          return profile.metaDB.filesByDirQueryArgs(
             dir,
             recursive: recursive,
             ifPresent: ifPresent,
@@ -572,8 +494,8 @@ class RemoteFile extends RemoteFileMeta {
             columns: T == RemoteFile
                 ? null
                 : T == String
-                ? ['key']
-                : columns,
+                ? [profile.metaDB.keyColumn]
+                : columns ?? profile.metaDB.remoteFileFields,
             groupBy: groupBy,
             having: having,
             orderBy: orderBy,
@@ -619,7 +541,7 @@ class RemoteFile extends RemoteFileMeta {
     int? limit,
     int? offset,
   }) async {
-    return RemoteFile.getChildrenByKey<T>(
+    return await RemoteFile.getChildrenByKey<T>(
       key,
       recursive: recursive,
       ifPresent: ifPresent,
@@ -637,45 +559,10 @@ class RemoteFile extends RemoteFileMeta {
     );
   }
 
-  static Future<void> removeByKey(String key, {String? oldEtag}) async {
-    final profile = Main.profileFromKey(key);
-    await profile?.metaDB.withTransaction((txn) async {
-      await profile.metaDB.deleteFile(key, txn: txn, oldEtag: oldEtag);
-    });
-  }
-
-  static Future<void> removeByKeys(
-    Iterable<String> keys, {
-    Iterable<String?>? oldEtag,
-  }) async {
-    final Map<Profile, List<(String, String?)>> groupedKeys = {};
-    final ikeys = keys.iterator;
-    final iet = oldEtag?.iterator;
-    while (ikeys.moveNext()) {
-      final key = ikeys.current;
-      final oldEtag = iet?.moveNext() == true ? iet!.current : null;
-      final profile = Main.profileFromKey(key);
-      if (profile != null) {
-        groupedKeys.putIfAbsent(profile, () => []).add((key, oldEtag));
-      }
-    }
-    await Future.wait(
-      groupedKeys.entries.map((entry) async {
-        final profile = entry.key;
-        final keysForProfile = entry.value;
-        await profile.metaDB.withTransaction((txn) async {
-          for (final (key, oldEtag) in keysForProfile) {
-            await profile.metaDB.deleteFile(key, txn: txn, oldEtag: oldEtag);
-          }
-        });
-      }),
-    );
-  }
-
   static Future<void> removeByDir(String dir) async {
     final profile = Main.profileFromKey(dir);
     await profile?.metaDB.withTransaction((txn) async {
-      final args = MetaDB.filesByDirQueryArgs(
+      final args = profile.metaDB.filesByDirQueryArgs(
         dir,
         includeSelf: true,
         recursive: true,
@@ -718,10 +605,10 @@ class RemoteFile extends RemoteFileMeta {
 
   Future<int> getSize() async {
     if (!p.isDir(key)) {
-      return this.size;
+      return size;
     }
 
-    final size =
+    final gotsize =
         (await getChildren<Map<String, Object?>>(
               recursive: true,
               ifPresent: true,
@@ -732,19 +619,19 @@ class RemoteFile extends RemoteFileMeta {
             as int? ??
         0;
 
-    if (size != this.size) {
-      this.size = size;
-      await profile?.metaDB.withDB((db) async {
-        await db.update(
+    if (gotsize != size) {
+      size = gotsize;
+      await profile?.metaDB.withTransaction((txn) async {
+        await txn.update(
           'remotefiles',
-          {'size': this.size},
+          {'size': size},
           where: 'key = ?',
-          whereArgs: [key],
+          whereArgs: [profile!.metaDB.s3KeyFromKey(key)],
         );
       });
     }
 
-    return this.size;
+    return size;
   }
 
   Future<DateTime> getLastModified() async {
@@ -766,12 +653,12 @@ class RemoteFile extends RemoteFileMeta {
 
     if (latest != lastModified) {
       lastModified = latest;
-      await profile?.metaDB.withDB((db) async {
-        await db.update(
+      await profile?.metaDB.withTransaction((txn) async {
+        await txn.update(
           'remotefiles',
           {'lastModified': lastModified.millisecondsSinceEpoch},
           where: 'key = ?',
-          whereArgs: [key],
+          whereArgs: [profile!.metaDB.s3KeyFromKey(key)],
         );
       });
     }
@@ -803,16 +690,14 @@ class RemoteFile extends RemoteFileMeta {
 
     if (count != res) {
       count = res;
-      for (var profile in Main.profiles.values) {
-        await profile.metaDB.withDB((db) async {
-          await db.update(
-            'remotefiles',
-            {'count': '(${count.$1}, ${count.$2})'},
-            where: 'key = ?',
-            whereArgs: [key],
-          );
-        });
-      }
+      await profile?.metaDB.withTransaction((txn) async {
+        await txn.update(
+          'remotefiles',
+          {'count': '(${count.$1}, ${count.$2})'},
+          where: 'key = ?',
+          whereArgs: [profile!.metaDB.s3KeyFromKey(key)],
+        );
+      });
     }
 
     return count;

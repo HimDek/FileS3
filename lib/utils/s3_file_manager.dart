@@ -97,14 +97,11 @@ class S3FileManager {
     return response.headers;
   }
 
-  Future<Iterable<RemoteFileMeta>> listObjects(String dir) async {
-    String? prefix = p.s3.join(
-      _prefix,
-      p.s3.relative(dir, from: _profile.name),
-    );
+  Future<Iterable<Map<String, dynamic>>> listObjects(String dir) async {
+    String? prefix = p.s3.join(_prefix, dir);
     prefix = prefix.isEmpty ? null : prefix;
 
-    final files = <RemoteFileMeta>[];
+    final files = <Map<String, dynamic>>[];
     String? continuationToken;
 
     while (true) {
@@ -152,16 +149,14 @@ class S3FileManager {
         final key = object.getElement('Key')?.innerText;
         if (key == null) continue;
 
-        files.add(
-          RemoteFileMeta(
-            key: p.s3.join(_profile.name, p.s3.relative(key, from: _prefix)),
-            size: int.tryParse(object.getElement('Size')?.innerText ?? '') ?? 0,
-            etag: object.getElement('ETag')?.innerText.replaceAll('"', ''),
-            lastModified: DateTime.tryParse(
-              object.getElement('LastModified')?.innerText ?? '',
-            ),
+        files.add({
+          'key': p.s3.relative(key, from: _prefix),
+          'size': int.tryParse(object.getElement('Size')?.innerText ?? '') ?? 0,
+          'etag': object.getElement('ETag')?.innerText.replaceAll('"', ''),
+          'lastModified': DateTime.tryParse(
+            object.getElement('LastModified')?.innerText ?? '',
           ),
-        );
+        });
       }
 
       final truncated =
@@ -308,121 +303,121 @@ class S3FileManager {
     return res.headers;
   }
 
-  Future<Map<String, String>> getTags(String key) async {
-    final contentHash = emptySha256;
-    final now = DateTime.now().toUtc();
-    final amzDate = formatAmzDate(now);
-    final shortDate = formatDate(now);
+  // Future<Map<String, String>> getTags(String key) async {
+  //   final contentHash = emptySha256;
+  //   final now = DateTime.now().toUtc();
+  //   final amzDate = formatAmzDate(now);
+  //   final shortDate = formatDate(now);
 
-    final encodedUri = getEncodedUri(
-      key: key,
-      queryParameters: {'tagging': ''},
-    );
+  //   final encodedUri = getEncodedUri(
+  //     key: key,
+  //     queryParameters: {'tagging': ''},
+  //   );
 
-    final headers = buildSignedHeaders(
-      encodedUri: encodedUri,
-      method: 'GET',
-      amzDate: amzDate,
-      shortDate: shortDate,
-      contentHash: contentHash,
-    );
+  //   final headers = buildSignedHeaders(
+  //     encodedUri: encodedUri,
+  //     method: 'GET',
+  //     amzDate: amzDate,
+  //     shortDate: shortDate,
+  //     contentHash: contentHash,
+  //   );
 
-    final request = http.Request('GET', encodedUri)..headers.addAll(headers);
+  //   final request = http.Request('GET', encodedUri)..headers.addAll(headers);
 
-    final response = await _client
-        .send(request)
-        .timeout(
-          const Duration(seconds: 30),
-          onTimeout: () => throw TimeoutException('Request timed out'),
-        );
+  //   final response = await _client
+  //       .send(request)
+  //       .timeout(
+  //         const Duration(seconds: 30),
+  //         onTimeout: () => throw TimeoutException('Request timed out'),
+  //       );
 
-    final body = await response.stream.bytesToString();
+  //   final body = await response.stream.bytesToString();
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw S3Exception(
-        'GetObjectTagging Failed with response: $body',
-        code: response.statusCode,
-        uri: encodedUri,
-      );
-    }
+  //   if (response.statusCode < 200 || response.statusCode >= 300) {
+  //     throw S3Exception(
+  //       'GetObjectTagging Failed with response: $body',
+  //       code: response.statusCode,
+  //       uri: encodedUri,
+  //     );
+  //   }
 
-    final xml = XmlDocument.parse(body);
+  //   final xml = XmlDocument.parse(body);
 
-    return {
-      for (final tag in xml.findAllElements('Tag'))
-        tag.getElement('Key')!.innerText: tag.getElement('Value')!.innerText,
-    };
-  }
+  //   return {
+  //     for (final tag in xml.findAllElements('Tag'))
+  //       tag.getElement('Key')!.innerText: tag.getElement('Value')!.innerText,
+  //   };
+  // }
 
-  Future<void> setTags(String key, Map<String, String> tags) async {
-    final builder = XmlBuilder();
+  // Future<void> setTags(String key, Map<String, String> tags) async {
+  //   final builder = XmlBuilder();
 
-    builder.processing('xml', 'version="1.0" encoding="UTF-8"');
+  //   builder.processing('xml', 'version="1.0" encoding="UTF-8"');
 
-    builder.element(
-      'Tagging',
-      nest: () {
-        builder.element(
-          'TagSet',
-          nest: () {
-            for (final entry in tags.entries) {
-              builder.element(
-                'Tag',
-                nest: () {
-                  builder.element('Key', nest: entry.key);
-                  builder.element('Value', nest: entry.value);
-                },
-              );
-            }
-          },
-        );
-      },
-    );
+  //   builder.element(
+  //     'Tagging',
+  //     nest: () {
+  //       builder.element(
+  //         'TagSet',
+  //         nest: () {
+  //           for (final entry in tags.entries) {
+  //             builder.element(
+  //               'Tag',
+  //               nest: () {
+  //                 builder.element('Key', nest: entry.key);
+  //                 builder.element('Value', nest: entry.value);
+  //               },
+  //             );
+  //           }
+  //         },
+  //       );
+  //     },
+  //   );
 
-    final xmlBody = builder.buildDocument().toXmlString();
-    final xmlBytes = utf8.encode(xmlBody);
-    final contentMD5 = base64.encode(md5.convert(xmlBytes).bytes);
-    final contentHash = sha256.convert(xmlBytes).toString();
+  //   final xmlBody = builder.buildDocument().toXmlString();
+  //   final xmlBytes = utf8.encode(xmlBody);
+  //   final contentMD5 = base64.encode(md5.convert(xmlBytes).bytes);
+  //   final contentHash = sha256.convert(xmlBytes).toString();
 
-    final now = DateTime.now().toUtc();
-    final amzDate = formatAmzDate(now);
-    final shortDate = formatDate(now);
+  //   final now = DateTime.now().toUtc();
+  //   final amzDate = formatAmzDate(now);
+  //   final shortDate = formatDate(now);
 
-    final encodedUri = getEncodedUri(
-      key: key,
-      queryParameters: {'tagging': ''},
-    );
+  //   final encodedUri = getEncodedUri(
+  //     key: key,
+  //     queryParameters: {'tagging': ''},
+  //   );
 
-    final headers = buildSignedHeaders(
-      encodedUri: encodedUri,
-      method: 'PUT',
-      amzDate: amzDate,
-      shortDate: shortDate,
-      contentHash: contentHash,
-      contentMD5: contentMD5,
-      contentType: 'application/xml; charset=utf-8',
-    );
+  //   final headers = buildSignedHeaders(
+  //     encodedUri: encodedUri,
+  //     method: 'PUT',
+  //     amzDate: amzDate,
+  //     shortDate: shortDate,
+  //     contentHash: contentHash,
+  //     contentMD5: contentMD5,
+  //     contentType: 'application/xml; charset=utf-8',
+  //   );
 
-    final request = http.Request('PUT', encodedUri)
-      ..headers.addAll(headers)
-      ..body = xmlBody;
+  //   final request = http.Request('PUT', encodedUri)
+  //     ..headers.addAll(headers)
+  //     ..body = xmlBody;
 
-    final response = await _client
-        .send(request)
-        .timeout(
-          const Duration(seconds: 30),
-          onTimeout: () => throw TimeoutException('Request timed out'),
-        );
+  //   final response = await _client
+  //       .send(request)
+  //       .timeout(
+  //         const Duration(seconds: 30),
+  //         onTimeout: () => throw TimeoutException('Request timed out'),
+  //       );
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = await response.stream.bytesToString();
-      throw S3Exception(
-        'PutObjectTagging Failed with response: $body',
-        code: response.statusCode,
-        uri: encodedUri,
-      );
-    }
-  }
+  //   if (response.statusCode < 200 || response.statusCode >= 300) {
+  //     final body = await response.stream.bytesToString();
+  //     throw S3Exception(
+  //       'PutObjectTagging Failed with response: $body',
+  //       code: response.statusCode,
+  //       uri: encodedUri,
+  //     );
+  //   }
+  // }
 
   String getUrl(String key, {int? validForSeconds}) {
     final now = DateTime.now().toUtc();
@@ -616,7 +611,7 @@ class S3FileManager {
       host: _host,
       path: key == null
           ? '/'
-          : '/${p.s3.join(_prefix, p.s3.relative(key, from: _profile.name)).split('/').map(awsEncode).join('/')}',
+          : '/${p.s3.join(_prefix, key).split('/').map(awsEncode).join('/')}',
       query: queryEntries.map((e) => '${e.key}=${e.value}').join('&'),
     );
   }
