@@ -237,9 +237,6 @@ abstract class Main {
   static final Map<String, Watcher> _watcherMap = <String, Watcher>{};
   static final ManualNotifier onRemoteFilesChanged = ManualNotifier();
   static final ValueNotifier<bool> initialized = ValueNotifier<bool>(false);
-  static final List<RegExp> _ignoreKeyRegexps = <RegExp>[
-    RegExp(r'^.*[/\\]deletion-register\.ini$'),
-  ];
 
   static String get cacheDir => _cacheDir;
 
@@ -248,9 +245,6 @@ abstract class Main {
   static String get downloadCacheDir => _downloadCacheDir;
 
   static String get documentsDir => _documentsDir;
-
-  static List<RegExp> get ignoreKeyRegexps =>
-      UnmodifiableListView(_ignoreKeyRegexps);
 
   static Map<String, Profile> get profiles => _profiles;
 

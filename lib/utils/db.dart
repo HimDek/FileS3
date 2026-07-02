@@ -425,6 +425,8 @@ class MetaDB {
           : " AND substr(key, -1) != '/'";
     }
 
+    where += " AND key NOT LIKE '$profileNamePlaceholder/metadata.db'";
+
     return (where: where, whereArgs: whereArgs);
   }
 
@@ -830,6 +832,7 @@ class MetaDB {
     } catch (e) {
       if (e is S3Exception && e.code == 404) {
         canPush = true;
+        etag.value = null;
       }
     }
 
