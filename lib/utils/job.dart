@@ -338,7 +338,7 @@ abstract class Main {
               localTxn: localTxn,
             );
           }
-        });
+        }, 'remoteFilesAddAll');
       }),
     );
     onRemoteFilesChanged.notifyListeners();
@@ -358,7 +358,7 @@ abstract class Main {
         localTxn: localTxn,
       );
       await profile.metaDB.addOrUpdateFile(file, txn: txn, localTxn: localTxn);
-    });
+    }, 'remoteFilesAdd');
     if (notify) {
       onRemoteFilesChanged.notifyListeners();
     }
@@ -525,20 +525,7 @@ abstract class Main {
       localFile: File(localPath ?? pathFromKey(key)),
       remoteKey: key,
       bytes: file.size,
-      md5: () {
-        final hex = file.etag.replaceAll('"', '');
-
-        if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
-          throw StateError('ETag is not a single-part MD5 digest');
-        }
-
-        final bytes = List<int>.generate(
-          16,
-          (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16),
-        );
-
-        return Digest(bytes);
-      }(),
+      md5: etagToDigest(file.etag),
       profile: profileFromKey(key),
     );
     job.status.addListener(() {
@@ -756,29 +743,20 @@ abstract class Main {
         profileKeys.entries.map((entry) async {
           final profile = entry.key;
           final keysForProfile = entry.value;
-          await profile.metaDB.withNestedTransaction((txn, localTxn) async {
-            for (final key in keysForProfile) {
-              await profile.metaDB.deleteFile(
-                key,
-                txn: txn,
-                localTxn: localTxn,
-              );
+          for (final key in keysForProfile) {
+            progressCount += 1;
+            (preprogress ?? progress).value =
+                progressCount / profileKeys.values.expand((e) => e).length;
+            await profile.deleteFile(key);
+            File file = File(pathFromKey(key));
+            File cacheFile = File(cachePathFromKey(key));
+            if (file.existsSync()) {
+              file.deleteSync();
             }
-            for (final key in keysForProfile) {
-              progressCount += 1;
-              (preprogress ?? progress).value =
-                  progressCount / profileKeys.values.expand((e) => e).length;
-              await profile.deleteFile(key);
-              File file = File(pathFromKey(key));
-              File cacheFile = File(cachePathFromKey(key));
-              if (file.existsSync()) {
-                file.deleteSync();
-              }
-              if (cacheFile.existsSync()) {
-                cacheFile.deleteSync();
-              }
+            if (cacheFile.existsSync()) {
+              cacheFile.deleteSync();
             }
-          });
+          }
         }),
       );
     } finally {
@@ -824,33 +802,23 @@ abstract class Main {
           final filesForProfile = entry.value
               .where((file) => !p.isDir(file))
               .toList();
-          await profile.metaDB.withNestedTransaction((txn, localTxn) async {
-            for (final key in filesForProfile) {
-              await profile.metaDB.deleteFile(
-                key,
-                txn: txn,
-                localTxn: localTxn,
-              );
-            }
-            for (final file in filesForProfile.where(
-              (file) => !p.isDir(file),
-            )) {
-              progressCount += 1;
-              (preprogress ?? progress).value = progressCount / total;
-              await profile.deleteFile(file);
-            }
 
-            final dirsForProfile = entry.value
-                .where((file) => p.isDir(file))
-                .toList();
-            dirsForProfile.sort((a, b) => b.length.compareTo(a.length));
+          for (final file in filesForProfile.where((file) => !p.isDir(file))) {
+            progressCount += 1;
+            (preprogress ?? progress).value = progressCount / total;
+            await profile.deleteFile(file);
+          }
 
-            for (final dir in dirsForProfile) {
-              progressCount += 1;
-              (preprogress ?? progress).value = progressCount / total;
-              await profile.deleteFile(dir);
-            }
-          });
+          final dirsForProfile = entry.value
+              .where((file) => p.isDir(file))
+              .toList();
+          dirsForProfile.sort((a, b) => b.length.compareTo(a.length));
+
+          for (final dir in dirsForProfile) {
+            progressCount += 1;
+            (preprogress ?? progress).value = progressCount / total;
+            await profile.deleteFile(dir);
+          }
 
           await profile.listObjects(profile.name);
         }),
@@ -1015,6 +983,7 @@ abstract class Job {
   final Digest md5;
   final int bytes;
   final Profile? profile;
+  final bool noUpdateMeta;
   late final int responseCode;
 
   S3TransferTask? task;
@@ -1069,6 +1038,7 @@ abstract class Job {
     required this.bytes,
     required this.md5,
     required this.profile,
+    this.noUpdateMeta = false,
   });
 
   void _add() {
@@ -1124,6 +1094,7 @@ abstract class Job {
           task: TransferTask.upload,
           profile: profile,
           md5: md5,
+          ifMatch: (this as UploadJob).ifMatch,
           onProgress: (sent, total) {
             bytesCompleted.value = sent;
           },
@@ -1135,7 +1106,9 @@ abstract class Job {
         status.value = JobStatus.blocked;
         if (bytesCompleted.value >= bytes && result != null) {
           status.value = JobStatus.completed;
-          await Main.profileFromKey(remoteKey)?.headObject(remoteKey);
+          await Main.profileFromKey(
+            remoteKey,
+          )?.headObject(remoteKey, nosave: (this as UploadJob).noUpdateMeta);
           isDownloaded[remoteKey] = true;
         } else {
           status.value = JobStatus.failed;
@@ -1159,6 +1132,7 @@ abstract class Job {
           task: TransferTask.download,
           profile: profile,
           md5: md5,
+          ignoreHead: (this as DownloadJob).noUpdateMeta,
           onProgress: (received, total) {
             bytesCompleted.value = received;
           },
@@ -1303,6 +1277,7 @@ class UploadJob extends Job {
     required super.bytes,
     required super.md5,
     required super.profile,
+    super.noUpdateMeta = false,
     this.ifMatch,
   });
 }
@@ -1314,6 +1289,7 @@ class DownloadJob extends Job {
     required super.bytes,
     required super.md5,
     required super.profile,
+    super.noUpdateMeta = false,
   }) {
     final tempFile = File(Main.cachePathFromKey(remoteKey));
     final tagFile = File(Main.tagPathFromKey(remoteKey));

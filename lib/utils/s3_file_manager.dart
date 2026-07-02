@@ -283,7 +283,8 @@ class S3FileManager {
       contentHash: S3FileManager.emptySha256,
     );
 
-    final res = await _client
+    final client = http.Client();
+    final res = await client
         .head(encodedUri, headers: headers)
         .timeout(
           const Duration(minutes: 1),
@@ -291,6 +292,7 @@ class S3FileManager {
             throw TimeoutException('Request timed out');
           },
         );
+    client.close();
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw S3Exception(

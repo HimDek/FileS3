@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 import 'package:ini/ini.dart';
 import 'package:mime/mime.dart';
 import 'package:exif/exif.dart';
@@ -668,6 +669,22 @@ Future<List<String>> keysToPaths(
   return paths;
 }
 
+final md5RegEx = RegExp(r'^[a-fA-F0-9]{32}$');
+Digest etagToDigest(String etag) {
+  final hex = etag.replaceAll('"', '');
+
+  if (!md5RegEx.hasMatch(hex)) {
+    throw StateError('ETag is not a single-part MD5 digest');
+  }
+
+  final bytes = List<int>.generate(
+    16,
+    (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16),
+  );
+
+  return Digest(bytes);
+}
+
 void renameOrCopyAndDelete(File file, String newPath) {
   try {
     file.renameSync(newPath);
@@ -1177,6 +1194,14 @@ abstract class ConfigManager {
       "ui_recent_colors",
       jsonEncode(colors.map((color) => ColorTools.colorCode(color))),
     );
+  }
+
+  static Future<bool> setString(String key, String value) async {
+    return await _sharedPreferences.setString(key, value);
+  }
+
+  static String? getString(String key) {
+    return _sharedPreferences.getString(key);
   }
 }
 

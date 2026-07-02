@@ -727,7 +727,7 @@ class BrowserState extends State<Browser> {
         : _navIndex.value == 1
         ? Job.completedJobs
         : _navIndex.value == 2
-        ? Job.jobs
+        ? Job.jobs.where((job) => job.status.value != JobStatus.completed)
         : [];
     if (kDebugMode) {
       debugPrint('Current items set: ${_currentItems.value.length} items');
@@ -1392,7 +1392,14 @@ class BrowserState extends State<Browser> {
                     : Icons.swap_vert_circle_outlined,
               ),
               trailing: Job.jobs.isNotEmpty
-                  ? Text(Job.jobs.length.toString())
+                  ? Text(
+                      Job.jobs
+                          .where(
+                            (job) => job.status.value != JobStatus.completed,
+                          )
+                          .length
+                          .toString(),
+                    )
                   : null,
               selected: _navIndex.value == 2,
               shape: RoundedRectangleBorder(
@@ -1664,10 +1671,22 @@ class BrowserState extends State<Browser> {
                     leading: drawer(context) != null
                         ? IconButton(
                             icon: Badge(
-                              isLabelVisible: Job.jobs.isNotEmpty,
+                              isLabelVisible: Job.jobs
+                                  .where(
+                                    (job) =>
+                                        job.status.value != JobStatus.completed,
+                                  )
+                                  .isNotEmpty,
                               label: Job.jobs.isNotEmpty
                                   ? Text(
-                                      Job.jobs.length.toString(),
+                                      Job.jobs
+                                          .where(
+                                            (job) =>
+                                                job.status.value !=
+                                                JobStatus.completed,
+                                          )
+                                          .length
+                                          .toString(),
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall
@@ -1755,7 +1774,14 @@ class BrowserState extends State<Browser> {
                               },
                               icon: Icon(Icons.clear_all_rounded),
                             )
-                          : Job.jobs.isNotEmpty && _navIndex.value == 2
+                          : Job.jobs
+                                    .where(
+                                      (job) =>
+                                          job.status.value !=
+                                          JobStatus.completed,
+                                    )
+                                    .isNotEmpty &&
+                                _navIndex.value == 2
                           ? Job.runningJobs.isNotEmpty
                                 ? IconButton(
                                     onPressed: () {

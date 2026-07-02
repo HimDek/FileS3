@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:files3/utils/db.dart';
 import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
+import 'package:sqflite/sqlite_api.dart';
 
 class FileProps {
   final String key;
@@ -316,23 +316,28 @@ class RemoteFile extends RemoteFileMeta {
   static Future<RemoteFile?> getByKey(
     String key, {
     bool ifPresent = true,
+
+    /// Must be a Transaction of the appropriate profile's metaDB
+    Transaction? txn,
   }) async {
     if (key.isEmpty) {
       return RemoteFile.root;
     }
+
     final profile = Main.profileFromKey(key);
-    final result = await profile?.metaDB.withDB((db) async {
-      final result = await db.query(
+    Future<List<Map<String, Object?>>> query(DatabaseExecutor db) async {
+      return await db.query(
         'remotefiles',
         where: ifPresent ? 'key = ? AND present = 1' : 'key = ?',
-        columns: profile.metaDB.remoteFileFields,
+        columns: profile!.metaDB.remoteFileFields,
         whereArgs: [profile.metaDB.s3KeyFromKey(key)],
       );
-      if (key == 'dev/') {
-        return result;
-      }
-      return result;
-    });
+    }
+
+    final result = txn != null
+        ? await query(txn)
+        : await profile?.metaDB.withDB<List<Map<String, Object?>>>(query);
+
     return result == null || result.isEmpty
         ? null
         : RemoteFile.fromRow(result.first);
@@ -559,6 +564,7 @@ class RemoteFile extends RemoteFileMeta {
     );
   }
 
+  // TODO
   static Future<void> removeByDir(String dir) async {
     final profile = Main.profileFromKey(dir);
     await profile?.metaDB.withTransaction((txn) async {

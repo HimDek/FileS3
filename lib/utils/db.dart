@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:files3/models.dart';
+import 'package:files3/helpers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/utils/profile.dart';
@@ -13,26 +13,41 @@ import 'package:files3/utils/s3_file_manager.dart';
 
 Future<void> _lastOperation = Future.value();
 
+int id = 0;
 Future<T> _enqueue<T>(String name, Future<T> Function() action) async {
-  // if (kDebugMode) {
-  //   debugPrint("Enqueuing operation: $name");
-  // }
-  await _lastOperation;
+  final waitingFor = _lastOperation;
+  id++;
 
-  final future = action();
+  debugPrint('QUEUE: $id [$name] waiting for previous');
+
+  await waitingFor;
+
+  // debugPrint('QUEUE: $id [$name] previous completed');
+
+  final future = () async {
+    debugPrint('QUEUE: $id [$name] ACTION START');
+    try {
+      final result = await action();
+      debugPrint('QUEUE: $id [$name] ACTION END');
+      return result;
+    } catch (e) {
+      debugPrint('QUEUE: $id [$name] ACTION ERROR: $e');
+      rethrow;
+    }
+  }();
+
+  // debugPrint('QUEUE: $id [$name] updating _lastOperation');
 
   _lastOperation = future.then<void>(
     (_) {
-      // if (kDebugMode) {
-      //   debugPrint("Operation completed: $name");
-      // }
+      // debugPrint('QUEUE: $id [$name] _lastOperation completed');
     },
     onError: (e) {
-      // if (kDebugMode) {
-      //   debugPrint("Operation failed: $name Error: $e");
-      // }
+      // debugPrint('QUEUE: $id [$name] _lastOperation failed: $e');
     },
   );
+
+  // debugPrint('QUEUE: $id [$name] returning');
 
   return await future;
 }
@@ -55,7 +70,7 @@ class MetaDB {
   Database? _db;
   Database? _localDb;
   final Profile profile;
-  String? etag;
+  final ValueNotifier<String?> etag = ValueNotifier<String?>(null);
   late final String _key = p.s3.join(profile.name, 'metadata.db');
   late final File _file = File(
     p.context.joinAll([
@@ -79,6 +94,12 @@ class MetaDB {
   Future<bool>? _initializing;
 
   MetaDB({required this.profile}) {
+    etag.value = ConfigManager.getString('${profile.name}.dbETag');
+    etag.addListener(() async {
+      if (etag.value != null) {
+        await ConfigManager.setString('${profile.name}.dbETag', etag.value!);
+      }
+    });
     _init();
   }
 
@@ -145,10 +166,13 @@ class MetaDB {
       _initializing = null;
     });
 
-    return _initializing!;
+    return await _initializing!;
   });
 
-  Future<void> sync() => _enqueue("sync", () async => await _sync());
+  Future<void> sync() async {
+    await _init();
+    await _enqueue("sync", () async => await _sync());
+  }
 
   /// Only use for Read operations, not for Write operations.
   Future<T> withDB<T>(Future<T> Function(Database db) callback) =>
@@ -207,8 +231,9 @@ class MetaDB {
 
   Future<T> withNestedTransaction<T>(
     Future<T> Function(Transaction txn, Transaction localTxn) callback,
+    String name,
   ) => _db != null && _db!.isOpen && _localDb != null && _localDb!.isOpen
-      ? _enqueue<T>("nestedTransaction", () async {
+      ? _enqueue<T>("nestedTransaction $name", () async {
           return await _db!.transaction((txn) async {
             return await _localDb!.transaction((localTxn) async {
               return await callback(txn, localTxn);
@@ -217,7 +242,7 @@ class MetaDB {
         })
       : () async {
           await _init();
-          return _enqueue<T>("withNestedTransaction", () async {
+          return _enqueue<T>("withNestedTransaction $name", () async {
             return await _db!.transaction((txn) async {
               return await _localDb!.transaction((localTxn) async {
                 return await callback(txn, localTxn);
@@ -280,7 +305,9 @@ class MetaDB {
       ) async {
         await _addOrUpdateOp(op, txn: localTxn);
         final remoteFile = await _applyAddOrUpdate(op, txn: txn);
-        await _applyOp(file.key, txn: localTxn);
+        if (remoteFile != null) {
+          await _applyOp(op, file: remoteFile, txn: localTxn);
+        }
         return remoteFile;
       }
 
@@ -315,7 +342,7 @@ class MetaDB {
       ) async {
         await _addOrUpdateOp(op, txn: localTxn);
         await _applyRemove(op, txn: txn);
-        await _applyOp(key, txn: localTxn);
+        await _applyOp(op, txn: localTxn);
       }
 
       return await callback(op, txn, localTxn);
@@ -439,6 +466,8 @@ class MetaDB {
               row TEXT,
               oldEtag TEXT,
               appliedToDBEtag TEXT
+              ifPresent INT NOT NULL DEFAULT 0,
+              fields TEXT DEFAULT NULL
             )
           ''');
       },
@@ -520,44 +549,53 @@ class MetaDB {
     );
   }
 
-  Future<void> _applyOp(String key, {Transaction? txn}) async {
-    await (txn ?? _localDb)?.execute(
-      '''UPDATE operations
-        SET appliedToDBEtag = ?
-        WHERE key = ?''',
-      [etag, key],
+  Future<void> _applyOp(
+    Operation op, {
+    RemoteFile? file,
+    Transaction? txn,
+  }) async {
+    await (txn ?? _localDb)?.update(
+      'operations',
+      {
+        'key': op.key,
+        'type': op.type.name,
+        'row': op.type == OpType.remove
+            ? null
+            : file != null
+            ? jsonEncode(file.toRow())
+            : op.metadata != null
+            ? jsonEncode(op.metadata!)
+            : null,
+        'oldEtag': op.oldEtag,
+        'appliedToDBEtag': etag.value,
+      },
+      where: 'key = ?',
+      whereArgs: [op.key],
     );
   }
 
   Future<List<Operation>> _getOps() async {
-    final List<Map<String, Object?>>? rows = await _localDb?.query(
-      'operations',
-    );
+    final rows = await _localDb?.query('operations');
     if (rows == null) {
       return [];
     }
+
     return rows.map((row) {
-      final rowJson = {
-        'key': row['key'] as String,
-        'type': row['type'] as String,
-        'row': row['row'] != null
-            ? jsonDecode(row['row'] as String) as Map<String, dynamic>
-            : null,
-        'oldEtag': row['oldEtag'] as String?,
-        'appliedToDBEtag': row['appliedToDBEtag'] as String?,
-      };
+      final metadataJson = row['row'] as String?;
+      final fieldsJson = row['fields'] as String?;
+
       return (
-        key: rowJson['key'] as String,
-        type: OpType.values.firstWhere(
-          (e) => e.name == (rowJson['type'] as String),
-        ),
-        metadata: (rowJson['row'] as Map<String, dynamic>?) != null
-            ? jsonDecode(rowJson['row'] as String) as Map<String, dynamic>
+        key: row['key'] as String,
+        type: OpType.values.byName(row['type'] as String),
+        metadata: metadataJson != null
+            ? (jsonDecode(metadataJson) as Map).cast<String, Object?>()
             : null,
-        oldEtag: rowJson['oldEtag'] as String?,
-        appliedToDBEtag: rowJson['appliedToDBEtag'] as String?,
-        ifPresent: rowJson['ifPresent'] as bool? ?? false,
-        fields: (rowJson['fields'] as List<dynamic>?)?.cast<String>(),
+        oldEtag: row['oldEtag'] as String?,
+        appliedToDBEtag: row['appliedToDBEtag'] as String?,
+        ifPresent: (row['ifPresent'] as int) != 0,
+        fields: fieldsJson != null
+            ? List<String>.from(jsonDecode(fieldsJson) as List)
+            : null,
       );
     }).toList();
   }
@@ -699,13 +737,14 @@ class MetaDB {
     await _db?.transaction((txn) async {
       await _localDb?.transaction((localTxn) async {
         for (final op in ops) {
-          if (op.appliedToDBEtag != etag) {
+          if (op.appliedToDBEtag != etag.value) {
             if (op.type == OpType.addOrUpdate && op.metadata != null) {
-              await _applyAddOrUpdate(op, txn: txn);
+              final file = await _applyAddOrUpdate(op, txn: txn);
+              await _applyOp(op, file: file, txn: localTxn);
             } else if (op.type == OpType.remove) {
               await _applyRemove(op, txn: txn);
+              await _applyOp(op, txn: localTxn);
             }
-            await _applyOp(op.key, txn: localTxn);
           }
         }
       });
@@ -716,66 +755,120 @@ class MetaDB {
     try {
       RemoteFile remote;
       try {
-        remote = await profile.headObject(_key);
+        remote = await profile.headObject(_key, nosave: true);
       } catch (e) {
         if (e is S3Exception && e.code == 404) {
+          if (kDebugMode) {
+            debugPrint('Remote DB does not exist, proceeding with local DB');
+          }
           return false;
         }
         rethrow;
+      }
+
+      if (remote.etag == etag.value) {
+        // No changes to pull, return true
+        return true;
       }
 
       Job job = DownloadJob(
         localFile: _file,
         remoteKey: _key,
         bytes: remote.size,
-        md5: () {
-          final hex = remote.etag;
-
-          if (!RegExp(r'^[a-fA-F0-9]{32}$').hasMatch(hex)) {
-            throw StateError('ETag is not a single-part MD5 digest');
-          }
-
-          final bytes = List<int>.generate(
-            16,
-            (i) => int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16),
-          );
-
-          return Digest(bytes);
-        }(),
+        md5: etagToDigest(remote.etag),
         profile: profile,
+        noUpdateMeta: true,
       );
 
-      await job.start();
-      job.dispose();
+      isInitialized = false;
+      _initializing =
+          () async {
+            if (_db != null && _db!.isOpen) {
+              await _db!.close();
+            }
+            final result = await job.start();
+            job.dispose();
+            await _openDb();
+            if (result != null &&
+                result.statusCode >= 200 &&
+                result.statusCode < 300) {
+              etag.value = result.headers['etag']?[0].replaceAll('"', '');
+            } else {
+              if (kDebugMode) {
+                debugPrint(
+                  'Pull failed with status code: ${result?.statusCode}',
+                );
+              }
+            }
+            isInitialized = true;
+            return true;
+          }().catchError((e) {
+            job.dispose();
+            throw e;
+          });
 
-      await _openDb();
-
-      return true;
+      return await _initializing!;
     } catch (e) {
+      if (await _file.exists()) {
+        _openDb();
+      }
       return null;
     }
   }
 
   Future<bool?> _pushDb() async {
+    final md5 = await HashUtil(_file).md5Hash();
+    if (etag.value != null && md5 == etagToDigest(etag.value!)) {
+      // No changes to push, return true
+      return true;
+    }
+
+    bool canPush = true;
+    try {
+      final remote = await profile.headObject(_key, nosave: true);
+      canPush = remote.etag != etag.value ? false : true;
+    } catch (e) {
+      if (e is S3Exception && e.code == 404) {
+        canPush = true;
+      }
+    }
+
+    if (canPush != true) {
+      // ETag mismatch, return false
+      return false;
+    }
+
     Job job = UploadJob(
       localFile: _file,
       remoteKey: _key,
       bytes: _file.lengthSync(),
-      md5: await HashUtil(_file).md5Hash(),
+      md5: md5,
       profile: profile,
-      ifMatch: etag,
+      noUpdateMeta: true,
+      ifMatch: etag.value != null ? '"${etag.value}"' : null,
     );
+    profile.accessible.value = true;
     final result = await job.start();
     job.dispose();
     if (result == null) {
+      if (kDebugMode) {
+        debugPrint('Push failed: Server did not return a response');
+      }
+      profile.accessible.value = false;
       return null;
     }
     if (result.statusCode >= 200 && result.statusCode < 300) {
-      etag = result.headers['etag']?[0].replaceAll('"', '');
+      etag.value = result.headers['etag']?[0].replaceAll('"', '');
       return true;
     } else if (result.statusCode == 412 || result.statusCode == 409) {
+      if (kDebugMode) {
+        debugPrint('Push failed due to etag mismatch.');
+      }
       return false;
     } else {
+      if (kDebugMode) {
+        debugPrint('Push failed with status code: ${result.statusCode}');
+      }
       return null;
     }
   }

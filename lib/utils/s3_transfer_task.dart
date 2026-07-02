@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:mime/mime.dart';
 import 'package:crypto/crypto.dart';
+import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
@@ -23,6 +24,8 @@ class S3TransferTask {
   final Digest md5;
   final TransferTask task;
   final Profile? profile;
+  final String? ifMatch;
+  final bool ignoreHead;
   final void Function(String status)? onStatus;
   final void Function(int bytesTransferred, int? totalBytes)? onProgress;
 
@@ -44,10 +47,12 @@ class S3TransferTask {
     required this.key,
     required this.localFile,
     required this.md5,
-    required this.profile,
     required this.task,
-    this.onProgress,
+    required this.profile,
+    this.ifMatch,
+    this.ignoreHead = false,
     this.onStatus,
+    this.onProgress,
   });
 
   /// Starts upload or download
@@ -126,7 +131,9 @@ class S3TransferTask {
     final contentHash = 'UNSIGNED-PAYLOAD';
     final contentMD5 = base64.encode(md5.bytes);
     final now = DateTime.now().toUtc();
-    final encodedUri = profile!.fileManager!.getEncodedUri(key: key);
+    final encodedUri = profile!.fileManager!.getEncodedUri(
+      key: p.s3.relative(key, from: profile!.name),
+    );
     final headers = profile!.fileManager!.buildSignedHeaders(
       encodedUri: encodedUri,
       method: 'PUT',
@@ -135,6 +142,7 @@ class S3TransferTask {
       contentHash: contentHash,
       contentMD5: contentMD5,
       contentType: mediaType,
+      ifMatch: ifMatch,
       metadata: await getFileMetadata(localFile.path),
     );
     final req = await httpClient.openUrl('PUT', encodedUri);
@@ -202,7 +210,7 @@ class S3TransferTask {
     onStatus?.call('Starting download...');
     final now = DateTime.now().toUtc();
 
-    final remoteFile = await profile!.headObject(key);
+    final remoteFile = await profile!.headObject(key, nosave: ignoreHead);
     final remoteEtag = remoteFile.etag;
     final total = remoteFile.size;
     final lastModified = remoteFile.lastModified;
@@ -248,7 +256,9 @@ class S3TransferTask {
       if (await tempFile.exists()) await tempFile.delete();
     }
 
-    final encodedUri = profile!.fileManager!.getEncodedUri(key: key);
+    final encodedUri = profile!.fileManager!.getEncodedUri(
+      key: p.s3.relative(key, from: profile!.name),
+    );
     final signedHeaders = profile!.fileManager!.buildSignedHeaders(
       encodedUri: encodedUri,
       method: 'GET',

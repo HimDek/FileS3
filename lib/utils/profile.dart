@@ -6,6 +6,7 @@ import 'package:files3/utils/job.dart';
 import 'package:files3/utils/db.dart';
 import 'package:files3/models.dart';
 import 'package:files3/globals.dart';
+import 'package:sqflite/sqflite.dart';
 
 class Profile {
   String name;
@@ -47,12 +48,10 @@ class Profile {
 
   Future<void> listDirectories({bool background = false}) async {
     loading.value = true;
-    if (!background) {
-      Main.onRemoteFilesChanged.notifyListeners();
-    }
     if (kDebugMode) {
       debugPrint("Directory listing for profile: $name");
     }
+    await metaDB.sync();
     await listObjects(name);
     Main.onRemoteFilesChanged.notifyListeners();
     await Main.refreshWatchers(background: background);
@@ -75,7 +74,7 @@ class Profile {
             localTxn: localTxn,
           );
           return result;
-        });
+        }, 'createDirectory');
         accessible.value = true;
       } else {
         throw 'Configuration error';
@@ -137,7 +136,7 @@ class Profile {
             await metaDB.addOrUpdateFile(file, txn: txn, localTxn: localTxn);
           }
           return files;
-        });
+        }, 'listObjects');
         accessible.value = true;
       } else {
         throw 'Configuration error';
@@ -165,8 +164,8 @@ class Profile {
             p.s3.relative(sourceKey, from: name),
             p.s3.relative(destinationKey, from: name),
           );
-          return headObject(destinationKey);
-        });
+          return headObject(destinationKey, txn: txn, localTxn: localTxn);
+        }, 'copyFile');
         accessible.value = true;
         return result;
       } else {
@@ -184,7 +183,7 @@ class Profile {
         await metaDB.withNestedTransaction((txn, localTxn) async {
           await fileManager!.deleteFile(p.s3.relative(key, from: name));
           await metaDB.deleteFile(key, txn: txn, localTxn: localTxn);
-        });
+        }, 'deleteFile');
         accessible.value = true;
       } else {
         throw 'Configuration Error';
@@ -195,21 +194,25 @@ class Profile {
     }
   }
 
-  Future<RemoteFile> headObject(String key) async {
+  Future<RemoteFile> headObject(
+    String key, {
+    bool nosave = false,
+    Transaction? txn,
+    Transaction? localTxn,
+  }) async {
+    assert(
+      !(txn != null && localTxn == null) && !(txn == null && localTxn != null),
+      'Both txn and localTxn must be provided together or not at all.',
+    );
     try {
-      if (fileManager != null && _metaDB != null) {
-        final result = await metaDB.withNestedTransaction((
-          txn,
-          localTxn,
-        ) async {
+      if (fileManager != null) {
+        Future<RemoteFile> body() async {
           final result = await fileManager!.headObject(
             p.s3.relative(key, from: name),
           );
-          RemoteFile? oldFile = (await RemoteFile.getByKey(key));
-          final oldEtag = oldFile?.etag;
-          final file = RemoteFile(
+          return RemoteFile(
             key: key,
-            etag: result['etag'] ?? '',
+            etag: result['etag']?.replaceAll('"', '') ?? '',
             size: int.tryParse(result['content-length'] ?? '0') ?? 0,
             lastModified:
                 DateTime.tryParse(result['last-modified'] ?? '') ??
@@ -233,14 +236,26 @@ class Profile {
             ),
             deletedAt: null,
           );
+        }
+
+        Future<RemoteFile> query(Transaction txn, Transaction localTxn) async {
+          final file = await body();
+          RemoteFile? oldFile = (await RemoteFile.getByKey(key, txn: txn));
           await metaDB.addOrUpdateFile(
             file,
-            oldEtag: oldEtag,
+            oldEtag: oldFile?.etag,
             txn: txn,
             localTxn: localTxn,
           );
           return file;
-        });
+        }
+
+        final result = nosave || _metaDB == null || _fileManager == null
+            ? await body()
+            : txn == null && localTxn == null
+            ? await metaDB.withNestedTransaction(query, 'headObject')
+            : await query(txn!, localTxn!);
+
         accessible.value = true;
         return result;
       } else {
