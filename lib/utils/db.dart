@@ -13,25 +13,25 @@ import 'package:files3/utils/s3_file_manager.dart';
 
 Future<void> _lastOperation = Future.value();
 
-int id = 0;
+// int id = 0;
 Future<T> _enqueue<T>(String name, Future<T> Function() action) async {
   final waitingFor = _lastOperation;
-  id++;
+  // id++;
 
-  debugPrint('QUEUE: $id [$name] waiting for previous');
+  // debugPrint('QUEUE: $id [$name] waiting for previous');
 
   await waitingFor;
 
   // debugPrint('QUEUE: $id [$name] previous completed');
 
   final future = () async {
-    debugPrint('QUEUE: $id [$name] ACTION START');
+    // debugPrint('QUEUE: $id [$name] ACTION START');
     try {
       final result = await action();
-      debugPrint('QUEUE: $id [$name] ACTION END');
+      // debugPrint('QUEUE: $id [$name] ACTION END');
       return result;
     } catch (e) {
-      debugPrint('QUEUE: $id [$name] ACTION ERROR: $e');
+      // debugPrint('QUEUE: $id [$name] ACTION ERROR: $e');
       rethrow;
     }
   }();
@@ -148,7 +148,7 @@ class MetaDB {
 
     Future<bool> body() async {
       if (!_file.existsSync()) {
-        bool? pooled = await _pullDb();
+        bool pooled = await _pullDb();
         if (pooled == false) {
           // No remote DB exists, so we can proceed
           await _openDb();
@@ -281,7 +281,7 @@ class MetaDB {
   }
 
   /// Add or update a file in the database, marking it as present in the remote.
-  Future<RemoteFile?> addOrUpdateFile(
+  Future<bool> addOrUpdateFile(
     RemoteFileMeta file, {
     String? oldEtag,
     required Transaction txn,
@@ -289,70 +289,59 @@ class MetaDB {
     bool ifPresent = false,
     List<String>? fields,
   }) async {
-    Future<RemoteFile?> body() async {
-      final data = file.toRow();
-      data['present'] = 1;
-      final op = (
-        key: file.key,
-        type: OpType.addOrUpdate,
-        metadata: data,
-        oldEtag: oldEtag,
-        appliedToDBEtag: null,
-        ifPresent: ifPresent,
-        fields: fields,
+    final data = file.toRow();
+    data['present'] = 1;
+    final op = (
+      key: file.key,
+      type: OpType.addOrUpdate,
+      metadata: data,
+      oldEtag: oldEtag,
+      appliedToDBEtag: null,
+      ifPresent: ifPresent,
+      fields: fields,
+    );
+    final addedExisting = await _applyAddOrUpdate(
+      op,
+      txn: txn,
+      ifNotDeleted: true,
+    );
+    if (addedExisting == 0) {
+      final addedNew = await _applyAddOrUpdate(
+        op,
+        txn: txn,
+        ifNotDeleted: false,
       );
-
-      Future<RemoteFile?> callback(
-        Operation op,
-        Transaction? txn,
-        Transaction localTxn,
-      ) async {
+      if (addedNew > 0) {
         await _addOrUpdateOp(op, txn: localTxn);
-        final remoteFile = await _applyAddOrUpdate(op, txn: txn);
-        if (remoteFile != null) {
-          await _applyOp(op, file: remoteFile, txn: localTxn);
-        }
-        return remoteFile;
+        await _applyOp(op, txn: localTxn);
       }
-
-      return await callback(op, txn, localTxn);
+      return addedNew > 0;
     }
-
-    return await body();
+    return addedExisting > 0;
   }
 
   /// Delete a file from the database, marking it as not present in the remote.
-  Future<void> deleteFile(
+  Future<bool> deleteFile(
     String key, {
     String? oldEtag,
     required Transaction txn,
     required Transaction localTxn,
   }) async {
-    Future<void> body() async {
-      final op = (
-        key: key,
-        type: OpType.remove,
-        metadata: null,
-        oldEtag: oldEtag,
-        appliedToDBEtag: null,
-        ifPresent: true,
-        fields: null,
-      );
-
-      Future<void> callback(
-        Operation op,
-        Transaction txn,
-        Transaction localTxn,
-      ) async {
-        await _addOrUpdateOp(op, txn: localTxn);
-        await _applyRemove(op, txn: txn);
-        await _applyOp(op, txn: localTxn);
-      }
-
-      return await callback(op, txn, localTxn);
+    final op = (
+      key: key,
+      type: OpType.remove,
+      metadata: null,
+      oldEtag: oldEtag,
+      appliedToDBEtag: null,
+      ifPresent: true,
+      fields: null,
+    );
+    final changed = await _applyRemove(op, txn: txn);
+    if (changed > 0) {
+      await _addOrUpdateOp(op, txn: localTxn);
+      await _applyOp(op, txn: localTxn);
     }
-
-    return await body();
+    return changed > 0;
   }
 
   ({String where, List<Object?> whereArgs}) filesByDirQueryArgs(
@@ -556,13 +545,11 @@ class MetaDB {
   }
 
   /// Clean up old deleted entries that are no longer needed
-  Future<void> clean() => _enqueue("clean", () async {
-    await _db?.execute(
-      '''
-          DELETE FROM remotefiles
-          WHERE present = 0 AND deletedAt IS NOT NULL AND deletedAt < ?
-      ''',
-      [
+  Future<int?> clean() => _enqueue("clean", () async {
+    return await _db?.delete(
+      'remotefiles',
+      where: 'present = 0 AND deletedAt IS NOT NULL AND deletedAt < ?',
+      whereArgs: [
         DateTime.now()
             .toUtc()
             .subtract(const Duration(days: 30))
@@ -571,13 +558,14 @@ class MetaDB {
     );
   });
 
-  /// Clear all present files in the database, marking them as deleted, to be added back later if they are still present on the remote.
+  /// Clear all present files in the database, marking them as not present but not as deleted
+  /// to be added back later if they are still present on the remote.
   /// This is used when a full refresh of the remote files is needed.
-  Future<void> clear() => _enqueue("clear", () async {
-    await _db?.update('remotefiles', {
+  Future<int?> clear() => _enqueue("clear", () async {
+    return await _db?.update('remotefiles', {
       'present': 0,
-      'deletedAt': DateTime.now().toUtc().millisecondsSinceEpoch,
-    });
+      'deletedAt': null,
+    }, where: 'present = 1');
   });
 
   Future<void> _openLocalDb() async {
@@ -621,7 +609,7 @@ class MetaDB {
               deletedAt INT,
               dirCount INTEGER DEFAULT 0,
               fileCount INTEGER DEFAULT 0,
-              CONSTRAINT present_deletedAt CHECK (present = 1 OR deletedAt IS NOT NULL)
+              CONSTRAINT present_deletedAt CHECK (present = 0 OR deletedAt IS NULL)
             )
           ''');
       },
@@ -677,11 +665,7 @@ class MetaDB {
     );
   }
 
-  Future<void> _applyOp(
-    Operation op, {
-    RemoteFile? file,
-    Transaction? txn,
-  }) async {
+  Future<void> _applyOp(Operation op, {Transaction? txn}) async {
     await (txn ?? _localDb)?.update(
       'operations',
       {
@@ -689,8 +673,6 @@ class MetaDB {
         'type': op.type.name,
         'row': op.type == OpType.remove
             ? null
-            : file != null
-            ? jsonEncode(file.toRow())
             : op.metadata != null
             ? jsonEncode(op.metadata!)
             : null,
@@ -699,6 +681,14 @@ class MetaDB {
       },
       where: 'key = ?',
       whereArgs: [op.key],
+    );
+  }
+
+  Future<int?> _deleteOp(String key, {Transaction? txn}) async {
+    return await (txn ?? _localDb)?.delete(
+      'operations',
+      where: 'key = ?',
+      whereArgs: [key],
     );
   }
 
@@ -736,36 +726,63 @@ class MetaDB {
 
   Future<bool> _sync() async {
     while (_db != null) {
-      final ops = await _getOps();
-      if (ops.isEmpty) {
-        break;
+      bool pulled = await _pullDb();
+      if (!pulled) {
+        return false;
       }
-      await _applyOperations(ops);
-      final success = await _pushDb();
 
-      if (success == true) {
-        // Push successful, clear applied operations and return true
+      final ops = await _getOps();
+      if (ops.isNotEmpty) {
+        if (kDebugMode) {
+          debugPrint(
+            '[MetaDB._sync] ${profile.name} ${ops.length} local changes to apply',
+          );
+        }
+        await _applyOperations(ops);
+      }
+      final applied =
+          await _localDb?.transaction((localTxn) async {
+            return await localTxn.query(
+              'operations',
+              where: 'appliedToDBEtag IS NOT NULL',
+            );
+          }) ??
+          [];
+      if (applied.isNotEmpty) {
+        if (kDebugMode) {
+          debugPrint(
+            '[MetaDB._sync] ${profile.name} ${applied.length} local changes to push',
+          );
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('[MetaDB._sync] ${profile.name} No local changes to push');
+        }
+        return true;
+      }
+
+      final pushed = await _pushDb();
+
+      if (pushed == true) {
+        if (kDebugMode) {
+          debugPrint(
+            '[MetaDB._sync] ${profile.name} Push successful, cleaning up operations',
+          );
+        }
         await _cleanOps();
         return true;
-      } else if (success == false) {
-        // Push failed due to etag mismatch
-        if (await _pullDb() == true) {
-          // Pull successful, retry the sync
-          continue;
-        }
-        // Pull failed, break the loop
-        break;
+      } else if (pushed == false) {
+        continue;
       }
-      // Push failed due to other reasons, break the loop
       break;
     }
-    // If we reach here, it means the sync was not successful
     return false;
   }
 
-  Future<RemoteFile?> _applyAddOrUpdate(
+  Future<int> _applyAddOrUpdate(
     Operation op, {
     Transaction? txn,
+    bool ifNotDeleted = false,
   }) async {
     if (op.metadata == null) {
       throw ArgumentError('Operation metadata cannot be null for addOrUpdate');
@@ -780,6 +797,8 @@ class MetaDB {
       for (final field in op.metadata!.keys)
         if (field == 'key')
           'key': key
+        else if (field == 'deletedAt')
+          'deletedAt': op.metadata![field]
         else if (op.metadata![field] != null)
           field: op.metadata![field] ?? (field == 'present' ? 1 : null),
     };
@@ -788,8 +807,12 @@ class MetaDB {
         .map((field) => '$field = excluded.$field')
         .join(', ');
 
+    int? changed = 0;
     if (!op.ifPresent) {
-      await (txn ?? _db)?.execute(
+      final changedCondition = updateFields
+          .map((c) => 'remotefiles.$c IS NOT excluded.$c')
+          .join(' OR ');
+      changed = await (txn ?? _db)?.rawUpdate(
         '''
           INSERT INTO remotefiles (
             ${updateFields.join(', ')}
@@ -800,8 +823,8 @@ class MetaDB {
           ON CONFLICT(key) DO UPDATE SET
             $conflictUpdateClause
           WHERE
-            ? IS NULL
-            OR remotefiles.etag = ?;
+            (? IS NULL OR remotefiles.etag = ?) AND ($changedCondition)
+            ${ifNotDeleted ? 'AND remotefiles.deletedAt IS NULL' : ''}
         ''',
         [
           ...values.values,
@@ -811,10 +834,14 @@ class MetaDB {
         ],
       );
     } else {
-      await (txn ?? _db)?.update(
+      final changedCondition = updateFields
+          .map((c) => '$c IS NOT ?')
+          .join(' OR ');
+      changed = await (txn ?? _db)?.update(
         'remotefiles',
         values,
-        where: 'key = ? AND ( ? IS NULL OR etag = ?)',
+        where:
+            'key = ? AND ( ? IS NULL OR etag = ?) AND ($changedCondition) ${ifNotDeleted ? 'AND remotefiles.deletedAt IS NULL' : ''}',
         whereArgs: [
           p.s3.join(
             profileNamePlaceholder,
@@ -822,56 +849,45 @@ class MetaDB {
           ),
           op.oldEtag,
           op.oldEtag,
+          ...updateFields.map((c) => values[c]),
         ],
       );
     }
-    return await (txn ?? _db)
-        ?.query(
-          'remotefiles',
-          where: 'key = ?',
-          whereArgs: [
-            p.s3.join(
-              profileNamePlaceholder,
-              p.s3.relative(op.key, from: profile.name),
-            ),
-          ],
-          columns: remoteFileFields,
-        )
-        .then((rows) {
-          if (rows.isEmpty) {
-            return null;
-          }
-          return RemoteFile.fromRow(rows.first);
-        });
+    return changed ?? 0;
   }
 
-  Future<void> _applyRemove(Operation op, {Transaction? txn}) async {
-    await (txn ?? _db)?.execute(
-      '''
-          UPDATE remotefiles
-          SET present = 0, deletedAt = ?
-          WHERE key LIKE ? AND ( ? IS NULL OR etag = ?)
-        ''',
-      [
-        DateTime.now().toUtc().millisecondsSinceEpoch,
-        '${p.s3.join(profileNamePlaceholder, p.s3.relative(op.key, from: profile.name))}%',
-        op.oldEtag,
-        op.oldEtag,
-      ],
-    );
+  Future<int> _applyRemove(Operation op, {Transaction? txn}) async {
+    final time = DateTime.now().toUtc().millisecondsSinceEpoch;
+    return (await (txn ?? _db)?.update(
+          'remotefiles',
+          {'present': 0, 'deletedAt': time},
+          where:
+              'key LIKE ? AND ( ? IS NULL OR etag = ?) AND (present IS NOT 0 OR deletedAt IS NOT ?)',
+          whereArgs: [
+            '${p.s3.join(profileNamePlaceholder, p.s3.relative(op.key, from: profile.name))}%',
+            op.oldEtag,
+            op.oldEtag,
+            time,
+          ],
+        )) ??
+        0;
   }
 
   Future<void> _applyOperations(List<Operation> ops) async {
-    await _db?.transaction((txn) async {
-      await _localDb?.transaction((localTxn) async {
+    return await _db?.transaction((txn) async {
+      return await _localDb?.transaction((localTxn) async {
         for (final op in ops) {
           if (op.appliedToDBEtag != etag.value) {
+            int changed = 0;
             if (op.type == OpType.addOrUpdate && op.metadata != null) {
-              final file = await _applyAddOrUpdate(op, txn: txn);
-              await _applyOp(op, file: file, txn: localTxn);
+              changed = await _applyAddOrUpdate(op, txn: txn);
             } else if (op.type == OpType.remove) {
-              await _applyRemove(op, txn: txn);
+              changed = await _applyRemove(op, txn: txn);
+            }
+            if (changed > 0) {
               await _applyOp(op, txn: localTxn);
+            } else {
+              await _deleteOp(op.key, txn: localTxn);
             }
           }
         }
@@ -879,7 +895,10 @@ class MetaDB {
     });
   }
 
-  Future<bool?> _pullDb() async {
+  /// Checks if the remote DB exists or if it has changes
+  /// If it has changes, remote DB is pulled
+  /// Returns true if no need to pull or pulled successfully, and false if there was an error.
+  Future<bool> _pullDb() async {
     try {
       RemoteFile remote;
       try {
@@ -887,16 +906,28 @@ class MetaDB {
       } catch (e) {
         if (e is S3Exception && e.code == 404) {
           if (kDebugMode) {
-            debugPrint('Remote DB does not exist, proceeding with local DB');
+            debugPrint(
+              '[MetaDB._pullDb] ${profile.name} Remote DB does not exist',
+            );
           }
-          return false;
+          return true;
         }
         rethrow;
       }
 
       if (remote.etag == etag.value) {
-        // No changes to pull, return true
+        if (kDebugMode) {
+          debugPrint(
+            '[MetaDB._pullDb] ${profile.name} Local DB is up to date with remote DB',
+          );
+        }
         return true;
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+          '[MetaDB._pullDb] ${profile.name} Pulling remote DB with etag: ${remote.etag}',
+        );
       }
 
       Job job = DownloadJob(
@@ -924,9 +955,12 @@ class MetaDB {
             } else {
               if (kDebugMode) {
                 debugPrint(
-                  'Pull failed with status code: ${result?.statusCode}',
+                  '[MetaDB._pullDb] ${profile.name} Pull failed with status code: ${result?.statusCode}',
                 );
               }
+            }
+            if (kDebugMode) {
+              debugPrint('[MetaDB._pullDb] ${profile.name} Pull completed');
             }
             isInitialized = true;
             return true;
@@ -937,19 +971,20 @@ class MetaDB {
 
       return await _initializing!;
     } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          '[MetaDB._pullDb] ${profile.name} Pull failed with error: $e',
+        );
+      }
       if (await _file.exists()) {
         _openDb();
       }
-      return null;
+      return false;
     }
   }
 
   Future<bool?> _pushDb() async {
     final md5 = await HashUtil(_file).md5Hash();
-    if (etag.value != null && md5 == etagToDigest(etag.value!)) {
-      // No changes to push, return true
-      return true;
-    }
 
     bool canPush = true;
     try {
@@ -959,11 +994,26 @@ class MetaDB {
       if (e is S3Exception && e.code == 404) {
         canPush = true;
         etag.value = null;
+        if (kDebugMode) {
+          debugPrint(
+            '[MetaDB._pushDb] ${profile.name} Remote DB does not exist, proceeding with push',
+          );
+        }
       }
+      if (kDebugMode) {
+        debugPrint(
+          '[MetaDB._pushDb] ${profile.name} Push failed with error: $e',
+        );
+      }
+      return null;
     }
 
     if (canPush != true) {
-      // ETag mismatch, return false
+      if (kDebugMode) {
+        debugPrint(
+          '[MetaDB._pushDb] ${profile.name} Push failed: Remote DB has changed since last pull. ETag mismatch.',
+        );
+      }
       return false;
     }
 
@@ -981,7 +1031,9 @@ class MetaDB {
     job.dispose();
     if (result == null) {
       if (kDebugMode) {
-        debugPrint('Push failed: Server did not return a response');
+        debugPrint(
+          '[MetaDB._pushDb] ${profile.name} Push failed: Server did not return a response',
+        );
       }
       profile.accessible.value = false;
       return null;
@@ -991,12 +1043,16 @@ class MetaDB {
       return true;
     } else if (result.statusCode == 412 || result.statusCode == 409) {
       if (kDebugMode) {
-        debugPrint('Push failed due to etag mismatch.');
+        debugPrint(
+          '[MetaDB._pushDb] ${profile.name} Push failed due to etag mismatch.',
+        );
       }
       return false;
     } else {
       if (kDebugMode) {
-        debugPrint('Push failed with status code: ${result.statusCode}');
+        debugPrint(
+          '[MetaDB._pushDb] ${profile.name} Push failed with status code: ${result.statusCode}',
+        );
       }
       return null;
     }

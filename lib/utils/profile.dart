@@ -40,21 +40,26 @@ class Profile {
     }
   }
 
-  Future<void> listDirectories({bool background = false}) async {
+  Future<Iterable<RemoteFileMeta>> listDirectories({
+    bool background = false,
+  }) async {
     loading.value = true;
-    if (kDebugMode) {
-      debugPrint("Directory listing for profile: $name");
-    }
     if (!background) {
       Main.onRemoteFilesChanged.notifyListeners();
     }
     await metaDB.sync();
-    await listObjects(name);
-    await Main.refreshWatchers(background: background);
     if (kDebugMode) {
-      debugPrint("Directory listing Completed for profile: $name");
+      debugPrint("[Profile.listDirectories] $name Querying remote");
     }
+    final result = await listObjects(name);
+    if (kDebugMode) {
+      debugPrint(
+        "[Profile.listDirectories] $name Done querying remote; found ${result.length} items",
+      );
+    }
+    await Main.refreshWatchers(background: background);
     loading.value = false;
+    return result;
   }
 
   Future<void> createDirectory(String dir) async {
@@ -81,15 +86,18 @@ class Profile {
     }
   }
 
-  Future<void> listObjects(String dir) async {
+  Future<Iterable<RemoteFileMeta>> listObjects(String dir) async {
     try {
       if (fileManager != null && _metaDB != null) {
-        await metaDB.withNestedTransaction((txn, localTxn) async {
+        final result = await metaDB.withNestedTransaction((
+          txn,
+          localTxn,
+        ) async {
           final results = await Future.wait([
             fileManager!.listObjects(p.s3.relative(dir, from: name)),
             () async {
               await metaDB.addOrUpdateFile(
-                RemoteFileMeta(key: p.asDir(name), etag: ''),
+                RemoteFileMeta(key: p.asDir(name), etag: '', deletedAt: null),
                 txn: txn,
                 localTxn: localTxn,
               );
@@ -106,10 +114,7 @@ class Profile {
           );
           await txn.update(
             'remotefiles',
-            {
-              'present': 0,
-              'deletedAt': DateTime.now().toUtc().millisecondsSinceEpoch,
-            },
+            {'present': 0, 'deletedAt': null},
             where: args.where,
             whereArgs: args.whereArgs,
           );
@@ -134,14 +139,18 @@ class Profile {
           return files;
         }, 'listObjects');
         accessible.value = true;
+        return result;
       } else {
         throw 'Configuration error';
       }
     } catch (e) {
       accessible.value = false;
       if (kDebugMode) {
-        debugPrint("Error refreshing remote files: $e");
+        debugPrint(
+          "[Profile.listObjects] $name Error refreshing remote files: $e",
+        );
       }
+      return Iterable.empty();
     }
   }
 

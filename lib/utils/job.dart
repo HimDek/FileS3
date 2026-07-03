@@ -122,6 +122,7 @@ Future<_SyncAnalysisResult> _analysisCallback(
 
   if (kDebugMode) {
     debugPrint(
+      "[_syncAnalysis] "
       "Local files count: ${localFilesMap.length}, "
       "Remote files count: ${remoteFilesMap.length}",
     );
@@ -173,6 +174,7 @@ Future<_SyncAnalysisResult> _analysisCallback(
 
   if (kDebugMode) {
     debugPrint(
+      "[_syncAnalysis] "
       "New Files: ${newFile.length} "
       "Modified Locally: ${modifiedLocally.length} "
       "Modified Remotely: ${modifiedRemotely.length} "
@@ -437,7 +439,7 @@ abstract class Main {
 
   static Future<void> stopWatchers() async {
     if (kDebugMode) {
-      debugPrint("Stopping all watchers...");
+      debugPrint("[Main] Stopping all watchers...");
     }
     for (final watcher in _watcherMap.values) {
       await watcher.stop();
@@ -455,12 +457,12 @@ abstract class Main {
       _watcherMap[dir] = watcher;
       if (background) {
         if (kDebugMode) {
-          debugPrint("Performing background scan for $localDir");
+          debugPrint("[Main] Performing background scan for $localDir");
         }
         await watcher.scan();
       } else {
         if (kDebugMode) {
-          debugPrint("Starting watcher for $localDir");
+          debugPrint("[Main] Starting watcher for $localDir");
         }
         watcher.start();
       }
@@ -482,7 +484,7 @@ abstract class Main {
     loading.value = true;
     final entries = (await ConfigManager.loadS3Config()).entries;
     for (final profile in _profiles.values) {
-      if (entries.every((e) => e.key != profile.name)) {
+      if (entries.any((e) => e.key != profile.name)) {
         _profiles.remove(profile.name);
         profile.metaDB.clear();
       }
@@ -962,7 +964,7 @@ abstract class Main {
     });
     initialized.value = true;
     if (kDebugMode) {
-      debugPrint("Main initialized");
+      debugPrint("[Main] Main initialized");
     }
   }
 }
@@ -1338,12 +1340,14 @@ class Watcher {
     if (scanning) {
       if (_rescanQueued) {
         if (kDebugMode) {
-          debugPrint("Scan already queued for ${localDir.path}, skipping.");
+          debugPrint(
+            "[Watcher] $remoteDir Scan already queued for ${localDir.path}, skipping.",
+          );
         }
       } else {
         if (kDebugMode) {
           debugPrint(
-            "Scan in progress for ${localDir.path}. Queued one rescan.",
+            "[Watcher] $remoteDir Scan in progress for ${localDir.path}. Queued one rescan.",
           );
           _rescanQueued = true;
         }
@@ -1352,7 +1356,7 @@ class Watcher {
     }
 
     if (kDebugMode) {
-      debugPrint("Starting scan for ${localDir.path}");
+      debugPrint("[Watcher] $remoteDir Starting scan for ${localDir.path}");
     }
 
     try {
@@ -1360,7 +1364,9 @@ class Watcher {
 
       if (!localDir.existsSync()) {
         if (kDebugMode) {
-          debugPrint("Local directory does not exist: ${localDir.path}");
+          debugPrint(
+            "[Watcher] $remoteDir Local directory does not exist: ${localDir.path}",
+          );
         }
         scanning = false;
         return;
@@ -1377,14 +1383,16 @@ class Watcher {
 
       if (remoteFiles.isEmpty) {
         if (kDebugMode) {
-          debugPrint("Remote files list is empty, skipping refresh.");
+          debugPrint(
+            "[Watcher] $remoteDir Remote files list is empty, skipping refresh.",
+          );
         }
         scanning = false;
         return;
       }
 
       if (kDebugMode) {
-        debugPrint("Analyzing Sync for ${localDir.path}");
+        debugPrint("[Watcher] $remoteDir Analyzing Sync for ${localDir.path}");
       }
 
       final transferConfig = ConfigManager.loadTransferConfig();
@@ -1443,7 +1451,7 @@ class Watcher {
       Main.onRemoteFilesChanged.notifyListeners();
 
       if (kDebugMode) {
-        debugPrint("Scan completed for ${localDir.path}");
+        debugPrint("[Watcher] $remoteDir Scan completed for ${localDir.path}");
       }
     } finally {
       scanning = false;
@@ -1459,7 +1467,9 @@ class Watcher {
 
     if (watching) {
       if (kDebugMode) {
-        debugPrint("Watcher is already running for ${localDir.path}");
+        debugPrint(
+          "[Watcher] $remoteDir Watcher is already running for ${localDir.path}",
+        );
       }
       return;
     }
@@ -1532,7 +1542,9 @@ class Watcher {
     } else {
       timer = Timer.periodic(const Duration(seconds: 60), (timer) {
         if (kDebugMode) {
-          debugPrint("Periodic scan triggered for ${localDir.path}");
+          debugPrint(
+            "[Watcher] $remoteDir Periodic scan triggered for ${localDir.path}",
+          );
         }
         unawaited(scan());
       });

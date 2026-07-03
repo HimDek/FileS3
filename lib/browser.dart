@@ -685,9 +685,6 @@ class BrowserState extends State<Browser> {
   }
 
   Future<void> _setCurrentItems() async {
-    if (kDebugMode) {
-      debugPrint('Refreshing current items set...');
-    }
     _currentItems.value = _searching.value && _navIndex.value == 0
         ? _searchResults.value
         : _driveDir.value == '' && _navIndex.value == 0
@@ -725,9 +722,6 @@ class BrowserState extends State<Browser> {
         : _navIndex.value == 2
         ? Job.jobs.where((job) => job.status.value != JobStatus.completed)
         : [];
-    if (kDebugMode) {
-      debugPrint('Current items set: ${_currentItems.value.length} items');
-    }
   }
 
   Future<void> _search() async {

@@ -199,9 +199,9 @@ class RemoteFileMeta {
       if (original != null) 'original': original?.millisecondsSinceEpoch,
       if (contentType != null) 'contentType': contentType,
       if (metadata != null) 'metadata': jsonEncode(metadata),
-      if (deletedAt != null) 'deletedAt': deletedAt?.millisecondsSinceEpoch,
       if (count != null) 'dirCount': count!.$1,
       if (count != null) 'fileCount': count!.$2,
+      'deletedAt': deletedAt?.millisecondsSinceEpoch,
     };
   }
 }
