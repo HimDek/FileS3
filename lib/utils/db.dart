@@ -107,8 +107,11 @@ class MetaDB {
 
   String get keyColumn => "'${profile.name}' || substr(key, 23) AS key";
 
+  String get filteredKeyColumn =>
+      "'${profile.name}' || substr(filtered.key, 23) AS key";
+
   List<String> get remoteFileFields => [
-    keyColumn,
+    'key',
     'key as s3_key',
     'etag',
     'size',
@@ -119,7 +122,8 @@ class MetaDB {
     'metadata',
     'present',
     'deletedAt',
-    'count',
+    'dirCount',
+    'fileCount',
   ];
 
   String s3KeyFromKey(String key) {
@@ -371,7 +375,7 @@ class MetaDB {
         whereArgs = [];
       } else {
         // Recursive, non-root
-        where = '(key LIKE ?)';
+        where = '(remotefiles.key LIKE ?)';
         whereArgs = ['$actualDir%'];
       }
     } else {
@@ -379,10 +383,10 @@ class MetaDB {
         // Non-recursive, root
         where = '''
           (
-            instr(key, '/') = 0
+            instr(remotefiles.key, '/') = 0
             OR (
-              substr(key, -1) = '/'
-              AND length(key) - length(replace(key, '/', '')) = 1
+              substr(remotefiles.key, -1) = '/'
+              AND length(remotefiles.key) - length(replace(remotefiles.key, '/', '')) = 1
             )
           )
           ''';
@@ -391,12 +395,12 @@ class MetaDB {
         // Non-recursive, non-root
         where = '''
           (
-            key LIKE ?
+            remotefiles.key LIKE ?
             AND (
-              instr(substr(key, length(?) + 1), '/') = 0
+              instr(substr(remotefiles.key, length(?) + 1), '/') = 0
               OR
-              instr(substr(key, length(?) + 1), '/') =
-                length(substr(key, length(?) + 1))
+              instr(substr(remotefiles.key, length(?) + 1), '/') =
+                length(substr(remotefiles.key, length(?) + 1))
             )
           )
           ''';
@@ -411,7 +415,7 @@ class MetaDB {
     }
 
     if (!includeSelf) {
-      where += ' AND key != ?';
+      where += ' AND remotefiles.key != ?';
       whereArgs.add(actualDir);
     }
 
@@ -421,11 +425,12 @@ class MetaDB {
 
     if (includeDirs != includeFiles) {
       where += includeDirs
-          ? " AND substr(key, -1) = '/'"
-          : " AND substr(key, -1) != '/'";
+          ? " AND substr(remotefiles.key, -1) = '/'"
+          : " AND substr(remotefiles.key, -1) != '/'";
     }
 
-    where += " AND key NOT LIKE '$profileNamePlaceholder/metadata.db'";
+    where +=
+        " AND remotefiles.key NOT LIKE '$profileNamePlaceholder/metadata.db'";
 
     return (where: where, whereArgs: whereArgs);
   }
@@ -493,8 +498,9 @@ class MetaDB {
               contentType TEXT NOT NULL DEFAULT 'application/octet-stream',
               metadata TEXT NOT NULL DEFAULT '{}',
               present INT CHECK(present IN (0, 1)) NOT NULL DEFAULT 1,
-              deletedAt INT
-              count TEXT NOT NULL DEFAULT '(0, 0)',
+              deletedAt INT,
+              dirCount INTEGER DEFAULT 0,
+              fileCount INTEGER DEFAULT 0,
               CONSTRAINT present_deletedAt CHECK (present = 1 OR deletedAt IS NOT NULL)
             )
           ''');
@@ -651,10 +657,10 @@ class MetaDB {
     );
     key = key == profileNamePlaceholder ? p.asDir(profileNamePlaceholder) : key;
     final values = {
-      for (final field in remoteFileFields)
-        if (field == keyColumn)
+      for (final field in op.metadata!.keys)
+        if (field == 'key')
           'key': key
-        else if (op.metadata!.containsKey(field) && op.metadata![field] != null)
+        else if (op.metadata![field] != null)
           field: op.metadata![field] ?? (field == 'present' ? 1 : null),
     };
     final updateFields = values.keys.toList();

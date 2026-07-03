@@ -200,7 +200,8 @@ class RemoteFileMeta {
       if (contentType != null) 'contentType': contentType,
       if (metadata != null) 'metadata': jsonEncode(metadata),
       if (deletedAt != null) 'deletedAt': deletedAt?.millisecondsSinceEpoch,
-      if (count != null) 'count': '(${count!.$1}, ${count!.$2})',
+      if (count != null) 'dirCount': count!.$1,
+      if (count != null) 'fileCount': count!.$2,
     };
   }
 }
@@ -343,6 +344,115 @@ class RemoteFile extends RemoteFileMeta {
         : RemoteFile.fromRow(result.first);
   }
 
+  static String makeQuery(
+    Profile profile,
+    List<String> columns,
+    List<String> rawColumns,
+    String where,
+    List<Object?> whereArgs,
+  ) {
+    var i = 0;
+    final whereClause = where.replaceAllMapped(RegExp(r'\?'), (_) {
+      if (i >= whereArgs.length) {
+        throw ArgumentError('More ? placeholders than arguments');
+      }
+      return '${whereArgs[i++] is String ? "'${whereArgs[i - 1]}'" : whereArgs[i - 1] ?? 'NULL'}';
+    });
+
+    final aggColumnSet = {'size', 'lastModified', 'dirCount', 'fileCount'};
+
+    final mergeColumns = {
+      for (final col in columns.where(aggColumnSet.contains))
+        col:
+            "CASE WHEN substr(filtered.key, -1) = '/' THEN agg.$col ELSE filtered.$col END AS $col",
+    };
+
+    const aggregateExpressions = {
+      'size':
+          "COALESCE(SUM(CASE WHEN substr(allrows.key, -1) != '/' THEN allrows.size END), 0)",
+      'lastModified':
+          "COALESCE(MAX(CASE WHEN substr(allrows.key, -1) != '/' THEN allrows.lastModified END), 0)",
+      'dirCount':
+          "COALESCE(SUM(CASE WHEN substr(allrows.key, -1) = '/' AND allrows.key != dirs.key THEN 1 ELSE 0 END), 0)",
+      'fileCount':
+          "COALESCE(SUM(CASE WHEN substr(allrows.key, -1) != '/' THEN 1 ELSE 0 END), 0)",
+    };
+
+    final allRowsSubQueryLines = [
+      'SELECT ${rawColumns.join(', ')}',
+      'FROM remotefiles',
+    ];
+
+    final filteredSubQueryLines = [
+      'SELECT * FROM allrows AS remotefiles',
+      if (whereClause.isNotEmpty) 'WHERE $whereClause',
+    ];
+
+    final dirsSubQueryLines = [
+      'SELECT * FROM filtered',
+      'WHERE substr(key, -1) = \'/\'',
+    ];
+
+    final aggSubQueryLines = [
+      'WITH',
+      'dirs AS (',
+      ...dirsSubQueryLines.map((l) => '\t$l'),
+      ')',
+      'SELECT',
+      ...mergeColumns.keys.map(
+        (col) => '\t${aggregateExpressions[col]} AS $col,',
+      ),
+      'dirs.key',
+      'FROM dirs',
+      'LEFT JOIN allrows',
+      '\tON allrows.present = 1',
+      '\t\tAND allrows.key LIKE dirs.key || \'%\'',
+      'GROUP BY dirs.key',
+    ];
+
+    final subQueryLines = [
+      'WITH',
+      'allrows AS (',
+      ...allRowsSubQueryLines.map((l) => '\t$l'),
+      '),',
+      'filtered AS (',
+      ...filteredSubQueryLines.map((l) => '\t$l'),
+      if (mergeColumns.isEmpty) ...[
+        ')',
+        'SELECT * FROM filtered',
+      ] else ...[
+        '),',
+        'agg AS (',
+        ...aggSubQueryLines.map((l) => '\t$l'),
+        ')',
+        'SELECT',
+        '${profile.metaDB.filteredKeyColumn},',
+        ...mergeColumns.values.map((l) => '\t$l,'),
+        [
+          profile.metaDB.filteredKeyColumn,
+          ...mergeColumns.values,
+          ...profile.metaDB.remoteFileFields
+              .sublist(1)
+              .where((c) => !mergeColumns.containsKey(c))
+              .map((c) => 'filtered.$c'),
+        ].join(',\n\t'),
+        'FROM filtered',
+        'LEFT JOIN agg ON filtered.key = agg.key',
+      ],
+    ];
+
+    final queryLines = [
+      'SELECT ${columns.join(',\n\t')}',
+      'FROM (',
+      ...subQueryLines.map((l) => '\t$l'),
+      ')',
+    ];
+
+    final query = queryLines.join('\n');
+
+    return query;
+  }
+
   static Future<Iterable<T>> getChildrenByKey<T>(
     String key, {
     bool recursive = true,
@@ -379,17 +489,27 @@ class RemoteFile extends RemoteFileMeta {
               : T == String
               ? [profile.metaDB.keyColumn]
               : columns ?? profile.metaDB.remoteFileFields;
-          final res = await db.query(
-            'remotefiles',
-            where: args.where + (andWhere.isNotEmpty ? ' AND ($andWhere)' : ''),
-            whereArgs: [...args.whereArgs, ...andWhereArgs],
-            columns: columnsToSelect,
-            groupBy: groupBy,
-            having: having,
-            orderBy: orderBy,
-            limit: limit,
-            offset: offset,
+
+          String rawQuery = makeQuery(
+            profile,
+            columnsToSelect,
+            profile.metaDB.remoteFileFields,
+            args.where + (andWhere.isNotEmpty ? ' AND ($andWhere)' : ''),
+            [...args.whereArgs, ...andWhereArgs],
           );
+
+          final res = await db.rawQuery(rawQuery);
+          // final res = await db.query(
+          //   'remotefiles',
+          //   where: args.where + (andWhere.isNotEmpty ? ' AND ($andWhere)' : ''),
+          //   whereArgs: [...args.whereArgs, ...andWhereArgs],
+          //   columns: columnsToSelect,
+          //   groupBy: groupBy,
+          //   having: having,
+          //   orderBy: orderBy,
+          //   limit: limit,
+          //   offset: offset,
+          // );
           final result = res.map(
             (row) => T == RemoteFile
                 ? RemoteFile.fromRow(row) as T
@@ -422,17 +542,28 @@ class RemoteFile extends RemoteFileMeta {
           : T == String
           ? [profile.metaDB.keyColumn]
           : columns ?? profile.metaDB.remoteFileFields;
-      final res = await db.query(
-        'remotefiles',
-        where: args.where + (andWhere.isNotEmpty ? ' AND ($andWhere)' : ''),
-        whereArgs: [...args.whereArgs, ...andWhereArgs],
-        columns: columnsToSelect,
-        groupBy: groupBy,
-        having: having,
-        orderBy: orderBy,
-        limit: limit,
-        offset: offset,
+
+      String rawQuery = makeQuery(
+        profile,
+        columnsToSelect,
+        profile.metaDB.remoteFileFields,
+
+        args.where + (andWhere.isNotEmpty ? ' AND ($andWhere)' : ''),
+        [...args.whereArgs, ...andWhereArgs],
       );
+
+      final res = await db.rawQuery(rawQuery);
+      // final res = await db.query(
+      //   'remotefiles',
+      //   where: args.where + (andWhere.isNotEmpty ? ' AND ($andWhere)' : ''),
+      //   whereArgs: [...args.whereArgs, ...andWhereArgs],
+      //   columns: columnsToSelect,
+      //   groupBy: groupBy,
+      //   having: having,
+      //   orderBy: orderBy,
+      //   limit: limit,
+      //   offset: offset,
+      // );
       final result = res.map(
         (row) => T == RemoteFile
             ? RemoteFile.fromRow(row) as T
@@ -614,28 +745,28 @@ class RemoteFile extends RemoteFileMeta {
       return size;
     }
 
-    final gotsize =
-        (await getChildren<Map<String, Object?>>(
-              recursive: true,
-              ifPresent: true,
-              includeDirs: false,
-              includeFiles: true,
-              columns: ['SUM(size) AS totalSize'],
-            )).first['totalSize']
-            as int? ??
-        0;
+    // final gotsize =
+    //     (await getChildren<Map<String, Object?>>(
+    //           recursive: true,
+    //           ifPresent: true,
+    //           includeDirs: false,
+    //           includeFiles: true,
+    //           columns: ['SUM(size) AS totalSize'],
+    //         )).first['totalSize']
+    //         as int? ??
+    //     0;
 
-    if (gotsize != size) {
-      size = gotsize;
-      await profile?.metaDB.withTransaction((txn) async {
-        await txn.update(
-          'remotefiles',
-          {'size': size},
-          where: 'key = ?',
-          whereArgs: [profile!.metaDB.s3KeyFromKey(key)],
-        );
-      });
-    }
+    // if (gotsize != size) {
+    //   size = gotsize;
+    //   await profile?.metaDB.withTransaction((txn) async {
+    //     await txn.update(
+    //       'remotefiles',
+    //       {'size': size},
+    //       where: 'key = ?',
+    //       whereArgs: [profile!.metaDB.s3KeyFromKey(key)],
+    //     );
+    //   });
+    // }
 
     return size;
   }
@@ -645,31 +776,31 @@ class RemoteFile extends RemoteFileMeta {
       return lastModified;
     }
 
-    final latest = DateTime.fromMillisecondsSinceEpoch(
-      (await getChildren<Map<String, Object?>>(
-                recursive: true,
-                ifPresent: true,
-                includeDirs: false,
-                includeFiles: true,
-                columns: ['MAX(lastModified) AS latest'],
-              )).first['latest']
-              as int? ??
-          0,
-    );
+    // final latest = DateTime.fromMillisecondsSinceEpoch(
+    //   (await getChildren<Map<String, Object?>>(
+    //             recursive: true,
+    //             ifPresent: true,
+    //             includeDirs: false,
+    //             includeFiles: true,
+    //             columns: ['MAX(lastModified) AS latest'],
+    //           )).first['latest']
+    //           as int? ??
+    //       0,
+    // );
 
-    if (latest != lastModified) {
-      lastModified = latest;
-      await profile?.metaDB.withTransaction((txn) async {
-        await txn.update(
-          'remotefiles',
-          {'lastModified': lastModified.millisecondsSinceEpoch},
-          where: 'key = ?',
-          whereArgs: [profile!.metaDB.s3KeyFromKey(key)],
-        );
-      });
-    }
+    // if (latest != lastModified) {
+    //   lastModified = latest;
+    //   await profile?.metaDB.withTransaction((txn) async {
+    //     await txn.update(
+    //       'remotefiles',
+    //       {'lastModified': lastModified.millisecondsSinceEpoch},
+    //       where: 'key = ?',
+    //       whereArgs: [profile!.metaDB.s3KeyFromKey(key)],
+    //     );
+    //   });
+    // }
 
-    return latest;
+    return lastModified;
   }
 
   Future<(int, int)> getCount({bool recursive = true}) async {
@@ -677,34 +808,34 @@ class RemoteFile extends RemoteFileMeta {
       return (0, 1);
     }
 
-    final childCount = await getChildren<Map<String, Object?>>(
-      recursive: recursive,
-      ifPresent: true,
-      includeDirs: true,
-      includeFiles: true,
-      columns: [
-        "SUM(CASE WHEN key LIKE '%/' THEN 1 ELSE 0 END) AS dir_count",
-        "SUM(CASE WHEN key NOT LIKE '%/' THEN 1 ELSE 0 END) AS file_count",
-      ],
-    );
-    final res = childCount.isEmpty
-        ? (0, 0)
-        : (
-            childCount.first['dir_count'] as int? ?? 0,
-            childCount.first['file_count'] as int? ?? 0,
-          );
+    // final childCount = await getChildren<Map<String, Object?>>(
+    //   recursive: recursive,
+    //   ifPresent: true,
+    //   includeDirs: true,
+    //   includeFiles: true,
+    //   columns: [
+    //     "SUM(CASE WHEN key LIKE '%/' THEN 1 ELSE 0 END) AS dir_count",
+    //     "SUM(CASE WHEN key NOT LIKE '%/' THEN 1 ELSE 0 END) AS file_count",
+    //   ],
+    // );
+    // final res = childCount.isEmpty
+    //     ? (0, 0)
+    //     : (
+    //         childCount.first['dir_count'] as int? ?? 0,
+    //         childCount.first['file_count'] as int? ?? 0,
+    //       );
 
-    if (count != res) {
-      count = res;
-      await profile?.metaDB.withTransaction((txn) async {
-        await txn.update(
-          'remotefiles',
-          {'count': '(${count.$1}, ${count.$2})'},
-          where: 'key = ?',
-          whereArgs: [profile!.metaDB.s3KeyFromKey(key)],
-        );
-      });
-    }
+    // if (count != res) {
+    //   count = res;
+    //   await profile?.metaDB.withTransaction((txn) async {
+    //     await txn.update(
+    //       'remotefiles',
+    //       {'count': '(${count.$1}, ${count.$2})'},
+    //       where: 'key = ?',
+    //       whereArgs: [profile!.metaDB.s3KeyFromKey(key)],
+    //     );
+    //   });
+    // }
 
     return count;
   }
@@ -763,11 +894,6 @@ class RemoteFile extends RemoteFileMeta {
     final Map<String, Object?> json = Map.from(row);
     json['metadata'] =
         jsonDecode(row['metadata'] as String) as Map<String, dynamic>;
-    json['count'] = (row['count'] as String)
-        .substring(1, (row['count'] as String).length - 1)
-        .split(',')
-        .map((e) => int.parse(e.trim()))
-        .toList();
     return RemoteFile(
       key: json['key'] as String,
       size: json['size'] as int? ?? 0,
@@ -786,12 +912,7 @@ class RemoteFile extends RemoteFileMeta {
       deletedAt: json['deletedAt'] != null
           ? DateTime.fromMillisecondsSinceEpoch(json['deletedAt'] as int)
           : null,
-      count: (json['count'] as List<dynamic>?) != null
-          ? (
-              (json['count'] as List<dynamic>)[0] as int,
-              (json['count'] as List<dynamic>)[1] as int,
-            )
-          : (0, 0),
+      count: (json['dircount'] as int? ?? 0, json['filecount'] as int? ?? 0),
     );
   }
 
