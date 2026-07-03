@@ -499,10 +499,7 @@ class BrowserState extends State<Browser> {
     _fileCount.value = 0;
 
     final counts =
-        await (await RemoteFile.getByKey(
-          _driveDir.value,
-        ))?.getCount(recursive: false) ??
-        (0, 0);
+        (await RemoteFile.getByKey(_driveDir.value))?.count ?? (0, 0);
     _dirCount.value = counts.$1;
     _fileCount.value = counts.$2;
     if (_driveDir.value == '') {
@@ -694,17 +691,16 @@ class BrowserState extends State<Browser> {
     _currentItems.value = _searching.value && _navIndex.value == 0
         ? _searchResults.value
         : _driveDir.value == '' && _navIndex.value == 0
-        ? await RemoteFile.getChildrenByKey<RemoteFile>(
-            '',
+        ? await RemoteFile.getChildrenByKeys<RemoteFile>(
+            [''],
             recursive: false,
             includeDirs: true,
             includeFiles: false,
           )
         : _driveDir.value != '' && _navIndex.value == 0
-        ? (await RemoteFile.getChildrenByKey<RemoteFile>(
+        ? (await RemoteFile.getChildrenByKeys<RemoteFile>([
                 _driveDir.value,
-                recursive: false,
-              ))
+              ], recursive: false))
               .where(
                 (file) =>
                     !(Job.remoteKeyToJobKeys[file.key]?.any(
@@ -739,10 +735,9 @@ class BrowserState extends State<Browser> {
     _searchResults.value = extractAllSorted(
       query: _searchController.text.trim().toLowerCase(),
       choices: [
-        ...(await RemoteFile.getChildrenByKey<RemoteFile>(
+        ...(await RemoteFile.getChildrenByKeys<RemoteFile>([
           _driveDir.value,
-          recursive: true,
-        )).where(
+        ], recursive: true)).where(
           (file) =>
               !(Job.remoteKeyToJobKeys[file.key]?.any(
                     (jobKey) =>

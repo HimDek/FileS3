@@ -579,7 +579,9 @@ class ListFilesState extends State<ListFiles> {
                       uiConfigNotifier.showDownloadStatus.value == DirOrFile.dir
                   ? Padding(
                       padding: EdgeInsets.all(16),
-                      child: DownloadStatusIcon(remoteKey: item.key),
+                      child: DownloadStatusIcon(
+                        fileFuture: RemoteFile.getByKey(item.key),
+                      ),
                     )
                   : null,
               topRightBadge:
@@ -699,7 +701,9 @@ class ListFilesState extends State<ListFiles> {
                                     ).iconTheme.color?.withAlpha(100),
                             ),
                           ),
-                          child: DownloadStatusIcon(remoteKey: item.key),
+                          child: DownloadStatusIcon(
+                            fileFuture: RemoteFile.getByKey(item.key),
+                          ),
                         ),
                       )
                     : null,

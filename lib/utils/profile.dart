@@ -45,9 +45,11 @@ class Profile {
     if (kDebugMode) {
       debugPrint("Directory listing for profile: $name");
     }
+    if (!background) {
+      Main.onRemoteFilesChanged.notifyListeners();
+    }
     await metaDB.sync();
     await listObjects(name);
-    Main.onRemoteFilesChanged.notifyListeners();
     await Main.refreshWatchers(background: background);
     if (kDebugMode) {
       debugPrint("Directory listing Completed for profile: $name");

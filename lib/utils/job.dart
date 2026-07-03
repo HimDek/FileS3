@@ -691,8 +691,8 @@ abstract class Main {
   }) async {
     loading.value = true;
     try {
-      final keys = await RemoteFile.getChildrenByKey<String>(
-        dir,
+      final keys = await RemoteFile.getChildrenByKeys<String>(
+        [dir],
         recursive: true,
         includeDirs: false,
         includeFiles: true,
@@ -772,7 +772,7 @@ abstract class Main {
       for (final key in keys) {
         files.add(key);
         if (p.isDir(key)) {
-          files.addAll((await RemoteFile.getChildrenByKey<String>(key)));
+          files.addAll((await RemoteFile.getChildrenByKeys<String>([key])));
         }
       }
 
@@ -1367,8 +1367,8 @@ class Watcher {
       }
 
       final remoteFiles = Map.fromEntries(
-        (await RemoteFile.getChildrenByKey<RemoteFile>(
-          p.s3.asDir(remoteDir),
+        (await RemoteFile.getChildrenByKeys<RemoteFile>(
+          [p.s3.asDir(remoteDir)],
           recursive: true,
           includeDirs: false,
           includeFiles: true,

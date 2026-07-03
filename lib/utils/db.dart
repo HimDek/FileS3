@@ -363,6 +363,10 @@ class MetaDB {
     bool includeDirs = true,
     bool includeFiles = true,
   }) {
+    if (!p.isDir(dir)) {
+      return (where: '0', whereArgs: []);
+    }
+
     String where;
     List<Object?> whereArgs;
 
@@ -433,6 +437,122 @@ class MetaDB {
         " AND remotefiles.key NOT LIKE '$profileNamePlaceholder/metadata.db'";
 
     return (where: where, whereArgs: whereArgs);
+  }
+
+  String makeQuery({
+    List<String>? columns,
+    List<String>? rawColumns,
+    String? where,
+    List<Object?>? whereArgs,
+    String? groupBy,
+    String? having,
+    String? orderBy,
+    int? limit,
+    int? offset,
+  }) {
+    columns ??= profile.metaDB.remoteFileFields;
+    rawColumns ??= profile.metaDB.remoteFileFields;
+
+    var i = 0;
+    final whereClause =
+        where?.replaceAllMapped(RegExp(r'\?'), (_) {
+          if (i >= (whereArgs?.length ?? 0)) {
+            throw ArgumentError('More ? placeholders than arguments');
+          }
+          return '${whereArgs?[i++] is String ? "'${whereArgs?[i - 1]}'" : whereArgs?[i - 1] ?? 'NULL'}';
+        }) ??
+        '';
+
+    final aggColumnSet = {'size', 'lastModified', 'dirCount', 'fileCount'};
+
+    final mergeColumns = {
+      for (final col in columns.where(aggColumnSet.contains))
+        col:
+            "CASE WHEN substr(allrows.key, -1) = '/' THEN agg.$col ELSE allrows.$col END AS $col",
+    };
+
+    const aggregateExpressions = {
+      'size':
+          "COALESCE(SUM(CASE WHEN substr(allrows.key, -1) != '/' THEN allrows.size END), 0)",
+      'lastModified':
+          "COALESCE(MAX(CASE WHEN substr(allrows.key, -1) != '/' THEN allrows.lastModified END), 0)",
+      'dirCount':
+          "COALESCE(SUM(CASE WHEN substr(allrows.key, -1) = '/' AND allrows.key != dirs.key THEN 1 ELSE 0 END), 0)",
+      'fileCount':
+          "COALESCE(SUM(CASE WHEN substr(allrows.key, -1) != '/' THEN 1 ELSE 0 END), 0)",
+    };
+
+    final allRowsSubQueryLines = [
+      'SELECT ${rawColumns.join(', ')}',
+      'FROM remotefiles',
+      'WHERE remotefiles.key NOT LIKE \'$profileNamePlaceholder/metadata.db\'',
+    ];
+
+    final filteredSubQueryLines = [
+      'SELECT key FROM allrows AS remotefiles',
+      if (whereClause.isNotEmpty) 'WHERE $whereClause',
+    ];
+
+    final aggSubQueryLines = [
+      'SELECT',
+      ...mergeColumns.keys.map(
+        (col) => '\t${aggregateExpressions[col]} AS $col,',
+      ),
+      'dirs.key as key',
+      'FROM filtered AS dirs',
+      'LEFT JOIN allrows',
+      '\tON allrows.present = 1',
+      '\t\tAND allrows.key LIKE dirs.key || \'%\'',
+      'WHERE substr(dirs.key,-1)=\'/\'',
+      'GROUP BY dirs.key',
+    ];
+
+    final subQueryLines = [
+      'WITH',
+      'allrows AS (',
+      ...allRowsSubQueryLines.map((l) => '\t$l'),
+      '),',
+      'filtered AS (',
+      ...filteredSubQueryLines.map((l) => '\t$l'),
+      '),',
+      'agg AS (',
+      ...aggSubQueryLines.map((l) => '\t$l'),
+      ')',
+      'SELECT',
+      '${profile.metaDB.filteredKeyColumn},',
+      [
+        ...mergeColumns.values,
+        ...profile.metaDB.remoteFileFields
+            .sublist(1)
+            .where((c) => !mergeColumns.containsKey(c))
+            .map((c) => 'allrows.$c'),
+      ].join(',\n\t'),
+      'FROM filtered',
+      'JOIN allrows ON filtered.key = allrows.key',
+      'LEFT JOIN agg ON filtered.key = agg.key',
+    ];
+
+    final queryLines = [
+      'SELECT ${columns.join(',\n\t')}',
+      'FROM',
+      if (mergeColumns.isEmpty) ...[
+        'remotefiles',
+        'WHERE $whereClause',
+      ] else ...[
+        '(',
+        ...subQueryLines.map((l) => '\t$l'),
+        ')',
+      ],
+      if (groupBy != null) 'GROUP BY $groupBy',
+      if (having != null) 'HAVING $having',
+      if (orderBy != null) 'ORDER BY $orderBy',
+      if (limit != null) 'LIMIT $limit',
+      if (offset != null) 'OFFSET $offset',
+    ];
+
+    final query = queryLines.join('\n');
+
+    return query;
   }
 
   /// Clean up old deleted entries that are no longer needed

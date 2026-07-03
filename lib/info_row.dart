@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/models.dart';
@@ -57,7 +58,7 @@ class _InfoRowState extends State<InfoRow> {
         _file = await RemoteFile.getByKey(widget.remoteKey);
       }(),
       builder: (context, _) => _file == null
-          ? Row(children: [])
+          ? SizedBox.shrink()
           : Row(
               mainAxisAlignment: widget.mainAxisAlignment,
               mainAxisSize: widget.mainAxisSize,
@@ -69,79 +70,44 @@ class _InfoRowState extends State<InfoRow> {
                 if (_uiConfig.showTime == DirOrFile.both ||
                     (_uiConfig.showTime == DirOrFile.file &&
                         !p.isDir(widget.remoteKey)))
-                  FutureBuilder<void>(
-                    future: () async {
-                      await _file!.getLastModified();
-                      _file = await RemoteFile.getByKey(widget.remoteKey);
-                    }(),
-                    builder: (context, snapshot) {
-                      if (_file!.lastModified ==
-                          DateTime.fromMillisecondsSinceEpoch(0)) {
-                        return Text('', style: widget.textStyle);
-                      }
-                      return Text(
-                        timeToReadable(_file!.lastModified),
-                        style: widget.textStyle,
-                      );
-                    },
-                  ),
+                  if (_file!.lastModified !=
+                      DateTime.fromMillisecondsSinceEpoch(0))
+                    Text(
+                      timeToReadable(_file!.lastModified),
+                      style: widget.textStyle,
+                    ),
                 if (_uiConfig.showSize == DirOrFile.both ||
                     (_uiConfig.showSize == DirOrFile.file &&
                         !p.isDir(widget.remoteKey)))
-                  FutureBuilder<void>(
-                    future: () async {
-                      await _file!.getSize();
-                      _file = await RemoteFile.getByKey(widget.remoteKey);
-                    }(),
-                    builder: (context, snapshot) {
-                      if (_file!.size == 0) {
-                        return Text('', style: widget.textStyle);
-                      }
-                      return Text(
-                        bytesToReadable(_file!.size),
-                        style: widget.textStyle,
-                      );
-                    },
-                  ),
+                  if (_file!.size != 0)
+                    Text(bytesToReadable(_file!.size), style: widget.textStyle),
                 if (_uiConfig.showDownloadStatus == DirOrFile.both ||
                     (_uiConfig.showDownloadStatus == DirOrFile.file &&
                         !p.isDir(widget.remoteKey)))
-                  DownloadStatusIcon(
-                    remoteKey: widget.remoteKey,
-                    size: widget.iconSize,
-                  ),
-                if (p.isDir(widget.remoteKey)) ...[
+                  DownloadStatusIcon(fileFuture: _file, size: widget.iconSize),
+                if (p.isDir(widget.remoteKey))
                   if (_uiConfig.showContent)
-                    FutureBuilder<void>(
-                      future: _file!.getCount(recursive: true),
-                      builder: (context, snapshot) {
-                        if (_file!.count == (0, 0)) {
-                          return Text('', style: widget.textStyle);
-                        }
-                        final count = _file!.count;
-                        if (count.$1 == 0) {
-                          return Text(
-                            '${count.$2} files',
+                    _file!.count == (0, 0)
+                        ? SizedBox.shrink()
+                        : _file!.count.$1 == 0
+                        ? Text(
+                            '${_file!.count.$2} files',
                             style: widget.textStyle,
-                          );
-                        }
-                        if (count.$2 == 0) {
-                          return Text(
-                            '${count.$1} subfolders',
+                          )
+                        : _file!.count.$2 == 0
+                        ? Text(
+                            '${_file!.count.$1} subfolders',
                             style: widget.textStyle,
-                          );
-                        }
-                        return Text(
-                          '${count.$2} files in ${count.$1} subfolders',
-                          style: widget.textStyle,
-                        );
-                      },
+                          )
+                        : Text(
+                            '${_file!.count.$2} files in ${_file!.count.$1} subfolders',
+                            style: widget.textStyle,
+                          )
+                  else if (_uiConfig.showType)
+                    Text(
+                      p.s3.extension(widget.remoteKey),
+                      style: widget.textStyle,
                     ),
-                ] else if (_uiConfig.showType)
-                  Text(
-                    p.s3.extension(widget.remoteKey),
-                    style: widget.textStyle,
-                  ),
               ],
             ),
     );
@@ -149,28 +115,29 @@ class _InfoRowState extends State<InfoRow> {
 }
 
 class DownloadStatusIcon extends StatelessWidget {
-  final String remoteKey;
+  final FutureOr<RemoteFile?> fileFuture;
   final double size;
   final Color? activeColor;
 
   const DownloadStatusIcon({
     super.key,
-    required this.remoteKey,
+    required this.fileFuture,
     this.size = 16,
     this.activeColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    RemoteFile? file;
+    RemoteFile? file = fileFuture is RemoteFile
+        ? fileFuture as RemoteFile
+        : null;
     return FutureBuilder<void>(
       future: () async {
-        file = await RemoteFile.getByKey(remoteKey);
-        return file!.getDownloaded();
+        file = await fileFuture;
+        await file!.getDownloaded();
       }(),
       builder: (context, snapshot) {
-        if (file?.downloaded == null ||
-            snapshot.connectionState == ConnectionState.waiting) {
+        if (file?.downloaded == null) {
           return Icon(Icons.hourglass_empty, size: size);
         }
         if (file?.downloaded == true) {

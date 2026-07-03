@@ -251,10 +251,9 @@ class _HomeState extends State<Home> {
               );
             }
             dir.deleteSync(recursive: true);
-            for (final file in await RemoteFile.getChildrenByKey<String>(
+            for (final file in await RemoteFile.getChildrenByKeys<String>([
               key,
-              recursive: true,
-            )) {
+            ], recursive: true)) {
               isDownloaded[file] = false;
             }
           }
@@ -343,8 +342,8 @@ class _HomeState extends State<Home> {
                 : BackupMode.sync,
           );
         }
-        final keys = await RemoteFile.getChildrenByKey<String>(
-          dir,
+        final keys = await RemoteFile.getChildrenByKeys<String>(
+          [dir],
           recursive: true,
           includeDirs: false,
           includeFiles: true,
@@ -387,8 +386,8 @@ class _HomeState extends State<Home> {
       return;
     }
 
-    final keys = (await RemoteFile.getChildrenByKey<String>(
-      key,
+    final keys = (await RemoteFile.getChildrenByKeys<String>(
+      [key],
       recursive: true,
       includeDirs: false,
       includeFiles: true,
