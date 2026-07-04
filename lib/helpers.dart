@@ -2,11 +2,10 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:crypto/crypto.dart';
 import 'package:ini/ini.dart';
 import 'package:mime/mime.dart';
 import 'package:exif/exif.dart';
-import 'package:uri_content/uri_content.dart';
+import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:file_magic_number/file_magic_number.dart';
 import 'package:flex_color_picker/flex_color_picker.dart';
@@ -29,27 +28,29 @@ Future<File?> uriToFile(
   Uint8List? bytes;
 
   final HttpClient httpClient = client ?? HttpClient();
-  final UriContent uriContent = UriContent(httpClient: httpClient);
 
   final uri = Uri.parse(uriString);
   try {
-    final int? totalBytes = await uriContent.getContentLengthOrNull(uri);
-    final Stream<List<int>> byteStream = uriContent.getContentStream(uri);
-    final BytesBuilder bytesBuilder = BytesBuilder(copy: false);
-    int bytesRead = 0;
+    final request = await httpClient.getUrl(Uri.parse(uriString));
+    final response = await request.close().timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        throw TimeoutException('Request timed out');
+      },
+    );
 
-    await for (final List<int> chunk in byteStream) {
-      bytesBuilder.add(chunk);
-      bytesRead += chunk.length;
+    final total = response.contentLength;
+    var received = 0;
 
-      if (totalBytes != null && totalBytes > 0) {
-        onProgress?.call(bytesRead, totalBytes);
-      } else {
-        onProgress?.call(1, 2);
-      }
+    final builder = BytesBuilder(copy: false);
+
+    await for (final chunk in response) {
+      builder.add(chunk);
+      received += chunk.length;
+      onProgress?.call(received, total);
     }
 
-    bytes = bytesBuilder.takeBytes();
+    bytes = builder.takeBytes();
   } catch (e) {
     showSnackBar(SnackBar(content: Text(e.toString())));
     bytes = null;
@@ -360,6 +361,10 @@ Future<Map<String, String?>> getFileMetadata(String path) async {
       metadata['original'] = metadata['original'] != null && offsetTime != null
           ? '${metadata['original']}$offsetTime'
           : metadata['original'];
+      metadata['original'] = metadata['original']?.replaceFirstMapped(
+        RegExp(r'^(\d{4}):(\d{2}):(\d{2})'),
+        (m) => '${m[1]}-${m[2]}-${m[3]}',
+      );
       metadata['original'] = metadata['original'] != null
           ? DateTime.parse(metadata['original']!).toUtc().toIso8601String()
           : metadata['original'];
@@ -664,7 +669,7 @@ Future<List<String>> keysToPaths(
     }
     return [];
   } finally {
-    httpClient.close(force: true);
+    httpClient.close();
   }
   return paths;
 }

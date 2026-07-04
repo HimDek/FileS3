@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:xml/xml.dart';
 import 'package:crypto/crypto.dart';
-import 'package:http/http.dart' as http;
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/profile.dart';
 import 'package:files3/models/models.dart';
@@ -53,7 +52,7 @@ class S3FileManager {
     }
   }
 
-  Future<Map<String, String>> createDirectory(String dir) async {
+  Future<HttpHeaders> createDirectory(String dir) async {
     final encodedUri = getEncodedUri(key: p.s3.asDir(dir));
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
@@ -68,21 +67,20 @@ class S3FileManager {
       contentHash: contentHash,
     );
 
-    final request = http.Request('PUT', encodedUri)..headers.addAll(headers);
+    final client = HttpClient();
+    final request = await client.putUrl(encodedUri);
+    for (final entry in headers.entries) {
+      request.headers.set(entry.key, entry.value);
+    }
 
-    final client = http.Client();
     try {
-      final response = await client
-          .send(request)
-          .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              throw TimeoutException('Request timed out');
-            },
-          );
+      final response = await request.close().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException('Request timed out'),
+      );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        final body = await response.stream.bytesToString();
+        final body = await response.transform(utf8.decoder).join();
         throw S3Exception(
           'Create Directory Failed with response: $body',
           code: response.statusCode,
@@ -125,19 +123,19 @@ class S3FileManager {
         contentHash: contentHash,
       );
 
-      final request = http.Request('GET', encodedUri)..headers.addAll(headers);
+      final client = HttpClient();
+      final request = await client.getUrl(encodedUri);
+      for (final entry in headers.entries) {
+        request.headers.set(entry.key, entry.value);
+      }
 
-      final client = http.Client();
       try {
-        final response = await client
-            .send(request)
-            .timeout(
-              const Duration(seconds: 30),
-              onTimeout: () => throw TimeoutException('Request timed out'),
-            );
+        final response = await request.close().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw TimeoutException('Request timed out'),
+        );
 
-        final body = await response.stream.bytesToString();
-
+        final body = await response.transform(utf8.decoder).join();
         if (response.statusCode < 200 || response.statusCode >= 300) {
           throw S3Exception(
             'ListObjectsV2 Failed with response: $body',
@@ -186,7 +184,7 @@ class S3FileManager {
     return files;
   }
 
-  Future<Map<String, String>> copyFile(
+  Future<HttpHeaders> copyFile(
     String sourceKey,
     String destinationKey, {
     Profile? sourceProfile,
@@ -210,21 +208,22 @@ class S3FileManager {
       contentHash: contentHash,
     );
 
-    final request = http.Request('PUT', encodedUri)..headers.addAll(headers);
+    final client = HttpClient();
+    final request = await client.putUrl(encodedUri);
+    for (final entry in headers.entries) {
+      request.headers.set(entry.key, entry.value);
+    }
 
-    final client = http.Client();
     try {
-      final response = await client
-          .send(request)
-          .timeout(
-            const Duration(minutes: 1),
-            onTimeout: () {
-              throw TimeoutException('Request timed out');
-            },
-          );
+      final response = await request.close().timeout(
+        const Duration(minutes: 1),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
 
       if (response.statusCode == 403) {
-        final body = await response.stream.bytesToString();
+        final body = await response.transform(utf8.decoder).join();
         throw S3Exception(
           'Copy Failed with response: $body',
           code: response.statusCode,
@@ -233,7 +232,7 @@ class S3FileManager {
       }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        final body = await response.stream.bytesToString();
+        final body = await response.transform(utf8.decoder).join();
         throw S3Exception(
           'Copy Failed with response: $body',
           code: response.statusCode,
@@ -249,7 +248,7 @@ class S3FileManager {
     }
   }
 
-  Future<Map<String, String>> deleteFile(String key) async {
+  Future<HttpHeaders> deleteFile(String key) async {
     final encodedUri = getEncodedUri(key: key);
     final contentHash = emptySha256;
     final now = DateTime.now().toUtc();
@@ -264,20 +263,22 @@ class S3FileManager {
       contentHash: contentHash,
     );
 
-    final request = http.Request('DELETE', encodedUri)..headers.addAll(headers);
-    final client = http.Client();
+    final client = HttpClient();
+    final request = await client.deleteUrl(encodedUri);
+    for (final entry in headers.entries) {
+      request.headers.set(entry.key, entry.value);
+    }
+
     try {
-      final response = await client
-          .send(request)
-          .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              throw TimeoutException('Request timed out');
-            },
-          );
+      final response = await request.close().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
 
       if (response.statusCode != 204) {
-        final body = await response.stream.bytesToString();
+        final body = await response.transform(utf8.decoder).join();
         throw S3Exception(
           'Delete Failed with response: $body',
           code: response.statusCode,
@@ -293,7 +294,7 @@ class S3FileManager {
     }
   }
 
-  Future<Map<String, String>> headObject(String key) async {
+  Future<HttpHeaders> headObject(String key) async {
     final encodedUri = getEncodedUri(key: key);
     final now = DateTime.now().toUtc();
 
@@ -305,21 +306,25 @@ class S3FileManager {
       contentHash: S3FileManager.emptySha256,
     );
 
-    final client = http.Client();
+    final client = HttpClient();
+    final request = await client.headUrl(encodedUri);
+    for (final entry in headers.entries) {
+      request.headers.set(entry.key, entry.value);
+    }
+
     try {
-      final res = await client
-          .head(encodedUri, headers: headers)
-          .timeout(
-            const Duration(minutes: 1),
-            onTimeout: () {
-              throw TimeoutException('Request timed out');
-            },
-          );
-      client.close();
+      final res = await request.close().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
+
+      final body = await res.transform(utf8.decoder).join();
 
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw S3Exception(
-          'HEAD Failed with response: ${res.body}',
+          'HEAD Failed with response: $body',
           code: res.statusCode,
           uri: encodedUri,
         );

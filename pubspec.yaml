@@ -31,9 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   ini:
-  dio:
   xml:
-  http:
   path:
   mime:
   exif:

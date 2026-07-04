@@ -1385,6 +1385,7 @@ class MediaPreviewState extends State<MediaPreview> {
     final String? key = widget.item?.key;
     if (lookupMimeType(key ?? widget.path!)?.startsWith('image/') ?? false) {
       thumbnailCache[key ?? widget.path!] ??= HybridImageProvider(
+        key: key,
         url: widget.item?.url,
         path: key != null ? Main.pathFromKey(key) : widget.path!,
         cachePath: key != null ? Main.cachePathFromKey(key) : null,

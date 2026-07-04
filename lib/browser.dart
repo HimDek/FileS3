@@ -561,7 +561,6 @@ class BrowserState extends State<Browser> {
         title: p.s3.isWithin(_driveDir.value, f.key)
             ? p.s3.relative(f.key, from: _driveDir.value)
             : f.key,
-        url: f.url!,
         path: Main.pathFromKey(f.key),
         cachePath: Main.cachePathFromKey(f.key),
       );
@@ -625,57 +624,35 @@ class BrowserState extends State<Browser> {
 
   void _applyListOptions() {
     _currentProps.value = _currentItems.value.map((file) {
-      String url =
-          _getLink(file is Job ? file.remoteKey : file.key, null) ?? '';
       return file is Job
-          ? FileProps(
-              key: file.remoteKey,
-              size: file.bytes,
-              job: file,
-              url: url,
-            )
+          ? FileProps(key: file.remoteKey, size: file.bytes, job: file)
           : p.isDir(file.key)
           ? FileProps(
               key: file.key,
               size: file.size,
               lastModified: file.lastModified,
-              url: url,
             )
           : FileProps(
               key: file.key,
               size: file.size,
               lastModified: file.lastModified,
-              url: url,
             );
     });
     if (!_searching.value) {
       _currentProps.value = sort(
         _currentItems.value.map((file) {
-          String url =
-              _getLink(
-                file is Job ? file.remoteKey : (file as RemoteFile).key,
-                null,
-              ) ??
-              '';
           return file is Job
-              ? FileProps(
-                  key: file.remoteKey,
-                  size: file.bytes,
-                  job: file,
-                  url: url,
-                )
+              ? FileProps(key: file.remoteKey, size: file.bytes, job: file)
               : p.isDir(file.key)
               ? FileProps(
                   key: file.key,
                   size: file.size,
                   lastModified: file.lastModified,
-                  url: url,
                 )
               : FileProps(
                   key: file.key,
                   size: file.size,
                   lastModified: file.lastModified,
-                  url: url,
                 );
         }),
         _sortMode.value,

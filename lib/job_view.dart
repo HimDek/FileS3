@@ -105,6 +105,10 @@ class JobViewState extends State<JobView> {
                   visualDensity: MediaQuery.of(context).size.width < 600
                       ? VisualDensity.compact
                       : VisualDensity.standard,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 0,
+                  ),
                   leading: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -201,7 +205,7 @@ class JobViewState extends State<JobView> {
             return SizedBox.shrink();
           }
           return MediaPreview(
-            item: FileProps(key: file.key, size: file.size, url: url),
+            item: FileProps(key: file.key, size: file.size),
             height: 360,
             width: 360,
           );

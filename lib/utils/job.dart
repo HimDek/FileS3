@@ -513,11 +513,26 @@ abstract class Main {
     VoidCallback? onComplete,
   }) async {
     final file = await RemoteFile.getByKey(key);
-    if (file == null) {
+    final path = localPath ?? pathFromKey(key);
+    final existingJob = Job.allMap[(remoteKey: key, localPath: path)];
+
+    if (file == null ||
+        (existingJob != null &&
+            existingJob.status.value == JobStatus.running)) {
       return;
     }
+    if (existingJob != null &&
+        [
+          JobStatus.ready,
+          JobStatus.blocked,
+          JobStatus.failed,
+        ].contains(existingJob.status.value)) {
+      existingJob.start();
+      return;
+    }
+
     final job = DownloadJob(
-      localFile: File(localPath ?? pathFromKey(key)),
+      localFile: File(path),
       remoteKey: key,
       bytes: file.size,
       md5: etagToDigest(file.etag),

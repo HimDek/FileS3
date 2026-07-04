@@ -2,15 +2,18 @@ import 'dart:io';
 import 'dart:ui';
 import 'dart:async';
 import 'dart:isolate';
-import 'package:dio/dio.dart';
+import 'dart:typed_data';
 import 'package:pool/pool.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:files3/models/models.dart';
+import 'package:files3/utils/job.dart';
 
 typedef _SimpleDecoderCallback = Future<Codec> Function(ImmutableBuffer buffer);
 
 class HybridImageProvider extends ImageProvider<HybridImageProvider> {
+  final String? key;
   final String? url;
   final String? path;
   final String? cachePath;
@@ -22,6 +25,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
   final Function()? onCached;
 
   HybridImageProvider({
+    this.key,
     this.url,
     this.path,
     this.cachePath,
@@ -163,13 +167,72 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
   }
 
   Future<Uint8List> _download({Function(int, int)? onReceiveProgress}) async {
-    final dio = Dio();
-    final response = await dio.get<List<int>>(
-      url!,
-      options: Options(responseType: ResponseType.bytes),
-      onReceiveProgress: onReceiveProgress,
-    );
-    return Uint8List.fromList(response.data!);
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(Uri.parse(url!));
+      final response = await request.close().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
+
+      if (key != null && response.headers['etag']?.isNotEmpty == true) {
+        final metadata = <String, dynamic>{};
+        response.headers.forEach((name, values) {
+          if (name.toLowerCase().startsWith('x-amz-meta-')) {
+            metadata[name.toLowerCase().replaceFirst('x-amz-meta-', '')] =
+                values.first;
+          }
+        });
+        final file = RemoteFile(
+          key: key!,
+          etag: response.headers['etag']!.first.replaceAll('"', ''),
+          size:
+              int.tryParse(
+                response.headers['content-length']?.firstOrNull ?? '0',
+              ) ??
+              0,
+          lastModified: response.headers['last-modified'] != null
+              ? HttpDate.parse(response.headers['last-modified']!.first)
+              : null,
+          created: response.headers['x-amz-meta-created'] != null
+              ? HttpDate.parse(response.headers['x-amz-meta-created']!.first)
+              : null,
+          original: response.headers['x-amz-meta-original'] != null
+              ? HttpDate.parse(response.headers['x-amz-meta-original']!.first)
+              : null,
+          contentType: response.headers['Content-Type']?.firstOrNull ?? '',
+          metadata: metadata,
+          deletedAt: null,
+        );
+        final profile = Main.profileFromKey(key!);
+        profile?.metaDB.withNestedTransaction((txn, localTxn) async {
+          RemoteFile? oldFile = (await RemoteFile.getByKey(key!, txn: txn));
+          profile.metaDB.addOrUpdateFile(
+            file,
+            oldEtag: oldFile?.etag,
+            txn: txn,
+            localTxn: localTxn,
+          );
+        }, 'hybrid_image_provider');
+      }
+
+      final total = response.contentLength;
+      var received = 0;
+
+      final builder = BytesBuilder(copy: false);
+
+      await for (final chunk in response) {
+        builder.add(chunk);
+        received += chunk.length;
+        onReceiveProgress?.call(received, total);
+      }
+
+      return builder.takeBytes();
+    } finally {
+      client.close();
+    }
   }
 
   static Future<void> _writeThumbnail(

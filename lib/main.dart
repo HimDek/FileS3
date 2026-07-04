@@ -641,9 +641,6 @@ class _HomeState extends State<Home> {
             path: urlPattern.hasMatch(_sharedFiles.value[0])
                 ? null
                 : _sharedFiles.value[0],
-            url: urlPattern.hasMatch(_sharedFiles.value[0])
-                ? _sharedFiles.value[0]
-                : null,
           ),
         ];
         await Navigator.of(context).push(
