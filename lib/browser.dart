@@ -15,7 +15,7 @@ import 'package:files3/utils/profile.dart';
 import 'package:files3/scrollbar.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/info_row.dart';
 import 'package:files3/settings.dart';
@@ -1578,7 +1578,7 @@ class BrowserState extends State<Browser> {
             listenable: _thumbVisibility,
             builder: (context, child) => CustomThumbScrollbar(
               controller: _scrollController,
-              padding: EdgeInsets.only(top: kToolbarHeight),
+              padding: EdgeInsets.only(top: kToolbarHeight + kToolbarHeight),
               thumbVisibility: _thumbVisibility.value,
               thumb: Container(
                 decoration: BoxDecoration(

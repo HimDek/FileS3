@@ -11,7 +11,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/info_row.dart';
@@ -726,10 +726,9 @@ class ContextOptionDelegate {
     action: handler.getLinksToCopy(3600) != null
         ? () async {
             try {
+              final seconds = await expiryDialog(context);
               Clipboard.setData(
-                ClipboardData(
-                  text: handler.getLinksToCopy(await expiryDialog(context))!(),
-                ),
+                ClipboardData(text: handler.getLinksToCopy(seconds)!()),
               );
               showSnackBar(
                 const SnackBar(content: Text('File link copied to clipboard')),

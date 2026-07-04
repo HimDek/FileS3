@@ -11,7 +11,7 @@ import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/hash_util.dart';
 import 'package:files3/utils/profile.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 
@@ -486,7 +486,7 @@ abstract class Main {
     for (final profile in _profiles.values) {
       if (entries.any((e) => e.key != profile.name)) {
         _profiles.remove(profile.name);
-        profile.metaDB.clear();
+        profile.metaDB.deleteDB();
       }
     }
     for (final entry in entries) {

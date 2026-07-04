@@ -4,7 +4,7 @@ import 'package:files3/media_view.dart';
 import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 
 class JobView extends StatefulWidget {
   final Job job;

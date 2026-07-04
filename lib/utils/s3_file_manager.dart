@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/profile.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 
 class S3Exception extends HttpException {
   final int? code;

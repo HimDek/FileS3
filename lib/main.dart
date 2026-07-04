@@ -13,7 +13,7 @@ import 'package:receive_intent/receive_intent.dart' as receive_intent;
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/context_menu.dart';
 import 'package:files3/utils/job.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/browser.dart';

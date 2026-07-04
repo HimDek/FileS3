@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/context_menu.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/media_view.dart';
 

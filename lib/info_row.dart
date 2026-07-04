@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:files3/utils/path_utils.dart' as p;
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/helpers.dart';
 
 class InfoRow extends StatefulWidget {

@@ -3,7 +3,7 @@ import 'package:files3/utils/s3_file_manager.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/utils/db.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/globals.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -96,6 +96,7 @@ class Profile {
           final results = await Future.wait([
             fileManager!.listObjects(p.s3.relative(dir, from: name)),
             () async {
+              await metaDB.clear(dir, txn: txn);
               await metaDB.addOrUpdateFile(
                 RemoteFileMeta(key: p.asDir(name), etag: '', deletedAt: null),
                 txn: txn,
@@ -104,20 +105,6 @@ class Profile {
               Main.onRemoteFilesChanged.notifyListeners();
             }(),
           ]);
-          final args = metaDB.filesByDirQueryArgs(
-            dir,
-            includeSelf: true,
-            recursive: true,
-            ifPresent: true,
-            includeDirs: true,
-            includeFiles: true,
-          );
-          await txn.update(
-            'remotefiles',
-            {'present': 0, 'deletedAt': null},
-            where: args.where,
-            whereArgs: args.whereArgs,
-          );
           final files = (results[0] as Iterable<Map<String, dynamic>>).map(
             (file) => RemoteFileMeta(
               key: p.s3.join(name, file['key']),
@@ -136,6 +123,7 @@ class Profile {
             );
             await metaDB.addOrUpdateFile(file, txn: txn, localTxn: localTxn);
           }
+          await metaDB.clean(txn: txn);
           return files;
         }, 'listObjects');
         accessible.value = true;

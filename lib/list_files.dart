@@ -6,7 +6,7 @@ import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/info_row.dart';

@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/helpers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:files3/utils/job.dart';
@@ -544,8 +544,58 @@ class MetaDB {
     return query;
   }
 
+  Future<Iterable<RemoteFile>> getDeleted() async {
+    final rows = await _db?.query(
+      'remotefiles',
+      columns: [keyColumn, remoteFileFields.sublist(1).join(', ')],
+      where: 'present = 0 AND deletedAt IS NOT NULL',
+    );
+    if (rows == null) {
+      return Iterable.empty();
+    }
+    return rows.map((row) => RemoteFile.fromRow(row));
+  }
+
+  /// Delete all files in the database that are not present in the remote, marking them as deleted.
+  Future<bool> clean({required Transaction txn}) async {
+    final keys = await txn.query(
+      'remotefiles',
+      columns: ['key'],
+      where: 'present = 0 AND deletedAt IS NULL',
+    );
+    bool deletedAny = false;
+    for (final row in keys) {
+      final key = row['key'] as String;
+      bool deleted = await deleteFile(key, txn: txn, localTxn: txn);
+      if (deleted) {
+        deletedAny = true;
+      }
+    }
+    return deletedAny;
+  }
+
+  /// Clear all present files in the database, marking them as not present but not as deleted
+  /// to be added back later if they are still present on the remote.
+  /// This is used when a full refresh of the remote files is needed.
+  Future<int?> clear(String dir, {required Transaction txn}) async {
+    final args = filesByDirQueryArgs(
+      dir,
+      includeSelf: true,
+      recursive: true,
+      ifPresent: true,
+      includeDirs: true,
+      includeFiles: true,
+    );
+    return await txn.update(
+      'remotefiles',
+      {'present': 0, 'deletedAt': null},
+      where: args.where,
+      whereArgs: args.whereArgs,
+    );
+  }
+
   /// Clean up old deleted entries that are no longer needed
-  Future<int?> clean() => _enqueue("clean", () async {
+  Future<int?> clearDeleted() => _enqueue("clearDeleted", () async {
     return await _db?.delete(
       'remotefiles',
       where: 'present = 0 AND deletedAt IS NOT NULL AND deletedAt < ?',
@@ -558,15 +608,13 @@ class MetaDB {
     );
   });
 
-  /// Clear all present files in the database, marking them as not present but not as deleted
-  /// to be added back later if they are still present on the remote.
-  /// This is used when a full refresh of the remote files is needed.
-  Future<int?> clear() => _enqueue("clear", () async {
-    return await _db?.update('remotefiles', {
-      'present': 0,
-      'deletedAt': null,
-    }, where: 'present = 1');
-  });
+  /// Delete the database files and close the connections. This is used when a profile is deleted or reset.
+  Future<void> deleteDB() async {
+    await _db?.close();
+    await _localDb?.close();
+    await _file.delete();
+    await _opFile.delete();
+  }
 
   Future<void> _openLocalDb() async {
     _localDb?.isOpen ?? false ? await _localDb!.close() : null;
@@ -895,9 +943,8 @@ class MetaDB {
     });
   }
 
-  /// Checks if the remote DB exists or if it has changes
-  /// If it has changes, remote DB is pulled
-  /// Returns true if no need to pull or pulled successfully, and false if there was an error.
+  /// Pull if any remote changes exist or if the local DB does not exist.
+  /// Returns true if the pull was successful or if no pull was needed, false if the pull failed.
   Future<bool> _pullDb() async {
     try {
       RemoteFile remote;
@@ -983,6 +1030,8 @@ class MetaDB {
     }
   }
 
+  /// Push local changes to the remote DB.
+  /// Returns true if the push was successful, false if the push failed due to etag mismatch, and null if the push failed due to other reasons.
   Future<bool?> _pushDb() async {
     final md5 = await HashUtil(_file).md5Hash();
 

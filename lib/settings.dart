@@ -12,7 +12,7 @@ import 'package:files3/utils/profile.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/browser.dart';
 
 class ProfileBackupConfig extends StatefulWidget {
@@ -209,6 +209,7 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   S3Config? _s3Config;
   String? _permissionPolicy;
   Profile? _profile;
+  List<RemoteFile>? _deleted;
   final Map<String, dynamic> _exportData = {};
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final FocusNode _profileFocusNode = FocusNode();
@@ -310,6 +311,11 @@ class S3ConfigPageState extends State<S3ConfigPage> {
   void initState() {
     super.initState();
     _readConfig();
+    _profile?.metaDB.getDeleted().then((deleted) {
+      setState(() {
+        _deleted = deleted.toList();
+      });
+    });
   }
 
   @override
@@ -1012,134 +1018,138 @@ class S3ConfigPageState extends State<S3ConfigPage> {
                   ),
                 ),
               ),
-            // TODO: Add a section to show the deletion registrar file if it exists in the profile
-            // if (widget.profile != null &&
-            //     Main.remoteFileByKey(widget.profile!.deletionRegistrar.key) !=
-            //         null)
-            //   SliverToBoxAdapter(
-            //     child: Padding(
-            //       padding: const EdgeInsets.symmetric(
-            //         horizontal: 16,
-            //         vertical: 12,
-            //       ),
-            //       child: M3ECard(
-            //         index: 0,
-            //         position: M3ECardPosition.single,
-            //         outerRadius: 24,
-            //         innerRadius: 4,
-            //         gap: 3,
-            //         padding: EdgeInsets.zero,
-            //         color: Colors.transparent,
-            //         child: ListTile(
-            //           dense: true,
-            //           visualDensity: VisualDensity.compact,
-            //           title: Text(widget.profile!.deletionRegistrar.key),
-            //           subtitle: Text(
-            //             'This file is used to track and sync deleted files. Tap to view deletions. This file can be safely deleted if you do not want to sync the deletions in it.',
-            //           ),
-            //           leading: Icon(Icons.delete_sweep_rounded),
-            //           onTap: () => Navigator.of(context).push(
-            //             MaterialPageRoute(
-            //               builder: (context) => Scaffold(
-            //                 appBar: AppBar(
-            //                   title: Text('Deletion Register'),
-            //                   bottom: PreferredSize(
-            //                     preferredSize: Size.fromHeight(14),
-            //                     child: Padding(
-            //                       padding: const EdgeInsets.only(
-            //                         left: 16,
-            //                         right: 16,
-            //                         bottom: 8.0,
-            //                       ),
-            //                       child: SizedBox(
-            //                         width: double.infinity,
-            //                         child: Text(
-            //                           widget.profile!.deletionRegistrar.key,
-            //                           textAlign: TextAlign.start,
-            //                         ),
-            //                       ),
-            //                     ),
-            //                   ),
-            //                   actions: [
-            //                     IconButton(
-            //                       onPressed: () async {
-            //                         final yes = await showDialog(
-            //                           context: context,
-            //                           builder: (context) => AlertDialog(
-            //                             title: Text(
-            //                               'Delete Deletion Registrar File?',
-            //                             ),
-            //                             content: Text(
-            //                               'Are you sure you want to delete the ${widget.profile!.deletionRegistrar.key}? This will stop syncing deletions tracked in this file.',
-            //                             ),
-            //                             actions: [
-            //                               TextButton(
-            //                                 onPressed: () => Navigator.of(
-            //                                   context,
-            //                                 ).pop(false),
-            //                                 child: Text('Cancel'),
-            //                               ),
-            //                               TextButton(
-            //                                 onPressed: () =>
-            //                                     Navigator.of(context).pop(true),
-            //                                 child: Text('Delete'),
-            //                               ),
-            //                             ],
-            //                           ),
-            //                         );
-            //                         if (yes) {
-            //                           setState(() {
-            //                             _loading = true;
-            //                           });
-            //                           await widget.profile!.deletionRegistrar
-            //                               .clear();
-            //                           setState(() {
-            //                             _loading = false;
-            //                           });
-            //                           showSnackBar(
-            //                             SnackBar(
-            //                               content: Text(
-            //                                 'Deletion registrar file deleted',
-            //                               ),
-            //                             ),
-            //                           );
-            //                           setState(() {});
-            //                         }
-            //                       },
-            //                       icon: Icon(Icons.delete_sweep_rounded),
-            //                     ),
-            //                   ],
-            //                 ),
-            //                 body: FutureBuilder<Map<String, DateTime>>(
-            //                   future: widget.profile!.deletionRegistrar
-            //                       .pullDeletions(),
-            //                   builder: (context, snapshot) {
-            //                     if (snapshot.hasData) {
-            //                       return ListView(
-            //                         children: [
-            //                           for (final entry
-            //                               in snapshot.data!.entries)
-            //                             ListTile(
-            //                               title: Text(entry.key),
-            //                               subtitle: Text(
-            //                                 entry.value.toLocal().toString(),
-            //                               ),
-            //                             ),
-            //                         ],
-            //                       );
-            //                     }
-            //                     return Center(
-            //                       child: CircularProgressIndicator(),
-            //                     );
-            //                   },
-            //                 ),
-            //               ),
-            //             ),
-            //           ),
-            //         ),
-            //       ),
-            //     ),
-            //   ),
+            if (widget.profile != null && _deleted != null)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: M3ECard(
+                    index: 0,
+                    position: M3ECardPosition.single,
+                    outerRadius: 24,
+                    innerRadius: 4,
+                    gap: 3,
+                    padding: EdgeInsets.zero,
+                    color: Colors.transparent,
+                    child: ListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      title: Text('Deleted Files'),
+                      subtitle: Text(
+                        'Files that have been deleted and are still tracked in order to sync deletions across devices.',
+                      ),
+                      leading: Icon(Icons.delete_sweep_rounded),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => Scaffold(
+                            appBar: AppBar(
+                              title: Text('Deletion Files'),
+                              bottom: PreferredSize(
+                                preferredSize: Size.fromHeight(14),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 16,
+                                    right: 16,
+                                    bottom: 8.0,
+                                  ),
+                                  child: SizedBox(
+                                    width: double.infinity,
+                                    child: Text(
+                                      widget.profile!.name,
+                                      textAlign: TextAlign.start,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              actions: [
+                                IconButton(
+                                  onPressed: () async {
+                                    final yes = await showDialog(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        title: Text('Clear Tracked Deletions?'),
+                                        content: Text(
+                                          'Are you sure you want to clear the tracked deletions for ${widget.profile!.name}? This will stop syncing deletions tracked in this profile.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.of(
+                                              context,
+                                            ).pop(false),
+                                            child: Text('Cancel'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(context).pop(true),
+                                            child: Text('Delete'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (yes) {
+                                      setState(() {
+                                        _loading = true;
+                                      });
+                                      await widget.profile!.metaDB
+                                          .clearDeleted();
+                                      setState(() {
+                                        _loading = false;
+                                      });
+                                      showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Tracked deletions cleared',
+                                          ),
+                                        ),
+                                      );
+                                      setState(() {});
+                                    }
+                                  },
+                                  icon: Icon(Icons.delete_sweep_rounded),
+                                ),
+                              ],
+                            ),
+                            body: FutureBuilder<Iterable<RemoteFile>>(
+                              future: widget.profile!.metaDB.getDeleted(),
+                              builder: (context, snapshot) {
+                                if (snapshot.hasData) {
+                                  return ListView(
+                                    children: [
+                                      for (final entry in snapshot.data!)
+                                        ListTile(
+                                          title: Text(entry.key),
+                                          subtitle: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              if (entry.deletedAt != null)
+                                                Text(
+                                                  entry.deletedAt
+                                                          ?.toLocal()
+                                                          .toString() ??
+                                                      '',
+                                                ),
+                                              Text('ETag: ${entry.etag}'),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                }
+                                return Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (_profile != null)
               SliverToBoxAdapter(
                 child: Padding(

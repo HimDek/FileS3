@@ -15,7 +15,7 @@ import 'package:files3/utils/hybrid_image_provider.dart';
 import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 
 class GalleryProps {
   final String? key;

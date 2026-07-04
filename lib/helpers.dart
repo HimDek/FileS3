@@ -17,7 +17,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/globals.dart';
-import 'package:files3/models.dart';
+import 'package:files3/models/models.dart';
 import 'package:files3/day_hour_picker.dart';
 
 Future<File?> uriToFile(
@@ -85,7 +85,7 @@ Future<int?> expiryDialog(BuildContext context) async {
         initialDuration: const Duration(hours: 1),
         minDuration: const Duration(hours: 1),
         maxDuration: const Duration(days: 7),
-      ))?.inMinutes ??
+      ))?.inSeconds ??
       604800;
 }
 
