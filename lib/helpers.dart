@@ -339,13 +339,23 @@ String monthToString(int month) {
 
 String timeToReadable(DateTime time) {
   final localTime = time.toLocal();
-  final diff = DateTime.now().toLocal().difference(localTime);
-  if (diff.inSeconds < 60) {
-    return '${diff.inSeconds}s ago';
-  } else if (diff.inMinutes < 60) {
-    return '${diff.inMinutes}m ago';
-  }
-  return "${localTime.day.toString().padLeft(2, '0')} ${monthToString(localTime.month)} ${localTime.year} ${(localTime.hour % 12).toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ${localTime.hour >= 12 ? 'PM' : 'AM'}";
+  final now = DateTime.now().toLocal();
+  final diff = now.difference(localTime);
+  final dateString =
+      '${localTime.day.toString().padLeft(2, '0')} ${monthToString(localTime.month)} ${localTime.year}';
+  final timeString =
+      '${(localTime.hour % 12).toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ${localTime.hour >= 12 ? 'PM' : 'AM'}';
+  return diff.inSeconds < 60
+      ? '${diff.inSeconds}s ago'
+      : diff.inMinutes < 60
+      ? '${diff.inMinutes}m ago'
+      : localTime.year == now.year && localTime.month == now.month
+      ? localTime.day == now.day
+            ? 'Today $timeString'
+            : localTime.day == now.day - 1
+            ? 'Yesterday $timeString'
+            : dateString + timeString
+      : dateString + timeString;
 }
 
 Future<Map<String, String?>> getFileMetadata(String path) async {
@@ -400,9 +410,15 @@ Future<Map<String, String?>> getFileMetadata(String path) async {
 Future<Map<String, String>> _imageMetadata(File file) async {
   final bytes = await file.readAsBytes();
   final exif = await readExifFromBytes(bytes);
-  return {
-    "ImageLength": exif["Image ImageLength"]?.printable ?? "",
-    "ImageWidth": exif["Image ImageWidth"]?.printable ?? "",
+  final data = {
+    "ImageLength":
+        exif["Image ImageLength"]?.printable ??
+        exif["EXIF ExifImageLength"]?.printable ??
+        "",
+    "ImageWidth":
+        exif["Image ImageWidth"]?.printable ??
+        exif["EXIF ExifImageWidth"]?.printable ??
+        "",
     "ExifImageLength": exif["EXIF ExifImageLength"]?.printable ?? "",
     "ExifImageWidth": exif["EXIF ExifImageWidth"]?.printable ?? "",
     "Make": exif["Image Make"]?.printable ?? "",
@@ -446,6 +462,7 @@ Future<Map<String, String>> _imageMetadata(File file) async {
     "WhiteBalance": exif["EXIF WhiteBalance"]?.printable ?? "",
     "ColorSpace": exif["EXIF ColorSpace"]?.printable ?? "",
   };
+  return data;
 }
 
 String mimeTypeFromMagic(FileMagicNumberType type) {

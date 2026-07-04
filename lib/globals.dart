@@ -1,3 +1,4 @@
+import 'package:files3/utils/hybrid_image_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:files3/helpers.dart';
 
@@ -15,7 +16,8 @@ UiConfigNotifier uiConfigNotifier = UiConfigNotifier();
 ValueNotifier<bool> loading = ValueNotifier<bool>(true);
 ValueNotifier<double> progress = ValueNotifier<double>(0.0);
 
-Map<String, ImageProvider> thumbnailCache = <String, ImageProvider>{};
+Map<String, HybridImageProvider> thumbnailCache =
+    <String, HybridImageProvider>{};
 Map<String, bool?> isDownloaded = <String, bool?>{};
 
 RegExp allMimePattern = RegExp(

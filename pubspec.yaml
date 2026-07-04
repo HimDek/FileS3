@@ -49,6 +49,7 @@ dependencies:
   fuzzywuzzy:
   workmanager:
   uri_content:
+  expressions:
   url_launcher:
   video_player:
   chewie_audio:

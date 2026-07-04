@@ -1,7 +1,8 @@
 import 'dart:io';
-import 'dart:ui';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:isolate';
+import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:pool/pool.dart';
 import 'package:image/image.dart' as img;
@@ -9,8 +10,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:files3/models/models.dart';
 import 'package:files3/utils/job.dart';
+import 'package:files3/helpers.dart';
 
-typedef _SimpleDecoderCallback = Future<Codec> Function(ImmutableBuffer buffer);
+typedef _SimpleDecoderCallback =
+    Future<ui.Codec> Function(ui.ImmutableBuffer buffer);
 
 class HybridImageProvider extends ImageProvider<HybridImageProvider> {
   final String? key;
@@ -37,7 +40,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
     this.onCached,
   });
 
-  static final Map<String, Future<Codec>> _inflight = {};
+  static final Map<String, Future<ui.Codec>> _inflight = {};
   static final Set<String> _thumbInflight = {};
   static final Pool _readPool = Pool(5);
   static final Pool _thumbQueue = Pool(1);
@@ -72,7 +75,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
     );
   }
 
-  Future<Codec> _loadAsync(
+  Future<ui.Codec> _loadAsync(
     StreamController<ImageChunkEvent> chunkEvents, {
     required _SimpleDecoderCallback decode,
   }) async {
@@ -144,17 +147,28 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
       unawaited(_writeOriginal(bytes));
     }
 
-    final ImmutableBuffer buffer = await ImmutableBuffer.fromUint8List(bytes);
+    final ui.ImmutableBuffer buffer = await ui.ImmutableBuffer.fromUint8List(
+      bytes,
+    );
 
-    if (maxWidth == null && maxHeight == null) {
-      return decode(buffer);
-    }
+    // if (maxWidth == null && maxHeight == null) {
+    //   return decode(buffer);
+    // }
 
-    final ImageDescriptor descriptor = await ImageDescriptor.encoded(buffer);
+    final ui.ImageDescriptor descriptor = await ui.ImageDescriptor.encoded(
+      buffer,
+    );
     final bool needsResize =
         (maxWidth != null || maxHeight != null) &&
         (descriptor.width > (maxWidth ?? descriptor.width) ||
             descriptor.height > (maxHeight ?? descriptor.height));
+
+    if (key != null) {
+      ConfigManager.setString(
+        '${key}_resolution',
+        jsonEncode({'width': descriptor.width, 'height': descriptor.height}),
+      );
+    }
 
     if (needsResize) {
       return descriptor.instantiateCodec(

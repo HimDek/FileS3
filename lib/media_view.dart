@@ -946,6 +946,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
         ? PhotoView(
             controller: _photoViewController,
             imageProvider: HybridImageProvider(
+              key: widget.remoteKey,
               url: widget.url,
               path: _path,
               cachePath: widget.cachePath,

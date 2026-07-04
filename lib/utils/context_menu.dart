@@ -12,6 +12,7 @@ import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:files3/utils/path_utils.dart' as p;
 import 'package:files3/utils/job.dart';
 import 'package:files3/models/models.dart';
+import 'package:files3/image_info_tile.dart';
 import 'package:files3/globals.dart';
 import 'package:files3/helpers.dart';
 import 'package:files3/info_row.dart';
@@ -87,9 +88,10 @@ sealed class ContextActionHandlerDelegate {
     );
 
     _removableFilesCache ??= List.unmodifiable(
-      downloadedFiles!.where(
-        (f) => Main.backupModeFromKey(f) == BackupMode.upload,
-      ),
+      downloadedFiles?.where(
+            (f) => Main.backupModeFromKey(f) == BackupMode.upload,
+          ) ??
+          Iterable.empty(),
     );
 
     initialized = true;
@@ -664,9 +666,9 @@ class ContextOptionDelegate {
     final downloadedCount = handler.downloadedFiles?.length;
     final totalCount = handler.files?.length;
     final handledCount = handler.initialized
-        ? handler.downloadedFiles!
-              .toSet()
-              .union(handler.activeFiles!.toSet())
+        ? handler.downloadedFiles
+              ?.toSet()
+              .union(handler.activeFiles?.toSet() ?? {})
               .length
         : null;
     final allDownloaded = handler.initialized && downloadedCount == totalCount;
@@ -1447,94 +1449,85 @@ Widget buildFileContextMenu(
             .fold<BytesBuilder>(BytesBuilder(), (b, d) => b..add(d));
         mediaType =
             lookupMimeType(item, headerBytes: bytes.takeBytes()) ??
+            lookupMimeType(item) ??
             'application/octet-stream';
       }
       await handler.init();
     }(),
-    builder: (context, snapshot) => Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: FutureBuilder(
-            future: RemoteFile.getByKey(item),
-            builder: (context, snapshot) => M3ECardColumn(
-              outerRadius: 18,
-              innerRadius: 4,
-              gap: 3,
-              padding: EdgeInsets.zero,
-              color: Colors.transparent,
-              children: [
-                ListTile(
-                  visualDensity: VisualDensity.comfortable,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 0,
-                  ),
-                  leading: Icon(mediaTypeIcon(mediaType)),
-                  title: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Text(p.s3.basename(item)),
-                  ),
-                  subtitle: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: InfoRow(
-                      remoteKey: item,
-                      uiConfig: UiConfig(
-                        showTime: DirOrFile.both,
-                        showSize: DirOrFile.both,
-                        showDownloadStatus: DirOrFile.both,
-                        showType: true,
-                      ),
+    builder: (context, snapshot) => FutureBuilder(
+      future: RemoteFile.getByKey(item),
+      builder: (context, file) => Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          M3ECardColumn(
+            outerRadius: 18,
+            innerRadius: 4,
+            gap: 3,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            color: Colors.transparent,
+            children: [
+              ListTile(
+                visualDensity: VisualDensity.comfortable,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 0,
+                ),
+                leading: Icon(mediaTypeIcon(mediaType)),
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(p.s3.basename(item)),
+                ),
+                subtitle: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: InfoRow(
+                    remoteKey: item,
+                    uiConfig: UiConfig(
+                      showTime: DirOrFile.both,
+                      showSize: DirOrFile.both,
+                      showDownloadStatus: DirOrFile.both,
+                      showType: true,
                     ),
                   ),
                 ),
-                ListTile(
-                  visualDensity: VisualDensity.comfortable,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 0,
-                  ),
-                  leading: Icon(Icons.info_outline_rounded),
-                  title: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Text(item),
-                  ),
-                  subtitle: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: snapshot.hasData && snapshot.data != null
-                        ? Text('MD5: ${snapshot.data!.etag}')
-                        : Text('MD5: Loading...'),
-                  ),
+              ),
+              ListTile(
+                visualDensity: VisualDensity.comfortable,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 0,
                 ),
-                // TODO: Image Info Widget
-                if (mediaType?.startsWith('image/') ?? false)
-                  ListTile(
-                    visualDensity: VisualDensity.comfortable,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 0,
-                    ),
-                    leading: Icon(Icons.camera_rounded),
-                    title: Text('Info: ${snapshot.data?.metadata ?? 'N/A'}'),
-                  ),
-              ],
-            ),
+                leading: Icon(Icons.info_outline_rounded),
+                title: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Text(item),
+                ),
+                subtitle: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: file.hasData && file.data != null
+                      ? Text('MD5: ${file.data!.etag}')
+                      : Text('MD5: Loading...'),
+                ),
+              ),
+            ],
           ),
-        ),
-        ...buildContextOptions(
-          context,
-          optionsGroups: FileContextOption.allOptions(
+          if ((mediaType?.startsWith('image/') ?? false) &&
+              file.hasData &&
+              file.data is RemoteFile)
+            ImageInfoTile(metadata: file.data!.metadata, remoteKey: item),
+          ...buildContextOptions(
             context,
-            handler,
-            allowModify ? cut : null,
-            allowModify ? copy : null,
+            optionsGroups: FileContextOption.allOptions(
+              context,
+              handler,
+              allowModify ? cut : null,
+              allowModify ? copy : null,
+            ),
+            handlers: [handler],
+            onInvoked: onInvoked,
           ),
-          handlers: [handler],
-          onInvoked: onInvoked,
-        ),
-      ],
+        ],
+      ),
     ),
   );
 }
