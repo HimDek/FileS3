@@ -178,34 +178,7 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
       );
 
       if (key != null && response.headers['etag']?.isNotEmpty == true) {
-        final metadata = <String, dynamic>{};
-        response.headers.forEach((name, values) {
-          if (name.toLowerCase().startsWith('x-amz-meta-')) {
-            metadata[name.toLowerCase().replaceFirst('x-amz-meta-', '')] =
-                values.first;
-          }
-        });
-        final file = RemoteFile(
-          key: key!,
-          etag: response.headers['etag']!.first.replaceAll('"', ''),
-          size:
-              int.tryParse(
-                response.headers['content-length']?.firstOrNull ?? '0',
-              ) ??
-              0,
-          lastModified: response.headers['last-modified'] != null
-              ? HttpDate.parse(response.headers['last-modified']!.first)
-              : null,
-          created: response.headers['x-amz-meta-created'] != null
-              ? HttpDate.parse(response.headers['x-amz-meta-created']!.first)
-              : null,
-          original: response.headers['x-amz-meta-original'] != null
-              ? HttpDate.parse(response.headers['x-amz-meta-original']!.first)
-              : null,
-          contentType: response.headers['Content-Type']?.firstOrNull ?? '',
-          metadata: metadata,
-          deletedAt: null,
-        );
+        final file = RemoteFile.fromHttpHeaders(key!, response.headers);
         final profile = Main.profileFromKey(key!);
         profile?.metaDB.withNestedTransaction((txn, localTxn) async {
           RemoteFile? oldFile = (await RemoteFile.getByKey(key!, txn: txn));

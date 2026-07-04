@@ -21,6 +21,7 @@ import 'package:files3/day_hour_picker.dart';
 
 Future<File?> uriToFile(
   String uriString, {
+  String? remoteKey,
   void Function(int, int)? onProgress,
   HttpClient? client,
 }) async {
@@ -38,6 +39,20 @@ Future<File?> uriToFile(
         throw TimeoutException('Request timed out');
       },
     );
+
+    if (remoteKey != null && response.headers['etag']?.isNotEmpty == true) {
+      final file = RemoteFile.fromHttpHeaders(remoteKey, response.headers);
+      final profile = Main.profileFromKey(remoteKey);
+      profile?.metaDB.withNestedTransaction((txn, localTxn) async {
+        RemoteFile? oldFile = (await RemoteFile.getByKey(remoteKey, txn: txn));
+        profile.metaDB.addOrUpdateFile(
+          file,
+          oldEtag: oldFile?.etag,
+          txn: txn,
+          localTxn: localTxn,
+        );
+      }, 'uri_to_file');
+    }
 
     final total = response.contentLength;
     var received = 0;
@@ -633,6 +648,7 @@ Future<List<String>> keysToPaths(
         try {
           final file = await uriToFile(
             Main.profileFromKey(ikeys.current)!.getUrl(ikeys.current),
+            remoteKey: ikeys.current,
             onProgress: (bytesRead, totalBytes) {
               double progress = totalBytes > 0 ? bytesRead / totalBytes : 0.0;
               onProgress?.call((i + progress) / keys.length);

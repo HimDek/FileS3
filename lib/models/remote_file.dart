@@ -448,6 +448,38 @@ class RemoteFile extends RemoteFileMeta {
     return file;
   }
 
+  static RemoteFile fromHttpHeaders(String key, HttpHeaders headers) {
+    assert(
+      key.isNotEmpty && headers['etag']?.isNotEmpty == true,
+      'Key and ETag must not be empty',
+    );
+    final metadata = <String, dynamic>{};
+    headers.forEach((name, values) {
+      if (name.toLowerCase().startsWith('x-amz-meta-')) {
+        metadata[name.replaceFirst('x-amz-meta-', '')] = values.first;
+      }
+    });
+    return RemoteFile(
+      key: key,
+      etag: headers['etag']!.first.replaceAll('"', ''),
+      size: int.tryParse(headers['content-length']?.firstOrNull ?? '0') ?? 0,
+      lastModified:
+          DateTime.tryParse(headers['last-modified']?.firstOrNull ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      created:
+          DateTime.tryParse(headers['x-amz-meta-created']?.firstOrNull ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      original:
+          DateTime.tryParse(
+            headers['x-amz-meta-original']?.firstOrNull ?? '',
+          ) ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      contentType: headers['content-type']?.firstOrNull ?? '',
+      metadata: metadata,
+      deletedAt: null,
+    );
+  }
+
   RemoteFile copyWith({
     String? key,
     int? size,

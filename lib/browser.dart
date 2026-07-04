@@ -561,6 +561,7 @@ class BrowserState extends State<Browser> {
         title: p.s3.isWithin(_driveDir.value, f.key)
             ? p.s3.relative(f.key, from: _driveDir.value)
             : f.key,
+        url: Main.profileFromKey(f.key)?.getUrl(f.key),
         path: Main.pathFromKey(f.key),
         cachePath: Main.cachePathFromKey(f.key),
       );

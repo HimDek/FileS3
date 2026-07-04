@@ -204,38 +204,7 @@ class Profile {
             p.s3.relative(key, from: name),
           );
           if (result['etag']?.isNotEmpty == true) {
-            final metadata = <String, dynamic>{};
-            result.forEach((name, values) {
-              if (name.toLowerCase().startsWith('x-amz-meta-')) {
-                metadata[name.toLowerCase().replaceFirst('x-amz-meta-', '')] =
-                    values.first;
-              }
-            });
-            return RemoteFile(
-              key: key,
-              etag: result['etag']!.first.replaceAll('"', ''),
-              size:
-                  int.tryParse(result['content-length']?.firstOrNull ?? '0') ??
-                  0,
-              lastModified:
-                  DateTime.tryParse(
-                    result['last-modified']?.firstOrNull ?? '',
-                  ) ??
-                  DateTime.fromMillisecondsSinceEpoch(0),
-              created:
-                  DateTime.tryParse(
-                    result['x-amz-meta-created']?.firstOrNull ?? '',
-                  ) ??
-                  DateTime.fromMillisecondsSinceEpoch(0),
-              original:
-                  DateTime.tryParse(
-                    result['x-amz-meta-original']?.firstOrNull ?? '',
-                  ) ??
-                  DateTime.fromMillisecondsSinceEpoch(0),
-              contentType: result['content-type']?.firstOrNull ?? '',
-              metadata: metadata,
-              deletedAt: null,
-            );
+            return RemoteFile.fromHttpHeaders(key, result);
           } else {
             throw 'File not found';
           }
