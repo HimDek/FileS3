@@ -58,7 +58,7 @@ class ListFiles extends StatefulWidget {
   final ValueNotifier<SelectionAction> selectionAction;
   final Map<String, double> keysOffsetMap;
   final Map<String, double> groupOffsetMap;
-  final void Function(String)? showGallery;
+  final void Function(int)? showGallery;
   final Function(String) changeDirectory;
   final void Function()? Function(String) getSelectAction;
   final Function(String)? showContextMenu;
@@ -103,13 +103,18 @@ class ListFilesState extends State<ListFiles> {
     {},
   );
   final SelectionNotifiers _selectionNotifiers = SelectionNotifiers();
+  final Map<String, int> _keysIndexMap = {};
 
   late List<RegExp> _mimeTypes = widget.mimeTypes ?? [allMimePattern];
 
   Future<void> makeGroups() async {
     final Map<String, List<FileProps>> groups = {};
     SortMode? groupBy = _sortMode.value;
+    int i = 0;
     for (var file in widget.files.value) {
+      if (!p.isDir(file.key)) {
+        _keysIndexMap[file.key] = i++;
+      }
       String key;
       switch (groupBy) {
         case SortMode.nameAsc || SortMode.nameDesc:
@@ -469,7 +474,9 @@ class ListFilesState extends State<ListFiles> {
                             widget.showGallery != null)
                           IconButton(
                             icon: Icon(Icons.zoom_out_map),
-                            onPressed: () => widget.showGallery!(item.key),
+                            onPressed: () => widget.showGallery!(
+                              _keysIndexMap[item.key] ?? 0,
+                            ),
                             color: Theme.of(context).colorScheme.onSurface,
                           ),
                         Icon(
@@ -505,7 +512,7 @@ class ListFilesState extends State<ListFiles> {
                       widget.forceSelectionMode
                   ? widget.getSelectAction(item.key)
                   : widget.showGallery != null
-                  ? () => widget.showGallery!(item.key)
+                  ? () => widget.showGallery!(_keysIndexMap[item.key] ?? 0)
                   : null,
               onLongPress: widget.getSelectAction(item.key),
               enabled: _mimeTypes.any(
@@ -680,7 +687,7 @@ class ListFilesState extends State<ListFiles> {
                         widget.forceSelectionMode
                     ? widget.getSelectAction(item.key)
                     : widget.showGallery != null
-                    ? () => widget.showGallery!(item.key)
+                    ? () => widget.showGallery!(_keysIndexMap[item.key] ?? 0)
                     : null,
                 onLongPress: widget.getSelectAction(item.key),
                 enabled: enabled,
@@ -743,7 +750,8 @@ class ListFilesState extends State<ListFiles> {
                         widget.showGallery != null
                     ? IconButton(
                         icon: Icon(Icons.zoom_out_map),
-                        onPressed: () => widget.showGallery!(item.key),
+                        onPressed: () =>
+                            widget.showGallery!(_keysIndexMap[item.key] ?? 0),
                       )
                     : null,
                 child: Theme(

@@ -203,7 +203,7 @@ Future<FileSaveLocation?> saveAsDialog(
   final String? directory = await getDirectoryPath(canCreateDirectories: true);
   if (directory != null) {
     final String path = p.context.join(directory, fileName);
-    if (File(path).existsSync()) {
+    if (await File(path).exists()) {
       final bool overwrite =
           await showDialog<bool>(
             context: context,
@@ -650,9 +650,9 @@ Future<List<String>> keysToPaths(
   int i = 0;
   try {
     while (ikeys.moveNext()) {
-      final fileExists = File(Main.pathFromKey(ikeys.current)).existsSync();
+      final fileExists = await File(Main.pathFromKey(ikeys.current)).exists();
       final cachePath = Main.cachePathFromKey(ikeys.current);
-      final cacheExists = File(cachePath).existsSync();
+      final cacheExists = await File(cachePath).exists();
       if (fileExists || cacheExists) {
         onMessage?.call('Adding ${i + 1}/${keys.length}...');
         if (fileExists) {
@@ -676,12 +676,13 @@ Future<List<String>> keysToPaths(
             client: httpClient,
           );
           if (file != null) {
-            if (Directory(p.context.dirname(cachePath)).existsSync() == false) {
-              Directory(
+            if ((await Directory(p.context.dirname(cachePath)).exists()) ==
+                false) {
+              await Directory(
                 p.context.dirname(cachePath),
-              ).createSync(recursive: true);
+              ).create(recursive: true);
             }
-            renameOrCopyAndDelete(file, cachePath);
+            await renameOrCopyAndDelete(file, cachePath);
             paths.add(cachePath);
           }
         } catch (e) {
@@ -723,12 +724,12 @@ Digest etagToDigest(String etag) {
   return Digest(bytes);
 }
 
-void renameOrCopyAndDelete(File file, String newPath) {
+Future<void> renameOrCopyAndDelete(File file, String newPath) async {
   try {
-    file.renameSync(newPath);
+    await file.rename(newPath);
   } catch (e) {
-    file.copySync(newPath);
-    file.deleteSync();
+    await file.copy(newPath);
+    await file.delete();
   }
 }
 
@@ -821,23 +822,23 @@ abstract class IniManager {
   static late final File _file;
   static ValueNotifier<Config?> config = ValueNotifier<Config?>(null);
 
-  static void init(String dir) {
+  static Future<void> init(String dir) async {
     _file = File(p.context.join(dir, 'config.ini'));
 
-    if (!_file.existsSync()) {
-      _file.createSync(recursive: true);
-      _file.writeAsStringSync(
+    if (!await _file.exists()) {
+      await _file.create(recursive: true);
+      await _file.writeAsString(
         '[profiles]\n[directories]\n[modes]\n[ui]\n[download]\n[list_options]',
       );
     }
 
-    final lines = _file.readAsLinesSync();
+    final lines = await _file.readAsLines();
     config.value = Config.fromStrings(lines);
     cleanDirectories();
   }
 
-  static void save() {
-    _file.writeAsStringSync(config.value!.toString());
+  static Future<void> save() async {
+    await _file.writeAsString(config.value!.toString());
   }
 
   static void cleanDirectories({String? keepKey}) {
@@ -869,7 +870,7 @@ abstract class ConfigManager {
   static Future<void> init(String dir) async {
     if (!initialized.value || IniManager.config.value == null) {
       if (IniManager.config.value == null) {
-        IniManager.init(dir);
+        await IniManager.init(dir);
       }
       await _migrateIfNeeded();
       _sharedPreferences = await SharedPreferences.getInstance();

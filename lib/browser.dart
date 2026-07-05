@@ -6,7 +6,6 @@ import 'package:mime/mime.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/foundation.dart';
 import 'package:m3e_card_list/m3e_card_list.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:files3/utils/path_utils.dart' as p;
@@ -459,8 +458,8 @@ class BrowserState extends State<Browser> {
   final ValueNotifier<Set<String>> _selection = ValueNotifier({});
   final ValueNotifier<Iterable> _searchResults = ValueNotifier<Iterable>([]);
   final ValueNotifier<Iterable> _currentItems = ValueNotifier<Iterable>([]);
-  final ValueNotifier<Iterable<FileProps>> _currentProps =
-      ValueNotifier<Iterable<FileProps>>([]);
+  final ValueNotifier<List<FileProps>> _currentProps =
+      ValueNotifier<List<FileProps>>([]);
   final ManualNotifier _rebuildContext = ManualNotifier();
 
   Iterable<String> get _allSelectableItems => widget.allowMultiple
@@ -495,13 +494,12 @@ class BrowserState extends State<Browser> {
   double _lastScrollOffset = 0;
 
   Future<void> _updateCounts() async {
-    _dirCount.value = 0;
-    _fileCount.value = 0;
-
-    final counts =
-        (await RemoteFile.getByKey(_driveDir.value))?.count ?? (0, 0);
-    _dirCount.value = counts.$1;
-    _fileCount.value = counts.$2;
+    _dirCount.value = _currentProps.value
+        .where((file) => p.isDir(file.key))
+        .length;
+    _fileCount.value = _currentProps.value
+        .where((file) => !p.isDir(file.key))
+        .length;
     if (_driveDir.value == '') {
       _fileCount.value = 0;
     }
@@ -549,23 +547,29 @@ class BrowserState extends State<Browser> {
     }
   }
 
-  Future<String?> _pushGallery(String key) async {
-    int i = 0, index = 0;
-    final files = _currentProps.value.where((f) => !p.isDir(f.key)).map((f) {
-      if (f.key == key) {
-        index = i;
+  Future<String?> _pushGallery(int index) async {
+    final galleryPropsCache = <String, GalleryProps>{};
+    final currentFiles = _currentProps.value
+        .where((f) => !p.isDir((f.key)))
+        .toList();
+    final files = Iterable.generate(currentFiles.length, (index) {
+      if (!galleryPropsCache.containsKey(currentFiles[index].key)) {
+        final prop = GalleryProps(
+          key: currentFiles[index].key,
+          title: p.s3.isWithin(_driveDir.value, currentFiles[index].key)
+              ? p.s3.relative(currentFiles[index].key, from: _driveDir.value)
+              : currentFiles[index].key,
+          url: Main.profileFromKey(
+            currentFiles[index].key,
+          )?.getUrl(currentFiles[index].key),
+          path: Main.pathFromKey(currentFiles[index].key),
+          cachePath: Main.cachePathFromKey(currentFiles[index].key),
+        );
+        galleryPropsCache[currentFiles[index].key] = prop;
       }
-      i++;
-      return GalleryProps(
-        key: f.key,
-        title: p.s3.isWithin(_driveDir.value, f.key)
-            ? p.s3.relative(f.key, from: _driveDir.value)
-            : f.key,
-        url: Main.profileFromKey(f.key)?.getUrl(f.key),
-        path: Main.pathFromKey(f.key),
-        cachePath: Main.cachePathFromKey(f.key),
-      );
-    }).toList();
+      final result = galleryPropsCache[currentFiles[index].key]!;
+      return result;
+    });
 
     final result = await Navigator.of(context).push<String>(
       PageRouteBuilder<String>(
@@ -576,7 +580,7 @@ class BrowserState extends State<Browser> {
           keysOffsetMap: _keysOffsetMap,
           scrollController: _scrollController,
           buildContextMenu: (BuildContext context, int index) =>
-              _buildContextMenu(context, files[index].key),
+              _buildContextMenu(context, files.elementAt(index).key),
           rebuildContext: _rebuildContext.notifyListeners,
         ),
       ),
@@ -616,7 +620,6 @@ class BrowserState extends State<Browser> {
     }
     _driveDir.value = dir.isEmpty ? RemoteFile.root.key : dir;
     _profile.value = Main.profileFromKey(_driveDir.value);
-    _updateCounts();
     _scrollToFile(oldDir);
     if (_searching.value) {
       _search();
@@ -624,7 +627,7 @@ class BrowserState extends State<Browser> {
   }
 
   void _applyListOptions() {
-    _currentProps.value = _currentItems.value.map((file) {
+    final iterable = _currentItems.value.map((file) {
       return file is Job
           ? FileProps(key: file.remoteKey, size: file.bytes, job: file)
           : p.isDir(file.key)
@@ -641,24 +644,12 @@ class BrowserState extends State<Browser> {
     });
     if (!_searching.value) {
       _currentProps.value = sort(
-        _currentItems.value.map((file) {
-          return file is Job
-              ? FileProps(key: file.remoteKey, size: file.bytes, job: file)
-              : p.isDir(file.key)
-              ? FileProps(
-                  key: file.key,
-                  size: file.size,
-                  lastModified: file.lastModified,
-                )
-              : FileProps(
-                  key: file.key,
-                  size: file.size,
-                  lastModified: file.lastModified,
-                );
-        }),
+        iterable,
         _sortMode.value,
         _foldersFirst.value,
       );
+    } else {
+      _currentProps.value = iterable.toList();
     }
   }
 
@@ -698,8 +689,8 @@ class BrowserState extends State<Browser> {
         : _navIndex.value == 1
         ? Job.completedJobs
         : _navIndex.value == 2
-        ? Job.jobs.where((job) => job.status.value != JobStatus.completed)
-        : [];
+        ? Job.incompleteJobs
+        : Iterable.empty();
   }
 
   Future<void> _search() async {
@@ -1260,7 +1251,7 @@ class BrowserState extends State<Browser> {
       _foldersFirst,
     ]).addListener(_applyListOptions);
 
-    Main.onRemoteFilesChanged.addListener(_updateCounts);
+    _currentProps.addListener(_updateCounts);
 
     Listenable.merge([_listOptions]).addListener(() {
       _sortMode.value = _listOptions.value.sortMode;
@@ -1294,7 +1285,6 @@ class BrowserState extends State<Browser> {
   void dispose() {
     _profile.value?.accessible.removeListener(_profileAccessibilityListener);
     _currentItemsNotifiers.removeListener(_setCurrentItems);
-    Main.onRemoteFilesChanged.removeListener(_updateCounts);
     _searchController.dispose();
     _scrollController.dispose();
     _navIndex.dispose();
@@ -1359,14 +1349,7 @@ class BrowserState extends State<Browser> {
                     : Icons.swap_vert_circle_outlined,
               ),
               trailing: Job.jobs.isNotEmpty
-                  ? Text(
-                      Job.jobs
-                          .where(
-                            (job) => job.status.value != JobStatus.completed,
-                          )
-                          .length
-                          .toString(),
-                    )
+                  ? Text(Job.incompleteJobs.length.toString())
                   : null,
               selected: _navIndex.value == 2,
               shape: RoundedRectangleBorder(
@@ -1646,14 +1629,7 @@ class BrowserState extends State<Browser> {
                                   .isNotEmpty,
                               label: Job.jobs.isNotEmpty
                                   ? Text(
-                                      Job.jobs
-                                          .where(
-                                            (job) =>
-                                                job.status.value !=
-                                                JobStatus.completed,
-                                          )
-                                          .length
-                                          .toString(),
+                                      Job.incompleteJobs.length.toString(),
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall

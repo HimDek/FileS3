@@ -47,10 +47,12 @@ class _SyncAnalysisResult {
   });
 }
 
-Iterable<String> _listCallback(({String path, bool recursive}) arg) {
-  return Directory(
-    arg.path,
-  ).listSync(recursive: arg.recursive).whereType<File>().map((f) => f.path);
+Future<Iterable<String>> _listCallback(
+  ({String path, bool recursive}) arg,
+) async {
+  return (await Directory(arg.path).list(recursive: arg.recursive).toList())
+      .whereType<File>()
+      .map((f) => f.path);
 }
 
 Pool _syncPool = Pool(1);
@@ -250,52 +252,52 @@ abstract class Main {
 
   static Map<String, Profile> get profiles => _profiles;
 
-  static void clearCache() {
+  static Future<void> clearCache() async {
     final directory = Directory(_cacheDir);
-    if (directory.existsSync()) {
-      directory.deleteSync(recursive: true);
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
     }
   }
 
-  static int cacheSize() {
-    return dirSize(Directory(_cacheDir));
+  static Future<int> cacheSize() async {
+    return await dirSize(Directory(_cacheDir));
   }
 
-  static void clearThumbCache() {
+  static Future<void> clearThumbCache() async {
     final directory = Directory(_thumbCacheDir);
-    if (directory.existsSync()) {
-      directory.deleteSync(recursive: true);
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
     }
   }
 
-  static int thumbCacheSize() {
-    return dirSize(Directory(_thumbCacheDir));
+  static Future<int> thumbCacheSize() async {
+    return await dirSize(Directory(_thumbCacheDir));
   }
 
-  static void clearDownloadCache() {
+  static Future<void> clearDownloadCache() async {
     final directory = Directory(_downloadCacheDir);
-    if (directory.existsSync()) {
-      directory.deleteSync(recursive: true);
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
     }
   }
 
-  static int downloadCacheSize() {
-    return dirSize(Directory(_downloadCacheDir));
+  static Future<int> downloadCacheSize() async {
+    return await dirSize(Directory(_downloadCacheDir));
   }
 
-  static void dirClear(Directory directory) {
-    if (directory.existsSync()) {
-      directory.deleteSync(recursive: true);
+  static Future<void> dirClear(Directory directory) async {
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
     }
   }
 
-  static int dirSize(Directory directory) {
+  static Future<int> dirSize(Directory directory) async {
     int totalSize = 0;
 
-    if (directory.existsSync()) {
-      for (var file in directory.listSync(recursive: true)) {
+    if (await directory.exists()) {
+      for (var file in await directory.list(recursive: true).toList()) {
         if (file is File) {
-          totalSize += file.lengthSync();
+          totalSize += await file.length();
         }
       }
     }
@@ -451,7 +453,7 @@ abstract class Main {
 
     if (p.isAbsolute(localDir) &&
         localDir.isNotEmpty &&
-        Directory(localDir).existsSync()) {
+        await Directory(localDir).exists()) {
       Watcher watcher = Watcher(remoteDir: dir);
 
       _watcherMap[dir] = watcher;
@@ -551,7 +553,7 @@ abstract class Main {
     File file, {
     VoidCallback? onComplete,
   }) async {
-    if (!file.existsSync()) {
+    if (!await file.exists()) {
       return;
     }
     Job? job;
@@ -565,12 +567,12 @@ abstract class Main {
               ) ==
               true &&
           remoteFile.etag == localEtag) {
-        file.deleteSync();
+        await file.delete();
       } else {
         job = UploadJob(
           localFile: file,
           remoteKey: key,
-          bytes: file.lengthSync(),
+          bytes: await file.length(),
           md5: md5,
           profile: profileFromKey(key),
         );
@@ -587,14 +589,14 @@ abstract class Main {
         }
         return candidateKey;
       }();
-      if (!File(pathFromKey(newKey)).parent.existsSync()) {
-        File(pathFromKey(newKey)).parent.createSync(recursive: true);
+      if (!await File(pathFromKey(newKey)).parent.exists()) {
+        await File(pathFromKey(newKey)).parent.create(recursive: true);
       }
-      file.copySync(pathFromKey(newKey));
+      await file.copy(pathFromKey(newKey));
       job = UploadJob(
         localFile: File(pathFromKey(newKey)),
         remoteKey: key,
-        bytes: file.lengthSync(),
+        bytes: await file.length(),
         md5: md5,
         profile: profileFromKey(key),
       );
@@ -613,7 +615,7 @@ abstract class Main {
       job = UploadJob(
         localFile: file,
         remoteKey: newKey,
-        bytes: file.lengthSync(),
+        bytes: await file.length(),
         md5: md5,
         profile: profileFromKey(newKey),
       );
@@ -648,11 +650,11 @@ abstract class Main {
         } catch (e) {
           if (e is S3Exception && e.code == 403) {
             File file = File(pathFromKey(key));
-            if (file.existsSync()) {
+            if (await file.exists()) {
               uploadFile(newKey, file);
             } else {
               file = File(cachePathFromKey(key));
-              if (file.existsSync()) {
+              if (await file.exists()) {
                 uploadFile(newKey, file);
               } else {
                 downloadFile(
@@ -676,21 +678,21 @@ abstract class Main {
       final file = File(pathFromKey(key));
       final cacheFile = File(cachePathFromKey(key));
 
-      if (file.existsSync() && p.isAbsolute(pathFromKey(newKey))) {
+      if (await file.exists() && p.isAbsolute(pathFromKey(newKey))) {
         final newLocalFile = File(pathFromKey(newKey));
-        if (!newLocalFile.parent.existsSync()) {
-          newLocalFile.parent.createSync(recursive: true);
+        if (!await newLocalFile.parent.exists()) {
+          await newLocalFile.parent.create(recursive: true);
         }
-        file.copySync(newLocalFile.path);
+        await file.copy(newLocalFile.path);
         isDownloaded[newKey] = true;
       }
 
-      if (cacheFile.existsSync() && p.isAbsolute(pathFromKey(newKey))) {
+      if (await cacheFile.exists() && p.isAbsolute(pathFromKey(newKey))) {
         final newCacheFile = File(pathFromKey(newKey));
-        if (!newCacheFile.parent.existsSync()) {
-          newCacheFile.parent.createSync(recursive: true);
+        if (!await newCacheFile.parent.exists()) {
+          await newCacheFile.parent.create(recursive: true);
         }
-        cacheFile.copySync(newCacheFile.path);
+        await cacheFile.copy(newCacheFile.path);
       }
     } finally {
       if (refresh) {
@@ -760,11 +762,11 @@ abstract class Main {
             await profile.deleteFile(key);
             File file = File(pathFromKey(key));
             File cacheFile = File(cachePathFromKey(key));
-            if (file.existsSync()) {
-              file.deleteSync();
+            if (await file.exists()) {
+              await file.delete();
             }
-            if (cacheFile.existsSync()) {
-              cacheFile.deleteSync();
+            if (await cacheFile.exists()) {
+              await cacheFile.delete();
             }
           }
         }),
@@ -858,11 +860,11 @@ abstract class Main {
       for (final dirS in dirs) {
         final dir = Directory(pathFromKey(dirS));
         final cacheDir = Directory(cachePathFromKey(dirS));
-        if (dir.existsSync()) {
-          dir.deleteSync(recursive: true);
+        if (await dir.exists()) {
+          await dir.delete(recursive: true);
         }
-        if (cacheDir.existsSync()) {
-          cacheDir.deleteSync(recursive: true);
+        if (await cacheDir.exists()) {
+          await cacheDir.delete(recursive: true);
         }
       }
     } finally {
@@ -889,12 +891,12 @@ abstract class Main {
         progress.value = i * 0.5 / keys.length;
         await copyFile(key, newKey, refresh: false);
         File file = File(pathFromKey(key));
-        if (file.existsSync()) {
-          renameOrCopyAndDelete(file, pathFromKey(newKey));
+        if (await file.exists()) {
+          await renameOrCopyAndDelete(file, pathFromKey(newKey));
         }
         File cacheFile = File(cachePathFromKey(key));
-        if (cacheFile.existsSync()) {
-          renameOrCopyAndDelete(cacheFile, pathFromKey(newKey));
+        if (await cacheFile.exists()) {
+          await renameOrCopyAndDelete(cacheFile, pathFromKey(newKey));
         }
         i++;
       }
@@ -1017,6 +1019,10 @@ abstract class Job {
   static Iterable<Job> get completedJobs => _completedJobs.values;
   static Iterable<Job> get failedJobs => _failedJobs.values;
   static Iterable<Job> get blockedJobs => _blockedJobs.values;
+  static Iterable<Job> get incompleteJobs => readyJobs
+      .followedBy(runningJobs)
+      .followedBy(failedJobs)
+      .followedBy(blockedJobs);
 
   static Map<String, List<JobKey>> get remoteKeyToJobKeys =>
       Map.unmodifiable(_remoteKeyToJobKeys);
@@ -1130,11 +1136,11 @@ abstract class Job {
         status.value = JobStatus.running;
         statusMsg.value = "Starting download...";
         // final ifModifiedSince = await localFile.exists()
-        //     ? localFile.lastModifiedSync()
+        //     ? await localFile.lastModified()
         //     : null;
         final dir = Directory(p.context.dirname(localFile.path));
-        if (!dir.existsSync()) {
-          dir.createSync(recursive: true);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
         }
         task = S3TransferTask(
           key: remoteKey,
@@ -1377,7 +1383,7 @@ class Watcher {
     try {
       scanning = true;
 
-      if (!localDir.existsSync()) {
+      if (!await localDir.exists()) {
         if (kDebugMode) {
           debugPrint(
             "[Watcher] $remoteDir Local directory does not exist: ${localDir.path}",
@@ -1545,7 +1551,7 @@ class Watcher {
             break;
         }
         final file = File(event.path);
-        if (file.existsSync()) {
+        if (await file.exists()) {
           if (kDebugMode) {
             debugPrint(
               "File system event detected: ${event.type} - ${event.path}",

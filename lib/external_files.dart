@@ -175,21 +175,19 @@ class _ExternalFilesState extends State<ExternalFiles> {
                   subtitle: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: [
-                        if (_files[index].path != null &&
-                            File(_files[index].path!).existsSync())
-                          Text(
-                            bytesToReadable(
-                              File(_files[index].path!).lengthSync(),
-                            ),
-                          ),
-                        if (_files[index].path != null &&
-                            File(_files[index].path!).existsSync())
-                          const SizedBox(width: 8),
-                        if (_files[index].path != null &&
-                            File(_files[index].path!).existsSync())
-                          Text(p.context.extension(_files[index].path!)),
-                      ],
+                      children:
+                          _files[index].path != null &&
+                              File(_files[index].path!).existsSync()
+                          ? [
+                              Text(
+                                bytesToReadable(
+                                  File(_files[index].path!).lengthSync(),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(p.context.extension(_files[index].path!)),
+                            ]
+                          : [],
                     ),
                   ),
                   trailing: IconButton(

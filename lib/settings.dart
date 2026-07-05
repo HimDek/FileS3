@@ -1228,14 +1228,17 @@ class SettingsPage extends StatefulWidget {
 class SettingsPageState extends State<SettingsPage> {
   UiConfig _uiConfig = ConfigManager.loadUiConfig();
   TransferConfig _downloadConfig = ConfigManager.loadTransferConfig();
-  int _cacheSize = Main.cacheSize();
-  int _thumbCacheSize = Main.thumbCacheSize();
-  int _downloadCacheSize = Main.downloadCacheSize();
 
   PackageInfo? packageInfo;
+  int? _cacheSize;
+  int? _thumbCacheSize;
+  int? _downloadCacheSize;
 
-  Future<void> _getPackageInfo() async {
+  Future<void> _init() async {
     packageInfo = await PackageInfo.fromPlatform();
+    _cacheSize = await Main.cacheSize();
+    _thumbCacheSize = await Main.thumbCacheSize();
+    _downloadCacheSize = await Main.downloadCacheSize();
     setState(() {});
   }
 
@@ -1341,7 +1344,7 @@ class SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _getPackageInfo();
+    _init();
   }
 
   @override
@@ -2178,10 +2181,12 @@ class SettingsPageState extends State<SettingsPage> {
                     case 2:
                       return ListTile(
                         title: Text('Temporary Files'),
-                        subtitle: Text(bytesToReadable(_cacheSize)),
+                        subtitle: _cacheSize != null
+                            ? Text(bytesToReadable(_cacheSize!))
+                            : Text('Loading...'),
                         leading: Icon(Icons.history_rounded),
                         trailing: TextButton(
-                          onPressed: _cacheSize > 0
+                          onPressed: _cacheSize != null && _cacheSize! > 0
                               ? () async {
                                   if (await confirmDialog(
                                     context,
@@ -2200,9 +2205,8 @@ class SettingsPageState extends State<SettingsPage> {
                                         ),
                                       ),
                                     );
-                                    setState(() {
-                                      _cacheSize = Main.cacheSize();
-                                    });
+                                    _cacheSize = await Main.cacheSize();
+                                    setState(() {});
                                   }
                                 }
                               : null,
@@ -2212,10 +2216,13 @@ class SettingsPageState extends State<SettingsPage> {
                     case 3:
                       return ListTile(
                         title: Text('Thumbnail Cache'),
-                        subtitle: Text(bytesToReadable(_thumbCacheSize)),
+                        subtitle: _thumbCacheSize != null
+                            ? Text(bytesToReadable(_thumbCacheSize!))
+                            : Text('Loading...'),
                         leading: Icon(Icons.history_rounded),
                         trailing: TextButton(
-                          onPressed: _thumbCacheSize > 0
+                          onPressed:
+                              _thumbCacheSize != null && _thumbCacheSize! > 0
                               ? () async {
                                   if (await confirmDialog(
                                     context,
@@ -2234,9 +2241,9 @@ class SettingsPageState extends State<SettingsPage> {
                                         ),
                                       ),
                                     );
-                                    setState(() {
-                                      _thumbCacheSize = Main.thumbCacheSize();
-                                    });
+                                    _thumbCacheSize =
+                                        await Main.thumbCacheSize();
+                                    setState(() {});
                                   }
                                 }
                               : null,
@@ -2246,10 +2253,14 @@ class SettingsPageState extends State<SettingsPage> {
                     case 4:
                       return ListTile(
                         title: Text('Downloads Cache'),
-                        subtitle: Text(bytesToReadable(_downloadCacheSize)),
+                        subtitle: _downloadCacheSize != null
+                            ? Text(bytesToReadable(_downloadCacheSize!))
+                            : Text('Loading...'),
                         leading: Icon(Icons.history_rounded),
                         trailing: TextButton(
-                          onPressed: _downloadCacheSize > 0
+                          onPressed:
+                              _downloadCacheSize != null &&
+                                  _downloadCacheSize! > 0
                               ? () async {
                                   if (await confirmDialog(
                                     context,
@@ -2268,10 +2279,9 @@ class SettingsPageState extends State<SettingsPage> {
                                         ),
                                       ),
                                     );
-                                    setState(() {
-                                      _downloadCacheSize =
-                                          Main.downloadCacheSize();
-                                    });
+                                    _downloadCacheSize =
+                                        await Main.downloadCacheSize();
+                                    setState(() {});
                                   }
                                 }
                               : null,

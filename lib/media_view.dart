@@ -1046,7 +1046,7 @@ class InteractiveMediaViewState extends State<InteractiveMediaView> {
 }
 
 class Gallery extends StatefulWidget {
-  final List<GalleryProps> files;
+  final Iterable<GalleryProps> files;
   final int initialIndex;
   final Map<String, double> keysOffsetMap;
   final ScrollController? scrollController;
@@ -1155,17 +1155,19 @@ class GalleryState extends State<Gallery> {
     _chromeVisible.value = false;
     if (widget.scrollController != null &&
         widget.keysOffsetMap.containsKey(
-          widget.files[_currentIndex.value].key,
+          widget.files.elementAt(_currentIndex.value).key,
         )) {
       widget.scrollController!.jumpTo(
         max(
           0,
-          widget.keysOffsetMap[widget.files[_currentIndex.value].key]! -
+          widget.keysOffsetMap[widget.files
+                  .elementAt(_currentIndex.value)
+                  .key]! -
               MediaQuery.of(context).size.height / 3,
         ),
       );
     }
-    Navigator.of(context).pop(widget.files[_currentIndex.value].key);
+    Navigator.of(context).pop(widget.files.elementAt(_currentIndex.value).key);
   }
 
   @override
@@ -1256,18 +1258,18 @@ class GalleryState extends State<Gallery> {
                       child: Transform.scale(
                         scale: 1 - (dismissOffset.abs() / 1000).clamp(0, 0.5),
                         child: InteractiveMediaView(
-                          heroTag: widget.files[index].key,
-                          remoteKey: widget.files[index].key,
-                          url: widget.files[index].url,
-                          path: widget.files[index].path,
-                          cachePath: widget.files[index].cachePath,
+                          heroTag: widget.files.elementAt(index).key,
+                          remoteKey: widget.files.elementAt(index).key,
+                          url: widget.files.elementAt(index).url,
+                          path: widget.files.elementAt(index).path,
+                          cachePath: widget.files.elementAt(index).cachePath,
                           showControls: _chromeVisible.value,
                           setPaging: _setPaging,
                           setDragging: _setDragging,
-                          isActive: index == _currentIndex.value,
+                          isActive: index == index,
                           onCached: widget.rebuildContext,
                           onPathChanged: (path) {
-                            widget.files[index].path = path;
+                            widget.files.elementAt(index).path = path;
                             widget.rebuildContext?.call();
                           },
                           httpClient: _httpClient,
@@ -1309,7 +1311,7 @@ class GalleryState extends State<Gallery> {
               ),
             ),
             if (widget.buildContextMenu != null &&
-                widget.files[_currentIndex.value].key != null)
+                widget.files.elementAt(_currentIndex.value).key != null)
               DraggableScrollableSheet(
                 controller: _contextMenuSheetController,
                 initialChildSize: _chromeVisible.value && _allowDragging.value

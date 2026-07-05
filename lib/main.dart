@@ -241,7 +241,7 @@ class _HomeState extends State<Home> {
       for (final key in keys) {
         if (p.isDir(key)) {
           final dir = Directory(Main.pathFromKey(key));
-          if (dir.existsSync()) {
+          if (await dir.exists()) {
             if (Main.backupModeFromKey(key) != BackupMode.upload) {
               ConfigManager.setBackupMode(
                 key,
@@ -250,7 +250,7 @@ class _HomeState extends State<Home> {
                     : BackupMode.upload,
               );
             }
-            dir.deleteSync(recursive: true);
+            await dir.delete(recursive: true);
             for (final file in await RemoteFile.getChildrenByKeys<String>([
               key,
             ], recursive: true)) {
@@ -258,12 +258,12 @@ class _HomeState extends State<Home> {
             }
           }
           final cacheDir = Directory(Main.cachePathFromKey(key));
-          if (cacheDir.existsSync()) {
-            cacheDir.deleteSync(recursive: true);
+          if (await cacheDir.exists()) {
+            await cacheDir.delete(recursive: true);
           }
         } else {
           final file = File(Main.pathFromKey(key));
-          if (file.existsSync()) {
+          if (await file.exists()) {
             if (Main.backupModeFromKey(key) != BackupMode.upload) {
               ConfigManager.setBackupMode(
                 key,
@@ -272,12 +272,12 @@ class _HomeState extends State<Home> {
                     : BackupMode.upload,
               );
             }
-            file.deleteSync();
+            await file.delete();
             isDownloaded[key] = false;
           }
           final cacheFile = File(Main.cachePathFromKey(key));
-          if (cacheFile.existsSync()) {
-            cacheFile.deleteSync();
+          if (await cacheFile.exists()) {
+            await cacheFile.delete();
           }
         }
       }
@@ -293,8 +293,8 @@ class _HomeState extends State<Home> {
     final FileSystemEntity e = p.isDir(key)
         ? Directory(Main.cachePathFromKey(key))
         : File(Main.cachePathFromKey(key));
-    if (e.existsSync()) {
-      e.deleteSync(recursive: true);
+    if (await e.exists()) {
+      await e.delete(recursive: true);
     }
   }
 
@@ -305,7 +305,7 @@ class _HomeState extends State<Home> {
         final localFile = File(Main.pathFromKey(key));
         final cacheFile = File(Main.cachePathFromKey(key));
 
-        if (!localFile.existsSync()) {
+        if (!await localFile.exists()) {
           if (Main.backupModeFromKey(key) != BackupMode.sync) {
             ConfigManager.setBackupMode(
               key,
@@ -314,8 +314,8 @@ class _HomeState extends State<Home> {
                   : BackupMode.sync,
             );
           }
-          if (cacheFile.existsSync()) {
-            renameOrCopyAndDelete(cacheFile, localFile.path);
+          if (await cacheFile.exists()) {
+            await renameOrCopyAndDelete(cacheFile, localFile.path);
             isDownloaded[key] = true;
           } else {
             Main.downloadFile(key);
@@ -363,16 +363,16 @@ class _HomeState extends State<Home> {
     final cacheFile = File(Main.cachePathFromKey(key));
     final saveFile = File(savePath);
 
-    if (saveFile.existsSync()) {
-      saveFile.deleteSync();
-    } else if (!saveFile.parent.existsSync()) {
-      saveFile.parent.createSync(recursive: true);
+    if (await saveFile.exists()) {
+      await saveFile.delete();
+    } else if (!await saveFile.parent.exists()) {
+      await saveFile.parent.create(recursive: true);
     }
 
-    if (localFile.existsSync()) {
-      localFile.copySync(savePath);
-    } else if (cacheFile.existsSync()) {
-      cacheFile.copySync(savePath);
+    if (await localFile.exists()) {
+      await localFile.copy(savePath);
+    } else if (await cacheFile.exists()) {
+      await cacheFile.copy(savePath);
     } else if (savePath == localFile.path) {
       _downloadFiles([key]);
     } else {
@@ -410,7 +410,9 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _uploadDirectory(String key, Directory directory) async {
-    final files = directory.listSync(recursive: true, followLinks: false);
+    final files = await directory
+        .list(recursive: true, followLinks: false)
+        .toList();
     int progressCount = 0;
     final totalFiles = files.length;
     for (final entity in files) {

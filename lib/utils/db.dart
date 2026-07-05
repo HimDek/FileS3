@@ -147,7 +147,7 @@ class MetaDB {
     }
 
     Future<bool> body() async {
-      if (!_file.existsSync()) {
+      if (!await _file.exists()) {
         bool pooled = await _pullDb();
         if (pooled == false) {
           // No remote DB exists, so we can proceed
@@ -1069,7 +1069,7 @@ class MetaDB {
     Job job = UploadJob(
       localFile: _file,
       remoteKey: _key,
-      bytes: _file.lengthSync(),
+      bytes: await _file.length(),
       md5: md5,
       profile: profile,
       noUpdateMeta: true,
