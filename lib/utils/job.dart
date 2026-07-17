@@ -321,22 +321,17 @@ abstract class Main {
     await Future.wait(
       groupedFiles.entries.map((entry) async {
         final profile = entry.key;
-        await profile.metaDB.withNestedTransaction((txn, localTxn) async {
+        await profile.metaDB.withTransaction((txn) async {
           final addedDirs = <String>{};
           for (final file in entry.value) {
             await profile.metaDB.addIntermediateDirectories(
               file.key,
               addedDirs,
               txn: txn,
-              localTxn: localTxn,
             );
-            await profile.metaDB.addOrUpdateFile(
-              file,
-              txn: txn,
-              localTxn: localTxn,
-            );
+            await profile.metaDB.addOrUpdateFile(file, txn: txn);
           }
-        }, 'remoteFilesAddAll');
+        }, debugLabel: 'remoteFilesAddAll');
       }),
     );
     onRemoteFilesChanged.notifyListeners();
@@ -347,16 +342,15 @@ abstract class Main {
     bool notify = true,
   }) async {
     final profile = profileFromKey(file.key);
-    await profile!.metaDB.withNestedTransaction((txn, localTxn) async {
+    await profile!.metaDB.withTransaction((txn) async {
       final addedDirs = <String>{};
       await profile.metaDB.addIntermediateDirectories(
         file.key,
         addedDirs,
         txn: txn,
-        localTxn: localTxn,
       );
-      await profile.metaDB.addOrUpdateFile(file, txn: txn, localTxn: localTxn);
-    }, 'remoteFilesAdd');
+      await profile.metaDB.addOrUpdateFile(file, txn: txn);
+    }, debugLabel: 'remoteFilesAdd');
     if (notify) {
       onRemoteFilesChanged.notifyListeners();
     }

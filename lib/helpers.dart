@@ -43,15 +43,10 @@ Future<File?> uriToFile(
     if (remoteKey != null && response.headers['etag']?.isNotEmpty == true) {
       final file = RemoteFile.fromHttpHeaders(remoteKey, response.headers);
       final profile = Main.profileFromKey(remoteKey);
-      profile?.metaDB.withNestedTransaction((txn, localTxn) async {
+      profile?.metaDB.withTransaction((txn) async {
         RemoteFile? oldFile = (await RemoteFile.getByKey(remoteKey, txn: txn));
-        profile.metaDB.addOrUpdateFile(
-          file,
-          oldEtag: oldFile?.etag,
-          txn: txn,
-          localTxn: localTxn,
-        );
-      }, 'uri_to_file');
+        profile.metaDB.addOrUpdateFile(file, oldEtag: oldFile?.etag, txn: txn);
+      }, debugLabel: 'uri_to_file');
     }
 
     final total = response.contentLength;

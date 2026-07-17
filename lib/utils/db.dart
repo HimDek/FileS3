@@ -68,26 +68,25 @@ typedef Operation = ({
 
 class MetaDB {
   Database? _db;
-  Database? _localDb;
   final Profile profile;
   final ValueNotifier<String?> etag = ValueNotifier<String?>(null);
-  late final String _key = p.s3.join(profile.name, 'metadata.db');
+  late final String _key = p.s3.join(profile.name, 'metadata.json');
   late final File _file = File(
     p.context.joinAll([
       Main.documentsDir,
       'profiles',
       profile.name,
       'metadata',
-      'metadata.db',
+      'metadata.json',
     ]),
   );
-  late final File _opFile = File(
+  late final File _localFile = File(
     p.context.joinAll([
       Main.documentsDir,
       'profiles',
       profile.name,
       'metadata',
-      'operations.db',
+      'metadata.db',
     ]),
   );
   bool isInitialized = false;
@@ -157,10 +156,7 @@ class MetaDB {
         // Local DB exists, so we can open it
         await _openDb();
       }
-      if (_localDb == null) {
-        await _openLocalDb();
-      }
-      if (_db != null && _localDb != null) {
+      if (_db != null) {
         isInitialized = true;
       }
       return isInitialized;
@@ -189,68 +185,20 @@ class MetaDB {
           });
         }();
 
-  /// Only use for Read operations, not for Write operations.
-  Future<T> withLocalDb<T>(Future<T> Function(Database db) callback) =>
-      _localDb != null && _localDb!.isOpen
-      ? callback(_localDb!)
-      : () async {
-          await _init();
-          return _enqueue<T>("withLocalDb", () async {
-            return callback(_localDb!);
-          });
-        }();
-
-  Future<T> withTransaction<T>(Future<T> Function(Transaction txn) callback) =>
-      _db != null && _db!.isOpen
-      ? _enqueue<T>("dbTransaction", () async {
+  Future<T> withTransaction<T>(
+    Future<T> Function(Transaction txn) callback, {
+    String? debugLabel,
+  }) => _db != null && _db!.isOpen
+      ? _enqueue<T>(debugLabel ?? "dbTransaction", () async {
           return await _db!.transaction((txn) async {
             return await callback(txn);
           });
         })
       : () async {
           await _init();
-          return _enqueue<T>("withTransaction", () async {
+          return _enqueue<T>(debugLabel ?? "withTransaction", () async {
             return await _db!.transaction((txn) async {
               return await callback(txn);
-            });
-          });
-        }();
-
-  Future<T> withLocalTransaction<T>(
-    Future<T> Function(Transaction localTxn) callback,
-  ) => _localDb != null && _localDb!.isOpen
-      ? _enqueue<T>("localDbTransaction", () async {
-          return await _localDb!.transaction((localTxn) async {
-            return await callback(localTxn);
-          });
-        })
-      : () async {
-          await _init();
-          return _enqueue<T>("withLocalTransaction", () async {
-            return await _localDb!.transaction((localTxn) async {
-              return await callback(localTxn);
-            });
-          });
-        }();
-
-  Future<T> withNestedTransaction<T>(
-    Future<T> Function(Transaction txn, Transaction localTxn) callback,
-    String name,
-  ) => _db != null && _db!.isOpen && _localDb != null && _localDb!.isOpen
-      ? _enqueue<T>("nestedTransaction $name", () async {
-          return await _db!.transaction((txn) async {
-            return await _localDb!.transaction((localTxn) async {
-              return await callback(txn, localTxn);
-            });
-          });
-        })
-      : () async {
-          await _init();
-          return _enqueue<T>("withNestedTransaction $name", () async {
-            return await _db!.transaction((txn) async {
-              return await _localDb!.transaction((localTxn) async {
-                return await callback(txn, localTxn);
-              });
             });
           });
         }();
@@ -259,7 +207,6 @@ class MetaDB {
     String key,
     Set<String> addedDirs, {
     required Transaction txn,
-    required Transaction localTxn,
   }) async {
     final parts = key.split('/');
     if (parts.length <= 1) return;
@@ -273,7 +220,6 @@ class MetaDB {
         await addOrUpdateFile(
           RemoteFileMeta(key: dirKey, etag: ''),
           txn: txn,
-          localTxn: localTxn,
           fields: ['key', 'etag'],
         );
       }
@@ -285,7 +231,6 @@ class MetaDB {
     RemoteFileMeta file, {
     String? oldEtag,
     required Transaction txn,
-    required Transaction localTxn,
     bool ifPresent = false,
     List<String>? fields,
   }) async {
@@ -312,8 +257,8 @@ class MetaDB {
         ifNotDeleted: false,
       );
       if (addedNew > 0) {
-        await _addOrUpdateOp(op, txn: localTxn);
-        await _applyOp(op, txn: localTxn);
+        await _addOrUpdateOp(op, txn: txn);
+        await _applyOp(op, txn: txn);
       }
       return addedNew > 0;
     }
@@ -325,7 +270,6 @@ class MetaDB {
     String key, {
     String? oldEtag,
     required Transaction txn,
-    required Transaction localTxn,
   }) async {
     final op = (
       key: key,
@@ -338,8 +282,8 @@ class MetaDB {
     );
     final changed = await _applyRemove(op, txn: txn);
     if (changed > 0) {
-      await _addOrUpdateOp(op, txn: localTxn);
-      await _applyOp(op, txn: localTxn);
+      await _addOrUpdateOp(op, txn: txn);
+      await _applyOp(op, txn: txn);
     }
     return changed > 0;
   }
@@ -423,7 +367,7 @@ class MetaDB {
     }
 
     where +=
-        " AND remotefiles.key NOT LIKE '$profileNamePlaceholder/metadata.db'";
+        " AND remotefiles.key NOT LIKE '$profileNamePlaceholder/metadata.json'";
 
     return (where: where, whereArgs: whereArgs);
   }
@@ -474,7 +418,7 @@ class MetaDB {
     final allRowsSubQueryLines = [
       'SELECT ${rawColumns.join(', ')}',
       'FROM remotefiles',
-      'WHERE remotefiles.key NOT LIKE \'$profileNamePlaceholder/metadata.db\'',
+      'WHERE remotefiles.key NOT LIKE \'$profileNamePlaceholder/metadata.json\'',
     ];
 
     final filteredSubQueryLines = [
@@ -566,7 +510,7 @@ class MetaDB {
     bool deletedAny = false;
     for (final row in keys) {
       final key = row['key'] as String;
-      bool deleted = await deleteFile(key, txn: txn, localTxn: txn);
+      bool deleted = await deleteFile(key, txn: txn);
       if (deleted) {
         deletedAny = true;
       }
@@ -611,30 +555,8 @@ class MetaDB {
   /// Delete the database files and close the connections. This is used when a profile is deleted or reset.
   Future<void> deleteDB() async {
     await _db?.close();
-    await _localDb?.close();
     await _file.delete();
-    await _opFile.delete();
-  }
-
-  Future<void> _openLocalDb() async {
-    _localDb?.isOpen ?? false ? await _localDb!.close() : null;
-    _localDb = await openDatabase(
-      _opFile.path,
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS operations (
-              key TEXT PRIMARY KEY NOT NULL,
-              type TEXT NOT NULL,
-              row TEXT,
-              oldEtag TEXT,
-              appliedToDBEtag TEXT
-              ifPresent INT NOT NULL DEFAULT 0,
-              fields TEXT DEFAULT NULL
-            )
-          ''');
-      },
-    );
+    await _localFile.delete();
   }
 
   Future<void> _openDb() async {
@@ -660,8 +582,30 @@ class MetaDB {
               CONSTRAINT present_deletedAt CHECK (present = 0 OR deletedAt IS NULL)
             )
           ''');
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS operations (
+              key TEXT PRIMARY KEY NOT NULL,
+              type TEXT NOT NULL,
+              row TEXT,
+              oldEtag TEXT,
+              appliedToDBEtag TEXT
+              ifPresent INT NOT NULL DEFAULT 0,
+              fields TEXT DEFAULT NULL
+            )
+          ''');
       },
       onOpen: (db) async {
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS operations (
+              key TEXT PRIMARY KEY NOT NULL,
+              type TEXT NOT NULL,
+              row TEXT,
+              oldEtag TEXT,
+              appliedToDBEtag TEXT
+              ifPresent INT NOT NULL DEFAULT 0,
+              fields TEXT DEFAULT NULL
+            )
+          ''');
         await db.execute('''
             CREATE INDEX IF NOT EXISTS idx_remotefiles_key
             ON remotefiles (key)
@@ -699,7 +643,7 @@ class MetaDB {
   }
 
   Future<void> _addOrUpdateOp(Operation op, {Transaction? txn}) async {
-    await (txn ?? _localDb)?.execute(
+    await (txn ?? _db)?.execute(
       '''INSERT OR REPLACE INTO operations
         (key, type, row, oldEtag, appliedToDBEtag)
         VALUES (?, ?, ?, ?, ?)''',
@@ -714,7 +658,7 @@ class MetaDB {
   }
 
   Future<void> _applyOp(Operation op, {Transaction? txn}) async {
-    await (txn ?? _localDb)?.update(
+    await (txn ?? _db)?.update(
       'operations',
       {
         'key': op.key,
@@ -733,7 +677,7 @@ class MetaDB {
   }
 
   Future<int?> _deleteOp(String key, {Transaction? txn}) async {
-    return await (txn ?? _localDb)?.delete(
+    return await (txn ?? _db)?.delete(
       'operations',
       where: 'key = ?',
       whereArgs: [key],
@@ -741,7 +685,7 @@ class MetaDB {
   }
 
   Future<List<Operation>> _getOps() async {
-    final rows = await _localDb?.query('operations');
+    final rows = await _db?.query('operations');
     if (rows == null) {
       return [];
     }
@@ -767,7 +711,7 @@ class MetaDB {
   }
 
   Future<void> _cleanOps() async {
-    await _localDb?.execute(
+    await _db?.execute(
       'DELETE FROM operations WHERE appliedToDBEtag is NOT NULL',
     );
   }
@@ -789,8 +733,8 @@ class MetaDB {
         await _applyOperations(ops);
       }
       final applied =
-          await _localDb?.transaction((localTxn) async {
-            return await localTxn.query(
+          await _db?.transaction((txn) async {
+            return await txn.query(
               'operations',
               where: 'appliedToDBEtag IS NOT NULL',
             );
@@ -923,7 +867,7 @@ class MetaDB {
 
   Future<void> _applyOperations(List<Operation> ops) async {
     return await _db?.transaction((txn) async {
-      return await _localDb?.transaction((localTxn) async {
+      return await _db?.transaction((txn) async {
         for (final op in ops) {
           if (op.appliedToDBEtag != etag.value) {
             int changed = 0;
@@ -933,9 +877,9 @@ class MetaDB {
               changed = await _applyRemove(op, txn: txn);
             }
             if (changed > 0) {
-              await _applyOp(op, txn: localTxn);
+              await _applyOp(op, txn: txn);
             } else {
-              await _deleteOp(op.key, txn: localTxn);
+              await _deleteOp(op.key, txn: txn);
             }
           }
         }
@@ -989,12 +933,8 @@ class MetaDB {
       isInitialized = false;
       _initializing =
           () async {
-            if (_db != null && _db!.isOpen) {
-              await _db!.close();
-            }
             final result = await job.start();
             job.dispose();
-            await _openDb();
             if (result != null &&
                 result.statusCode >= 200 &&
                 result.statusCode < 300) {
@@ -1009,6 +949,19 @@ class MetaDB {
             if (kDebugMode) {
               debugPrint('[MetaDB._pullDb] ${profile.name} Pull completed');
             }
+            await withTransaction((txn) async {
+              final json =
+                  jsonDecode(await _file.readAsString())
+                      as List<Map<String, Object?>>;
+              txn.delete('remotefiles');
+              for (final entry in json) {
+                await txn.insert(
+                  'remotefiles',
+                  entry,
+                  conflictAlgorithm: ConflictAlgorithm.replace,
+                );
+              }
+            });
             isInitialized = true;
             return true;
           }().catchError((e) {
@@ -1065,6 +1018,9 @@ class MetaDB {
       }
       return false;
     }
+
+    final rows = await _db?.query('remotefiles');
+    await _file.writeAsString(jsonEncode(rows ?? []));
 
     Job job = UploadJob(
       localFile: _file,

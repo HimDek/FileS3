@@ -65,17 +65,13 @@ class Profile {
   Future<void> createDirectory(String dir) async {
     try {
       if (fileManager != null && _metaDB != null) {
-        await metaDB.withNestedTransaction((txn, localTxn) async {
+        await metaDB.withTransaction((txn) async {
           final result = await fileManager!.createDirectory(
             p.s3.relative(dir, from: name),
           );
-          await metaDB.addOrUpdateFile(
-            RemoteFileMeta(key: dir),
-            txn: txn,
-            localTxn: localTxn,
-          );
+          await metaDB.addOrUpdateFile(RemoteFileMeta(key: dir), txn: txn);
           return result;
-        }, 'createDirectory');
+        }, debugLabel: 'createDirectory');
         accessible.value = true;
       } else {
         throw 'Configuration error';
@@ -89,10 +85,7 @@ class Profile {
   Future<Iterable<RemoteFileMeta>> listObjects(String dir) async {
     try {
       if (fileManager != null && _metaDB != null) {
-        final result = await metaDB.withNestedTransaction((
-          txn,
-          localTxn,
-        ) async {
+        final result = await metaDB.withTransaction((txn) async {
           final results = await Future.wait([
             fileManager!.listObjects(p.s3.relative(dir, from: name)),
             () async {
@@ -100,7 +93,6 @@ class Profile {
               await metaDB.addOrUpdateFile(
                 RemoteFileMeta(key: p.asDir(name), etag: '', deletedAt: null),
                 txn: txn,
-                localTxn: localTxn,
               );
               Main.onRemoteFilesChanged.notifyListeners();
             }(),
@@ -119,13 +111,12 @@ class Profile {
               file.key,
               addedDirs,
               txn: txn,
-              localTxn: localTxn,
             );
-            await metaDB.addOrUpdateFile(file, txn: txn, localTxn: localTxn);
+            await metaDB.addOrUpdateFile(file, txn: txn);
           }
           await metaDB.clean(txn: txn);
           return files;
-        }, 'listObjects');
+        }, debugLabel: 'listObjects');
         accessible.value = true;
         return result;
       } else {
@@ -149,16 +140,13 @@ class Profile {
   }) async {
     try {
       if (fileManager != null && _metaDB != null) {
-        final result = await metaDB.withNestedTransaction((
-          txn,
-          localTxn,
-        ) async {
+        final result = await metaDB.withTransaction((txn) async {
           await fileManager!.copyFile(
             p.s3.relative(sourceKey, from: name),
             p.s3.relative(destinationKey, from: name),
           );
-          return headObject(destinationKey, txn: txn, localTxn: localTxn);
-        }, 'copyFile');
+          return headObject(destinationKey, txn: txn);
+        }, debugLabel: 'copyFile');
         accessible.value = true;
         return result;
       } else {
@@ -173,10 +161,10 @@ class Profile {
   Future<void> deleteFile(String key) async {
     try {
       if (fileManager != null && _metaDB != null) {
-        await metaDB.withNestedTransaction((txn, localTxn) async {
+        await metaDB.withTransaction((txn) async {
           await fileManager!.deleteFile(p.s3.relative(key, from: name));
-          await metaDB.deleteFile(key, txn: txn, localTxn: localTxn);
-        }, 'deleteFile');
+          await metaDB.deleteFile(key, txn: txn);
+        }, debugLabel: 'deleteFile');
         accessible.value = true;
       } else {
         throw 'Configuration Error';
@@ -191,12 +179,7 @@ class Profile {
     String key, {
     bool nosave = false,
     Transaction? txn,
-    Transaction? localTxn,
   }) async {
-    assert(
-      !(txn != null && localTxn == null) && !(txn == null && localTxn != null),
-      'Both txn and localTxn must be provided together or not at all.',
-    );
     try {
       if (fileManager != null) {
         Future<RemoteFile> body() async {
@@ -210,23 +193,18 @@ class Profile {
           }
         }
 
-        Future<RemoteFile> query(Transaction txn, Transaction localTxn) async {
+        Future<RemoteFile> query(Transaction txn) async {
           final file = await body();
           RemoteFile? oldFile = (await RemoteFile.getByKey(key, txn: txn));
-          await metaDB.addOrUpdateFile(
-            file,
-            oldEtag: oldFile?.etag,
-            txn: txn,
-            localTxn: localTxn,
-          );
+          await metaDB.addOrUpdateFile(file, oldEtag: oldFile?.etag, txn: txn);
           return file;
         }
 
         final result = nosave || _metaDB == null || _fileManager == null
             ? await body()
-            : txn == null && localTxn == null
-            ? await metaDB.withNestedTransaction(query, 'headObject')
-            : await query(txn!, localTxn!);
+            : txn == null
+            ? await metaDB.withTransaction(query, debugLabel: 'headObject')
+            : await query(txn);
 
         accessible.value = true;
         return result;

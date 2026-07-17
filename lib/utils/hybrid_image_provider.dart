@@ -194,15 +194,14 @@ class HybridImageProvider extends ImageProvider<HybridImageProvider> {
       if (key != null && response.headers['etag']?.isNotEmpty == true) {
         final file = RemoteFile.fromHttpHeaders(key!, response.headers);
         final profile = Main.profileFromKey(key!);
-        profile?.metaDB.withNestedTransaction((txn, localTxn) async {
+        profile?.metaDB.withTransaction((txn) async {
           RemoteFile? oldFile = (await RemoteFile.getByKey(key!, txn: txn));
           profile.metaDB.addOrUpdateFile(
             file,
             oldEtag: oldFile?.etag,
             txn: txn,
-            localTxn: localTxn,
           );
-        }, 'hybrid_image_provider');
+        }, debugLabel: 'hybrid_image_provider');
       }
 
       final total = response.contentLength;
